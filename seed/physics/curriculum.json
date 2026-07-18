@@ -1,0 +1,21 @@
+{
+  "id": "curriculum_cbse12_physics_electrostatics",
+  "authority": "CBSE-aligned original demo seed",
+  "boardOrInstitution": "CBSE",
+  "level": "Class 12",
+  "subject": "Physics",
+  "unit": "Electrostatics",
+  "topic": "Electrostatic Potential and Capacitance",
+  "outcomes": [
+    "Distinguish electric potential from electric potential energy",
+    "Calculate potential due to a point charge and a system of charges",
+    "Explain equipotential surfaces and zero work along them",
+    "Relate capacitance to geometry and dielectric response",
+    "Solve unseen conceptual and numerical transfer problems"
+  ],
+  "prerequisites": ["concept_electric_field", "concept_work_energy"],
+  "assessmentForms": ["conceptual multiple choice", "derivation", "numerical", "unseen transfer"],
+  "sourceIds": ["source_continuum_physics_seed"],
+  "version": "2026.07.18",
+  "humanReviewRequired": false
+}

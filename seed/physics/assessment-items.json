@@ -1,0 +1,20 @@
+[
+  {
+    "id": "item_diagnostic_potential_1",
+    "conceptId": "concept_potential",
+    "prompt": "Two different test charges are placed at the same point. Which quantity is the same for both?",
+    "choices": ["Potential energy", "Electric potential", "Force", "Work to bring the charge"],
+    "correctAnswer": "Electric potential",
+    "unseen": false,
+    "difficulty": 0.35,
+    "misconceptionTag": "potential_vs_potential_energy"
+  },
+  {
+    "id": "item_transfer_potential_1",
+    "conceptId": "concept_potential",
+    "prompt": "A +2 nC source charge creates a field. Find the electric potential 0.75 m away using k = 9×10⁹ N m²/C².",
+    "correctAnswer": "24 V",
+    "unseen": true,
+    "difficulty": 0.58
+  }
+]

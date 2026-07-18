@@ -1,0 +1,13 @@
+{
+  "id": "project_hdab",
+  "title": "Cross-marker spatial association",
+  "purpose": "Define and validate a defensible method for quantifying cross-marker spatial association across serial H-DAB sections.",
+  "phase": "methods_validation",
+  "acceptedDecision": {
+    "id": "decision_grouped_validation",
+    "text": "Use patient-grouped held-out validation",
+    "reasoning": "Patch-level random splits risk patient-specific morphology leakage."
+  },
+  "unresolvedQuestion": "How sensitive is nearest-neighbour association to registration error above 12 µm?",
+  "nextTask": "Run registration perturbation analysis at 4, 8, 12, and 16 µm"
+}
