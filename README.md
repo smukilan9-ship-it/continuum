@@ -13,6 +13,7 @@ Continuum is the judged-demo implementation for the Prometheus July AI Challenge
 - Source ingestion for PDF/text, hashing, sanitization, stable chunks, source-locked refusal, and lexical fallback retrieval.
 - Deterministic scheduling with hard constraints, dependency ordering, energy fit, buffers, and repair-only replanning.
 - Event-first memory, compact context packing, append-only audit contracts, provider routing, independent verifier selection, and daily token caps.
+- AI SDK v6 structured generation through Vercel AI Gateway, with OpenAI-compatible Featherless and Groq adapters, schema validation, and provider fallback.
 - A Streamable HTTP MCP endpoint built with the official TypeScript SDK, 16 scoped tools, eight resources, guided prompts, OAuth 2.1-style PKCE, token rotation, revocation, and a feature-flagged demo token.
 - A complete Drizzle/Postgres schema for all P0 entities, including pgvector storage.
 

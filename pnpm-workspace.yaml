@@ -7,6 +7,12 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
 
+minimumReleaseAgeExclude:
+  - '@ai-sdk/gateway@3.0.153'
+  - '@ai-sdk/provider-utils@4.0.40'
+  - ai@6.0.230
+  - '@ai-sdk/openai-compatible@2.0.62'
+
 onlyBuiltDependencies:
   - esbuild
   - sharp

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fallbackRoute, independentVerifier, routeTask } from "../packages/ai/src/policy";
 import { enforceDailyTokenCap, runWithValidation } from "../packages/ai/src/validation";
+import { configuredProviders } from "../packages/ai/src/providers";
 import { z } from "zod";
 
 describe("model routing", () => {
@@ -40,5 +41,11 @@ describe("model routing", () => {
   it("enforces daily token caps", () => {
     const usage = [{ userId: "user_maya", routeId: "route_1", inputTokens: 600, outputTokens: 300, occurredAt: "2026-07-18T09:00:00+05:30" }];
     expect(() => enforceDailyTokenCap(usage, "user_maya", 1000, 200, "2026-07-18T10:00:00+05:30")).toThrow(/cap/i);
+  });
+
+  it("reports provider availability without exposing keys", () => {
+    const providers = configuredProviders({ AI_GATEWAY_API_KEY: "secret", GROQ_API_KEY: "secret", GROQ_MODEL: "live-model" });
+    expect(providers).toEqual(expect.objectContaining({ aiGateway: true, groq: true, featherless: false }));
+    expect(JSON.stringify(providers)).not.toContain("secret");
   });
 });

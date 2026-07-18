@@ -37,7 +37,7 @@ import {
   Zap,
 } from "lucide-react";
 import { InlineMath } from "react-katex";
-import { useMemo, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { ConceptMap } from "@/components/concept-map";
 import { Badge, Button, Card, Progress } from "@/components/ui";
 import {
@@ -186,10 +186,12 @@ export function TodayScreen({
 export function GoalsScreen({ onNavigate, showToast }: { onNavigate: Navigate; showToast: Toast }) {
   const [open, setOpen] = useState(false);
   const [extraGoals, setExtraGoals] = useState<Array<{ title: string; date: string; outcome: string }>>([]);
-  const submitGoal = (event: FormEvent<HTMLFormElement>) => {
+  const submitGoal = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    setExtraGoals((items) => [...items, { title: String(form.get("title")), date: String(form.get("date")), outcome: String(form.get("outcome")) }]);
+    const goal = { title: String(form.get("title")), date: String(form.get("date")), outcome: String(form.get("outcome")) };
+    setExtraGoals((items) => [...items, goal]);
+    await fetch("/api/state", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "goal.created", summary: `Created goal “${goal.title}” in the standalone app.`, entityIds: [`goal_app_${Date.now()}`], payload: goal }) });
     setOpen(false);
     showToast("Goal created with editable milestones and uncertain assumptions clearly marked.");
   };
@@ -279,13 +281,30 @@ export function ResearchScreen({ showToast }: { showToast: Toast }) {
   const [selectedClaimId, setSelectedClaimId] = useState(researchClaims[0]!.id);
   const [query, setQuery] = useState("");
   const [uploaded, setUploaded] = useState<string | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<"processing" | "ready" | "error">("processing");
   const inputRef = useRef<HTMLInputElement>(null);
   const selectedClaim = researchClaims.find((claim) => claim.id === selectedClaimId)!;
   const filteredPapers = papers.filter((paper) => `${paper.title} ${paper.authors}`.toLowerCase().includes(query.toLowerCase()));
+  const handleUpload = async (file: File) => {
+    setUploaded(file.name);
+    setUploadStatus("processing");
+    showToast("Checking source hash, extracting text, and sanitizing untrusted content…");
+    const form = new FormData();
+    form.set("file", file);
+    try {
+      const response = await fetch("/api/sources", { method: "POST", body: form });
+      if (!response.ok) throw new Error("Source processing failed");
+      setUploadStatus("ready");
+      showToast("Source indexed with stable passage IDs and a content hash.");
+    } catch {
+      setUploadStatus("error");
+      showToast("This source could not be processed. Try a readable PDF or text file under 10 MB.");
+    }
+  };
   return (
     <div className="screen research-screen">
-      <PageIntro eyebrow="RESEARCH WORKSPACE" title={<>Claims you can <em>defend.</em></>} description="Every conclusion stays connected to exact evidence, unresolved questions, decisions, and the next executable step." action={<><input ref={inputRef} className="sr-only" type="file" accept=".txt,.pdf" onChange={(event) => { const file = event.target.files?.[0]; if (file) { setUploaded(file.name); showToast("Source queued: duplicate check → sanitize → chunk → index."); } }} /><Button className="button-secondary" onClick={() => inputRef.current?.click()}><Upload size={16} /> Add source</Button></>} />
-      {uploaded && <div className="upload-banner"><FileCheck2 size={18} /><div><strong>{uploaded}</strong><span>Sanitized and indexed locally · source version 1 · no embedded instructions trusted</span></div><Badge tone="green">Ready</Badge></div>}
+      <PageIntro eyebrow="RESEARCH WORKSPACE" title={<>Claims you can <em>defend.</em></>} description="Every conclusion stays connected to exact evidence, unresolved questions, decisions, and the next executable step." action={<><input ref={inputRef} className="sr-only" type="file" accept=".txt,.pdf" onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleUpload(file); }} /><Button className="button-secondary" onClick={() => inputRef.current?.click()}><Upload size={16} /> Add source</Button></>} />
+      {uploaded && <div className="upload-banner"><FileCheck2 size={18} /><div><strong>{uploaded}</strong><span>{uploadStatus === "ready" ? "Sanitized and indexed · source version 1 · embedded instructions never trusted" : uploadStatus === "error" ? "Processing failed · choose a readable PDF or text file under 10 MB" : "Duplicate check → extract → sanitize → stable chunks"}</span></div><Badge tone={uploadStatus === "ready" ? "green" : uploadStatus === "error" ? "red" : "neutral"}>{uploadStatus}</Badge></div>}
       <Card className="project-strip"><div className="project-icon"><FlaskConical size={22} /></div><div className="project-title"><Badge tone="purple">{researchProject.phase}</Badge><h2>{researchProject.title}</h2><p>{researchProject.subtitle}</p></div><div className="project-goal"><span>PROJECT GOAL</span><p>{researchProject.goal}</p></div><div className="project-progress"><strong>{researchProject.progress}%</strong><span>method complete</span><Progress value={researchProject.progress} label="Project progress" /></div></Card>
       <section className="research-grid">
         <aside className="paper-library card"><div className="library-head"><div><p className="eyebrow">LIBRARY</p><h3>3 papers</h3></div><button className="icon-button" onClick={() => inputRef.current?.click()}><Plus size={17} /></button></div><div className="library-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search papers…" /></div><div className="paper-list">{filteredPapers.map((paper, index) => <button key={paper.id} className={index === 1 ? "active" : ""}><div className="paper-icon"><FileText size={17} /></div><div><strong>{paper.title}</strong><span>{paper.authors} · {paper.year}</span><Badge tone="neutral">{paper.tag}</Badge></div></button>)}</div><button className="text-link" onClick={() => showToast("Two-passage comparison opened in source-locked mode.")}><Layers3 size={14} /> Compare two passages</button></aside>
@@ -334,13 +353,31 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
 
 export function ActivityScreen() {
   const [tab, setTab] = useState<"activity" | "routes">("activity");
-  const totals = useMemo(() => ({ calls: activity.length, noToken: routes.filter((route) => route.cost.includes("No")).length, verified: routes.filter((route) => route.verification.toLowerCase().includes("pass")).length }), []);
+  const [liveEvents, setLiveEvents] = useState<Array<{ id: string; summary: string; type: string; occurredAt: string }>>([]);
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/state", { cache: "no-store" });
+        const payload = await response.json() as { data?: { events?: Array<{ id: string; summary: string; type: string; occurredAt: string }> } };
+        if (active) setLiveEvents(payload.data?.events ?? []);
+      } catch { /* The static audit remains useful if live state is unavailable. */ }
+    };
+    void refresh();
+    const interval = window.setInterval(refresh, 2500);
+    return () => { active = false; window.clearInterval(interval); };
+  }, []);
+  const visibleActivity = useMemo(() => [
+    ...liveEvents.map((event) => ({ id: event.id, type: event.type, title: event.summary, detail: `${event.type} · cross-surface append-only event`, time: new Date(event.occurredAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), icon: event.type.includes("goal") ? "memory" : "link" })),
+    ...activity,
+  ], [liveEvents]);
+  const totals = useMemo(() => ({ calls: visibleActivity.length, noToken: routes.filter((route) => route.cost.includes("No")).length, verified: routes.filter((route) => route.verification.toLowerCase().includes("pass")).length }), [visibleActivity.length]);
   return (
     <div className="screen activity-screen">
       <PageIntro eyebrow="ACTIVITY & ROUTING" title={<>Trust needs a <em>paper trail.</em></>} description="Inspect every memory read, tool call, schedule change, model route, evidence check, and cost class." />
       <section className="activity-stats"><Card><Route size={19} /><div><strong>{routes.length}</strong><span>routes today</span></div></Card><Card><Zap size={19} /><div><strong>{totals.noToken}</strong><span>no-token routes</span></div></Card><Card><ShieldCheck size={19} /><div><strong>{totals.verified}</strong><span>independently verified</span></div></Card><Card><Link2 size={19} /><div><strong>{totals.calls}</strong><span>audited events</span></div></Card></section>
       <div className="activity-tabs"><button className={tab === "activity" ? "active" : ""} onClick={() => setTab("activity")}>Activity log</button><button className={tab === "routes" ? "active" : ""} onClick={() => setTab("routes")}>Why this route?</button></div>
-      {tab === "activity" ? <Card className="audit-table"><div className="audit-head"><span>Event</span><span>Route / permission</span><span>Time</span></div>{activity.map((item) => <div className="audit-row" key={item.id}><div className={`audit-icon audit-${item.icon}`}>{item.icon === "route" ? <Route size={16} /> : item.icon === "calendar" ? <CalendarClock size={16} /> : item.icon === "shield" ? <ShieldCheck size={16} /> : item.icon === "link" ? <Link2 size={16} /> : <Sparkles size={16} />}</div><div><strong>{item.title}</strong><span>{item.detail}</span></div><Badge tone="green">Success</Badge><time>{item.time}</time><button aria-label="Inspect event"><ChevronRight size={16} /></button></div>)}</Card> : <div className="route-grid">{routes.map((route) => <Card key={route.task} className={`route-card route-${route.color}`}><header><div className="route-symbol">{route.route === "Deterministic" ? <GitBranch size={19} /> : route.route === "Retrieval" ? <BookOpen size={19} /> : <Sparkles size={19} />}</div><div><span>{route.task}</span><h3>{route.route}</h3></div><Badge tone={route.cost.includes("No") ? "green" : "neutral"}>{route.cost}</Badge></header><div className="route-model"><span>SELECTED TOOL / MODEL</span><strong>{route.model}</strong></div><p>{route.reason}</p><footer><ShieldCheck size={14} /><span>{route.verification}</span></footer></Card>)}</div>}
+      {tab === "activity" ? <Card className="audit-table"><div className="audit-head"><span>Event</span><span>Route / permission</span><span>Time</span></div>{visibleActivity.map((item) => <div className="audit-row" key={item.id}><div className={`audit-icon audit-${item.icon}`}>{item.icon === "route" ? <Route size={16} /> : item.icon === "calendar" ? <CalendarClock size={16} /> : item.icon === "shield" ? <ShieldCheck size={16} /> : item.icon === "link" ? <Link2 size={16} /> : <Sparkles size={16} />}</div><div><strong>{item.title}</strong><span>{item.detail}</span></div><Badge tone="green">Success</Badge><time>{item.time}</time><button aria-label="Inspect event"><ChevronRight size={16} /></button></div>)}</Card> : <div className="route-grid">{routes.map((route) => <Card key={route.task} className={`route-card route-${route.color}`}><header><div className="route-symbol">{route.route === "Deterministic" ? <GitBranch size={19} /> : route.route === "Retrieval" ? <BookOpen size={19} /> : <Sparkles size={19} />}</div><div><span>{route.task}</span><h3>{route.route}</h3></div><Badge tone={route.cost.includes("No") ? "green" : "neutral"}>{route.cost}</Badge></header><div className="route-model"><span>SELECTED TOOL / MODEL</span><strong>{route.model}</strong></div><p>{route.reason}</p><footer><ShieldCheck size={14} /><span>{route.verification}</span></footer></Card>)}</div>}
       <Card className="budget-bar"><div><p className="eyebrow">DAILY AI BUDGET</p><strong>8,420 <span>/ 50,000 tokens</span></strong></div><Progress value={17} label="Daily token usage" /><span>83% remaining · deterministic and retrieval routes do not consume generation tokens</span></Card>
     </div>
   );
