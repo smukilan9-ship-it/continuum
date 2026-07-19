@@ -115,6 +115,24 @@ export function answerFromSources(query: string, chunks: SourceChunk[], sourceLo
   };
 }
 
+export function answerFromVectorMatches(matches: RetrievalMatch[], sourceLocked = true, threshold = 0.45) {
+  const supported = matches.filter((match) => match.score >= threshold);
+  if (!supported.length) {
+    return {
+      answer: sourceLocked
+        ? "I couldn’t find a sufficiently similar supporting passage in the selected sources, so I won’t make an unsupported claim."
+        : "No sufficiently similar source passage was found.",
+      evidenceState: sourceLocked ? "unverified" as const : "model_inference" as const,
+      citations: [],
+    };
+  }
+  return {
+    answer: supported.map((match) => match.text).join("\n\n"),
+    evidenceState: "direct_support" as const,
+    citations: supported.map((match) => ({ chunkId: match.id, reference: match.reference, passage: match.text, score: match.score })),
+  };
+}
+
 export function findDuplicate(document: SourceDocument, existing: SourceDocument[]) {
   const hash = contentHash(document.text);
   return existing.find((item) => !item.deleted && contentHash(item.text) === hash);
