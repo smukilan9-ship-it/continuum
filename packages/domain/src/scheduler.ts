@@ -195,9 +195,9 @@ export class DeterministicScheduler implements Scheduler {
     const preserved = current.blocks.filter(
       (block) => block.status === "done" || (toMs(block.end) <= cutoff && block.id !== missedBlockId),
     );
-    const completedTaskIds = new Set(preserved.filter((block) => block.status === "done").map((block) => block.taskId));
+    const preservedTaskIds = new Set(preserved.map((block) => block.taskId));
     const affectedTasks = input.tasks
-      .filter((task) => !completedTaskIds.has(task.id))
+      .filter((task) => !preservedTaskIds.has(task.id))
       .map((task) => (task.id === missed.taskId ? { ...task, status: "backlog" as const } : task));
     const afterMiss = iso(Math.max(toMs(input.now), cutoff + MINUTE));
     const replanned = this.propose({
