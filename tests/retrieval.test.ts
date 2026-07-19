@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerFromSources, chunkDocument, comparePassages, contentHash, findDuplicate, retrieve, sanitizeUntrustedContent, type SourceDocument } from "../packages/retrieval/src";
+import { answerFromSources, answerFromVectorMatches, chunkDocument, comparePassages, contentHash, findDuplicate, retrieve, sanitizeUntrustedContent, type SourceDocument } from "../packages/retrieval/src";
 
 const source: SourceDocument = {
   id: "source_physics",
@@ -44,5 +44,12 @@ describe("source-grounded retrieval", () => {
   it("compares two exact passages", () => {
     const chunks = chunkDocument(source, 120, 10);
     expect(comparePassages(chunks[0]!, chunks.at(-1)!).sources).toHaveLength(2);
+  });
+
+  it("refuses vector matches below the configured support threshold", () => {
+    const [chunk] = chunkDocument(source);
+    const answer = answerFromVectorMatches([{ ...chunk!, score: 0.2, reference: "Continuum Physics Seed · passage 1" }], true, 0.45);
+    expect(answer.citations).toHaveLength(0);
+    expect(answer.evidenceState).toBe("unverified");
   });
 });

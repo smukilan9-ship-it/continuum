@@ -37,14 +37,24 @@ describe("deterministic scheduler", () => {
     expect(Date.parse(transfer.start)).toBeGreaterThanOrEqual(Date.parse(foundation.end));
   });
 
-  it("preserves completed work during repair", () => {
+  it("preserves earlier work during repair without scheduling it twice", () => {
     const scheduler = new DeterministicScheduler();
     const proposal = scheduler.propose(input());
     proposal.blocks[0]!.status = "done";
-    const missed = proposal.blocks.find((block) => block.id !== proposal.blocks[0]!.id)!;
+    const missed = proposal.blocks.at(-1)!;
+    const preservedTaskIds = new Set(
+      proposal.blocks
+        .filter((block) => block.status === "done" || Date.parse(block.end) <= Date.parse(missed.start))
+        .map((block) => block.taskId),
+    );
     const repaired = scheduler.replan({ ...input(), now: missed.start }, proposal, missed.id);
     expect(repaired.preservedBlockIds).toContain(proposal.blocks[0]!.id);
     expect(repaired.blocks.find((block) => block.id === proposal.blocks[0]!.id)?.status).toBe("done");
+    for (const taskId of preservedTaskIds) {
+      expect(repaired.blocks.filter((block) => block.taskId === taskId)).toHaveLength(
+        proposal.blocks.filter((block) => block.taskId === taskId && block.id !== missed.id).length,
+      );
+    }
   });
 
   it("retains the IANA timezone", () => {

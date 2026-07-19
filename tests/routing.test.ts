@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fallbackRoute, independentVerifier, routeTask } from "../packages/ai/src/policy";
 import { enforceDailyTokenCap, runWithValidation } from "../packages/ai/src/validation";
-import { configuredProviders } from "../packages/ai/src/providers";
+import { configuredProviders, generationRouteOrder } from "../packages/ai/src/providers";
 import { z } from "zod";
 
 describe("model routing", () => {
@@ -44,8 +44,22 @@ describe("model routing", () => {
   });
 
   it("reports provider availability without exposing keys", () => {
-    const providers = configuredProviders({ AI_GATEWAY_API_KEY: "secret", GROQ_API_KEY: "secret", GROQ_MODEL: "live-model" });
+    const providers = configuredProviders({ AI_GATEWAY_ENABLED: "true", AI_GATEWAY_API_KEY: "secret", GROQ_API_KEY: "secret" });
     expect(providers).toEqual(expect.objectContaining({ aiGateway: true, groq: true, featherless: false }));
+    expect(providers.gatewayModels.fallbacks).toEqual(["openai/gpt-5.4", "anthropic/claude-sonnet-4.6"]);
     expect(JSON.stringify(providers)).not.toContain("secret");
+    expect(providers.groqModels?.fast).toBe("llama-3.1-8b-instant");
+  });
+
+  it("keeps every configured provider in the generation fallback path", () => {
+    const decision = routeTask({ id: "route_all_fallbacks", taskClass: "lesson_generation", availableProviders: ["featherless", "gemini", "groq", "ai_gateway"] });
+    expect(generationRouteOrder(decision, {
+      FEATHERLESS_API_KEY: "configured",
+      GROQ_API_KEY: "configured",
+      GEMINI_API_KEY: "configured",
+      GEMINI_DATA_USE_ACKNOWLEDGED: "true",
+      AI_GATEWAY_API_KEY: "configured",
+      AI_GATEWAY_ENABLED: "true",
+    })).toEqual(["featherless", "gemini", "groq", "ai_gateway"]);
   });
 });
