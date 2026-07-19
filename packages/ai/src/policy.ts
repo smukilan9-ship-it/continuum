@@ -69,7 +69,18 @@ export function routeTask(request: RouteRequest): RouteDecision {
     });
   }
 
-  const preferred = available.has("ai_gateway") ? "ai_gateway" : available.has("featherless") ? "featherless" : available.has("groq") ? "groq" : "gemini";
+  if (fastTasks.has(request.taskClass) && available.has("featherless")) {
+    return routeDecisionSchema.parse({
+      ...base,
+      route: "featherless",
+      model: "featherless/catalog-selected-small-model",
+      reason: "A small catalog model is selected for this bounded task so it consumes one concurrency unit where available.",
+      verification: "not_required",
+      costClass: "low",
+    });
+  }
+
+  const preferred = available.has("featherless") ? "featherless" : available.has("gemini") ? "gemini" : available.has("ai_gateway") ? "ai_gateway" : "groq";
   return routeDecisionSchema.parse({
     ...base,
     route: preferred,
@@ -100,11 +111,11 @@ export function independentVerifier(decision: RouteDecision) {
 
 export const routePolicyYaml = `
 classification:
-  prefer: groq/fast-classifier
+  prefer: featherless/catalog-small-fast
   max_latency_ms: 2500
   verify: false
 lesson_generation:
-  prefer: ai_gateway/general-reasoning
+  prefer: featherless/catalog-mid-reasoning
   retrieval_required: true
   verify_if_source_locked: true
 citation_entailment:
