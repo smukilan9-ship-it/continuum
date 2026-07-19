@@ -1,9 +1,5 @@
 import { WorkspacePage, workspacePageMetadata } from "@/app/workspace-page";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 export const metadata = workspacePageMetadata;
-
-export default async function Home() {
-  return <WorkspacePage view="today" />;
-}
+export default function IntegrationsPage() { return <WorkspacePage view="integrations" />; }
