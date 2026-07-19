@@ -1,17 +1,12 @@
-import Link from "next/link";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { redirect } from "next/navigation";
+import type { Route } from "next";
+import { getServerUser } from "@/lib/auth";
+import { LoginForm } from "@/components/login-form";
+import { publicRegistrationEnabled } from "@/lib/env";
 
-export default function LoginPage() {
-  return (
-    <main className="login-shell">
-      <section className="login-card">
-        <div className="brand-mark"><Sparkles size={18} /> C</div>
-        <p className="eyebrow">CONTINUUM</p>
-        <h1>Your academic life,<br /><em>already in context.</em></h1>
-        <p>Enter the judged demo workspace with a seeded learning goal, research project, evidence vault, and today plan.</p>
-        <Link className="button button-primary button-large" href="/">Enter demo workspace <ArrowRight size={17} /></Link>
-        <span className="privacy-note">Demo data only · No account or provider key required</span>
-      </section>
-    </main>
-  );
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ returnTo?: string }> }) {
+  const user = await getServerUser();
+  const params = await searchParams;
+  if (user) redirect((params.returnTo?.startsWith("/") ? params.returnTo : "/") as Route);
+  return <LoginForm returnTo={params.returnTo} demoMode={!process.env.DATABASE_URL && process.env.NODE_ENV !== "production"} registrationEnabled={publicRegistrationEnabled()} />;
 }

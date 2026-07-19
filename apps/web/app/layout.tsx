@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import { DM_Sans, Instrument_Serif } from "next/font/google";
+import { DM_Sans } from "next/font/google";
 import "katex/dist/katex.min.css";
 import "@xyflow/react/dist/style.css";
 import "./globals.css";
 
 const sans = DM_Sans({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
-const serif = Instrument_Serif({ subsets: ["latin"], weight: "400", variable: "--font-serif", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Continuum — Your academic memory, in motion",
@@ -22,7 +21,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${sans.variable} ${serif.variable}`}>{children}</body>
+      <body className={sans.variable}>{children}</body>
     </html>
   );
 }
