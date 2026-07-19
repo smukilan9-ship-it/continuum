@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@continuum/ai": "workspace:*",
+    "@continuum/db": "workspace:*",
     "@continuum/domain": "workspace:*",
     "@continuum/mcp": "workspace:*",
     "@continuum/retrieval": "workspace:*",
@@ -19,8 +20,7 @@
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-progress": "^1.1.8",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@supabase/ssr": "^0.12.3",
-    "@supabase/supabase-js": "^2.110.7",
+    "@vercel/blob": "^2.0.0",
     "@xyflow/react": "^12.11.2",
     "clsx": "^2.1.1",
     "katex": "^0.16.22",
