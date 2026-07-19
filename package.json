@@ -7,18 +7,26 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "turbo dev --filter=@continuum/web",
+    "dev": "dotenv -e .env.local -- turbo dev --filter=@continuum/web",
+    "dev:seeded": "turbo dev --filter=@continuum/web",
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:generate": "pnpm --filter @continuum/db generate"
+    "db:generate": "pnpm --filter @continuum/db generate",
+    "db:migrate": "dotenv -e .env.local -- pnpm --filter @continuum/db exec drizzle-kit migrate",
+    "db:seed": "dotenv -e .env.local -- pnpm --filter @continuum/db seed",
+    "env:pull": "vercel env pull .env.local --yes",
+    "deploy": "vercel deploy",
+    "deploy:prod": "vercel deploy --prod"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "dotenv-cli": "^11.0.0",
     "turbo": "^2.5.6",
     "typescript": "^5.9.3",
+    "vercel": "56.3.1",
     "vitest": "^3.2.4",
     "zod": "^4.4.3"
   }
