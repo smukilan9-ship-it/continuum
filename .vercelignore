@@ -1,0 +1,6 @@
+.git
+.idea
+.agents
+.env*
+skills-lock.json
+next.md
