@@ -8,3 +8,9 @@ coverage
 .DS_Store
 *.tsbuildinfo
 drizzle/meta
+.vercel
+.idea
+.agents
+skills-lock.json
+.env*
+!.env.example
