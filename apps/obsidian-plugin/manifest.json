@@ -1,0 +1,9 @@
+{
+  "id": "continuum-sync",
+  "name": "Continuum Sync",
+  "version": "0.1.0",
+  "minAppVersion": "1.11.0",
+  "description": "Optionally sync user-selected vault documents with Continuum academic memory.",
+  "author": "Continuum",
+  "isDesktopOnly": false
+}
