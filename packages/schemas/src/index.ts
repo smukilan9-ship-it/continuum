@@ -95,6 +95,117 @@ export const learningResourceSchema = z.object({
   lastReviewedAt: isoDateSchema,
 });
 
+export const resourceRegistryEntrySchema = learningResourceSchema.extend({
+  description: z.string().min(1),
+  accessRequirements: z.array(z.string()).default([]),
+  regions: z.array(z.string()).default(["global"]),
+  languages: z.array(z.string()).default(["en"]),
+  estimatedMinutes: z.number().int().positive(),
+  exactLocator: z.object({
+    section: z.string().optional(),
+    timestampStartSeconds: z.number().int().nonnegative().optional(),
+    timestampEndSeconds: z.number().int().nonnegative().optional(),
+    exercise: z.string().optional(),
+    activity: z.string().optional(),
+  }).default({}),
+  bestFor: z.array(z.string()).min(1),
+  notBestFor: z.array(z.string()).default([]),
+  focusInstructions: z.array(z.string()).min(1),
+  completionInstructions: z.array(z.string()).min(1),
+  verification: z.object({
+    kind: z.enum(["checkpoint", "score_import", "artifact", "reflection", "explicit_confirmation"]),
+    prompt: z.string().min(1),
+    expectedAnswer: z.string().optional(),
+    passingScore: z.number().min(0).max(1).optional(),
+  }),
+  nativeContent: z.array(z.object({
+    heading: z.string().min(1),
+    body: z.string().min(1),
+  })).min(1).optional(),
+  officialFor: z.array(z.string()).default([]),
+  native: z.boolean().default(false),
+  active: z.boolean().default(true),
+});
+
+export const resourceRecommendationSchema = z.object({
+  id: idSchema,
+  goalId: idSchema.optional(),
+  conceptId: idSchema.optional(),
+  selected: resourceRegistryEntrySchema,
+  alternatives: z.array(z.object({
+    resource: resourceRegistryEntrySchema,
+    score: z.number(),
+    whyNotSelected: z.string().min(1),
+  })).max(5),
+  score: z.number(),
+  decision: z.enum(["native", "external"]),
+  whyBetterThanNative: z.string().min(1),
+  connectedOutcome: z.string().min(1),
+  scheduleImpact: z.string().min(1),
+  verificationPlan: z.string().min(1),
+  generatedAt: isoDateSchema,
+});
+
+export const resourceActivitySchema = z.object({
+  id: idSchema,
+  userId: idSchema,
+  resourceId: idSchema,
+  recommendationId: idSchema,
+  goalId: idSchema.optional(),
+  conceptId: idSchema.optional(),
+  status: z.enum(["started", "returned", "verified", "needs_review", "abandoned"]),
+  startedAt: isoDateSchema,
+  returnedAt: isoDateSchema.optional(),
+  verifiedAt: isoDateSchema.optional(),
+  evidenceIds: z.array(idSchema).default([]),
+  verificationScore: z.number().min(0).max(1).optional(),
+});
+
+export const outcomeReceiptSchema = z.object({
+  id: idSchema,
+  userId: idSchema,
+  sessionId: z.string().min(3),
+  goalId: idSchema.optional(),
+  projectId: idSchema.optional(),
+  summary: z.string().min(1),
+  completed: z.array(z.string()).default([]),
+  decisions: z.array(z.string()).default([]),
+  conceptsLearned: z.array(z.string()).default([]),
+  misconceptions: z.array(z.string()).default([]),
+  unresolvedQuestions: z.array(z.string()).default([]),
+  nextActions: z.array(z.string()).default([]),
+  evidenceIds: z.array(idSchema).default([]),
+  sourceEventIds: z.array(idSchema).default([]),
+  createdAt: isoDateSchema,
+});
+
+export const memoryProposalSchema = z.object({
+  id: idSchema,
+  kind: z.enum(["goal_change", "project_change", "task_change", "schedule_change", "high_impact_memory"]),
+  entityId: idSchema.optional(),
+  summary: z.string().min(1),
+  payload: z.record(z.string(), z.unknown()),
+  risk: z.enum(["medium", "high"]),
+  status: z.enum(["pending", "confirmed", "rejected", "expired"]),
+  createdAt: isoDateSchema,
+  expiresAt: isoDateSchema,
+});
+
+export const sessionSyncSchema = z.object({
+  sessionId: z.string().min(3).max(200),
+  goalId: idSchema.optional(),
+  projectId: idSchema.optional(),
+  summary: z.string().min(3).max(4000),
+  completed: z.array(z.string().min(1)).max(30).default([]),
+  decisions: z.array(z.string().min(1)).max(20).default([]),
+  conceptsLearned: z.array(z.string().min(1)).max(30).default([]),
+  misconceptions: z.array(z.string().min(1)).max(20).default([]),
+  unresolvedQuestions: z.array(z.string().min(1)).max(30).default([]),
+  nextActions: z.array(z.string().min(1)).max(30).default([]),
+  evidenceIds: z.array(idSchema).max(50).default([]),
+  mode: z.enum(["propose", "auto_low_impact"]).default("propose"),
+});
+
 export const memoryEventSchema = z.object({
   id: idSchema,
   userId: idSchema,
@@ -263,6 +374,12 @@ export type CurriculumNode = z.infer<typeof curriculumNodeSchema>;
 export type AcademicTask = z.infer<typeof academicTaskSchema>;
 export type ResearchClaim = z.infer<typeof researchClaimSchema>;
 export type LearningResource = z.infer<typeof learningResourceSchema>;
+export type ResourceRegistryEntry = z.infer<typeof resourceRegistryEntrySchema>;
+export type ResourceRecommendation = z.infer<typeof resourceRecommendationSchema>;
+export type ResourceActivity = z.infer<typeof resourceActivitySchema>;
+export type OutcomeReceipt = z.infer<typeof outcomeReceiptSchema>;
+export type MemoryProposal = z.infer<typeof memoryProposalSchema>;
+export type SessionSync = z.infer<typeof sessionSyncSchema>;
 export type MemoryEvent = z.infer<typeof memoryEventSchema>;
 export type DiagnosticResult = z.infer<typeof diagnosticResultSchema>;
 export type MisconceptionRecord = z.infer<typeof misconceptionRecordSchema>;
