@@ -33,6 +33,24 @@ export const initialSchedule = [
   { id: "block_review_1", taskId: "task_review", time: "17:20", end: "17:50", duration: 30, title: "Capacitance mixed practice", kind: "learn", status: "planned", flexible: true, evidence: "Pass 2 unseen items", reason: "Spaced review before tomorrow's assessment" },
 ];
 
+export const scheduleSeed = {
+  now: "2026-07-18T09:00:00+05:30",
+  timezone: "Asia/Kolkata",
+  bufferMinutes: 10,
+  tasks: [
+    { id: "task_diagnostic", goalId: "goal_physics", title: "Potential diagnostic", status: "backlog", estimatedMinutes: 25, deadline: "2026-07-19T09:00:00+05:30", priority: 5, energyRequired: "high", dependencies: [], minimumBlockMinutes: 25, maximumBlockMinutes: 25, splittable: false, completionEvidence: "Complete 3 diagnostic questions", resourceIds: ["resource_native"] },
+    { id: "task_review", goalId: "goal_physics", title: "Capacitance mixed practice", status: "backlog", estimatedMinutes: 30, deadline: "2026-07-19T09:00:00+05:30", priority: 4, energyRequired: "medium", dependencies: ["task_diagnostic"], minimumBlockMinutes: 30, maximumBlockMinutes: 30, splittable: false, completionEvidence: "Pass 2 unseen items", resourceIds: ["resource_ncert"] },
+    { id: "task_research", goalId: "goal_research", title: "Validate grouped split", status: "backlog", estimatedMinutes: 45, deadline: "2026-07-21T17:00:00+05:30", priority: 3, energyRequired: "high", dependencies: [], minimumBlockMinutes: 45, maximumBlockMinutes: 45, splittable: false, completionEvidence: "Save comparison note", resourceIds: ["source_mendez"] },
+  ],
+  availability: [
+    { start: "2026-07-18T09:10:00+05:30", end: "2026-07-18T10:00:00+05:30", energy: "high" },
+    { start: "2026-07-18T13:00:00+05:30", end: "2026-07-18T19:30:00+05:30", energy: "medium" },
+  ],
+  constraints: [
+    { id: "constraint_school", title: "School lab", start: "2026-07-18T10:00:00+05:30", end: "2026-07-18T13:00:00+05:30", hard: true },
+  ],
+};
+
 export const learningConcepts = [
   { id: "field", label: "Electric field", status: "mastered", x: 0, y: 80 },
   { id: "work", label: "Work & energy", status: "understood", x: 0, y: 190 },
@@ -44,19 +62,19 @@ export const learningConcepts = [
 
 export const diagnosticQuestions = [
   {
-    id: "q1",
+    id: "item_potential_1",
     prompt: "A +2 C charge and a +5 C charge are placed at the same point in an electric field. Which quantity is the same for both?",
     choices: ["Potential energy", "Electric potential", "Work done to bring them", "Force on the charge"],
     correct: 1,
   },
   {
-    id: "q2",
+    id: "item_potential_2",
     prompt: "Moving along an equipotential surface requires…",
     choices: ["positive work", "negative work", "zero work", "work that depends on charge"],
     correct: 2,
   },
   {
-    id: "q3",
+    id: "item_potential_3",
     prompt: "If electric potential at a point is 12 V, the potential energy of a 3 C charge there is…",
     choices: ["4 J", "12 J", "15 J", "36 J"],
     correct: 3,
