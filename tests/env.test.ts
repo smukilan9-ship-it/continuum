@@ -6,6 +6,7 @@ const productionMinimum = {
   DATABASE_URL: "postgresql://continuum:secret@db.example.com/continuum",
   MCP_JWT_SIGNING_SECRET: "a".repeat(48),
   SESSION_PRIVACY_SALT: "b".repeat(32),
+  INTEGRATION_CREDENTIAL_ENCRYPTION_KEY: "c".repeat(64),
   AI_GATEWAY_API_KEY: "gateway-key",
   AI_GATEWAY_ENABLED: "true",
   EMBEDDING_DIMENSIONS: "1536",
@@ -31,6 +32,11 @@ describe("production environment validation", () => {
   it("rejects non-PostgreSQL databases and path-based app origins", () => {
     expect(environmentStatus({ ...productionMinimum, DATABASE_URL: "https://db.example.com", APP_BASE_URL: "https://continuum.example" }).ready).toBe(false);
     expect(environmentStatus({ ...productionMinimum, APP_BASE_URL: "https://continuum.example/app" }).ready).toBe(false);
+  });
+
+  it("rejects missing credential encryption and partial Google OAuth configuration", () => {
+    expect(environmentStatus({ ...productionMinimum, APP_BASE_URL: "https://continuum.example", INTEGRATION_CREDENTIAL_ENCRYPTION_KEY: "short" }).ready).toBe(false);
+    expect(environmentStatus({ ...productionMinimum, APP_BASE_URL: "https://continuum.example", GOOGLE_CLIENT_ID: "client-id" }).ready).toBe(false);
   });
 
   it("keeps public registration closed by default in production", () => {

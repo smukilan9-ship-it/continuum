@@ -15,6 +15,7 @@ export type WorkspaceState = {
   resourceActivities: Row[];
   schedule: Row[];
   modelRoutes: Row[];
+  calendarConstraints: Row[];
 };
 
 const keys: Array<keyof WorkspaceState> = [
@@ -32,6 +33,7 @@ const keys: Array<keyof WorkspaceState> = [
   "resourceActivities",
   "schedule",
   "modelRoutes",
+  "calendarConstraints",
 ];
 
 export function normalizeWorkspaceState(input: Record<string, unknown>): WorkspaceState {

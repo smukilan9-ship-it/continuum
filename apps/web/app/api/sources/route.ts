@@ -70,8 +70,8 @@ export async function POST(request: Request) {
   const hash = contentHash(sanitized);
   const store = getStore(user.id);
   if (projectId) {
-    const snapshot = await store.snapshot();
-    const ownsProject = Array.isArray(snapshot.projects) && (snapshot.projects as Array<{ id?: string }>).some((project) => project.id === projectId);
+    const ownedProjects = await store.read("list_projects", { limit: 50 }) as Array<{ id?: string }>;
+    const ownsProject = ownedProjects.some((project) => project.id === projectId);
     if (!ownsProject) return NextResponse.json({ error: "Project not found or not accessible" }, { status: 404 });
   }
   const duplicate = await store.findSourceByHash(hash);

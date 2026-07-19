@@ -11,6 +11,14 @@ function dayBounds(now = new Date()) {
   return { start: start.toISOString(), end: new Date(start.getTime() + 86_400_000).toISOString() };
 }
 
+function userFacingReason(decision: RouteDecision) {
+  if (decision.fallbackUsed) return "The first qualified cloud route was unavailable, so Continuum used the next route that met the same task requirements.";
+  if (decision.taskClass === "citation_entailment") return "Evidence-critical work received a deeper reasoning and verification pass.";
+  if (decision.taskClass === "code_reasoning") return "The coding request needed a route optimized for program analysis and teaching.";
+  if (["classification", "extraction", "summarization", "misconception_diagnosis"].includes(decision.taskClass)) return "A fast structured route was sufficient for this bounded task.";
+  return "Selected by task capability, context requirements, reliability, and cost policy.";
+}
+
 export async function checkDailyAiBudget(userId: string, requestedTokens: number) {
   const cap = configuredDailyCap();
   if (!process.env.DATABASE_URL) return { used: 0, cap, remaining: cap };
@@ -29,7 +37,7 @@ export async function logModelUsage(input: { userId: string; decision: RouteDeci
     taskClass: input.decision.taskClass,
     provider: input.decision.route,
     model: input.decision.model,
-    reason: input.decision.reason,
+    reason: userFacingReason(input.decision),
     verificationStatus: input.decision.verification,
     fallbackUsed: input.decision.fallbackUsed,
     inputTokens: usage?.inputTokens ?? 0,

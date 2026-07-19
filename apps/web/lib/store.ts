@@ -44,6 +44,7 @@ export interface Store {
   readonly kind: "memory" | "neon";
   readonly userId: string;
   snapshot(): Promise<Record<string, unknown>>;
+  workspace(view: string): Promise<Record<string, unknown>>;
   read(name: string, args: Record<string, unknown>, clientId?: string): Promise<unknown>;
   write(name: string, args: Record<string, unknown>, now: string, surface?: "mcp" | "standalone_app", clientId?: string): Promise<StoreWriteResult>;
   appendEvent(input: AppEventInput, now?: string): Promise<DemoEvent>;
@@ -137,6 +138,21 @@ class MemoryStore implements Store {
   constructor(readonly userId: string) {}
 
   async snapshot() { return demoStore as unknown as Record<string, unknown>; }
+
+  async workspace(view: string) {
+    const state = demoStore as unknown as Record<string, unknown>;
+    const selected: Record<string, string[]> = {
+      today: ["goals", "tasks", "projects", "receipts", "resourceActivities", "schedule"],
+      goals: ["goals", "tasks", "schedule"],
+      learn: ["goals", "tasks", "learningState", "resourceActivities", "receipts"],
+      research: ["goals", "projects", "decisions", "notes", "sources"],
+      memory: ["learningState", "memoryChunks", "receipts", "events", "sources"],
+      activity: ["proposals", "events"],
+      code: ["goals", "tasks", "projects", "learningState", "receipts"],
+      integrations: [],
+    };
+    return Object.fromEntries((selected[view] ?? []).map((key) => [key, state[key]]));
+  }
 
   async read(name: string, args: Record<string, unknown>) {
     if (name === "list_projects" || name === "load_project" || name === "list_goals" || name === "load_goal" || name === "load_outcome_receipt") return compactToBudget(readDemoState(name, args), Number(args.maxTokens ?? 1400));
@@ -333,6 +349,8 @@ class NeonStore implements Store {
 
   async snapshot() { return this.repo.getStateSnapshot(this.userId); }
 
+  async workspace(view: string) { return this.repo.getWorkspaceSnapshot(this.userId, view); }
+
   async read(name: string, args: Record<string, unknown>, clientId?: string) {
     if (name === "list_projects") return (await this.repo.listProjects(this.userId)).map((project) => ({ id: project.id, title: project.title, phase: project.phase, purpose: project.purpose, updatedAt: project.updatedAt.toISOString() }));
     if (name === "load_project") {
@@ -353,7 +371,6 @@ class NeonStore implements Store {
       return args.receiptId ? receipts.find((receipt) => (receipt as { id?: string }).id === args.receiptId) ?? null : receipts[0] ?? null;
     }
     if (name === "recommend_resource") return this.recommendResource(args);
-    const snapshot = await this.repo.getStateSnapshot(this.userId);
     if (name === "load_learning_state" || name === "get_learning_state") {
       const mastery = await this.getLearningState(args.conceptId ? String(args.conceptId) : undefined);
       return { subject: String(args.subject ?? "Physics"), concept: mastery.conceptId, status: mastery.status, mastery, evidence: mastery.evidenceIds, explanation: mastery.explanation };
@@ -373,6 +390,7 @@ class NeonStore implements Store {
       return chunk;
     }
     if (name === "load_context" || name === "get_current_context") {
+      const snapshot = await this.repo.getWorkspaceSnapshot(this.userId, "code");
       const focus = String(args.focus ?? "active academic work");
       const relevant = await this.searchMemory({ query: focus, goalId: args.goalId ? String(args.goalId) : undefined, projectId: args.projectId ? String(args.projectId) : undefined, limit: 8 });
       const goals = (snapshot.goals as unknown[]).slice(0, 6);

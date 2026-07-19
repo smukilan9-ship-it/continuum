@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { recommendBestResource } from "../packages/domain/src/resources";
+import { checkpointScore } from "../apps/web/lib/resource-verification";
 
 describe("outcome-first resource broker", () => {
   it("chooses PhET over the native tutor for interactive potential intuition", () => {
@@ -33,5 +34,16 @@ describe("outcome-first resource broker", () => {
     const recommendation = recommendBestResource({ id: "recommendation_research", topic: "research papers source exploration", need: "source_exploration", goalType: "research", costPreference: "free_only", now: "2026-07-19T00:00:00.000Z" });
     expect(recommendation.selected.cost).toBe("free");
     expect(recommendation.selected.id).not.toBe("resource_claude_science");
+  });
+
+  it("accepts a correct short answer with an explanation without accepting contradictions", () => {
+    expect(checkpointScore("No. Doubling the test charge doubles U, while V at that point stays the same.", "no")).toBe(1);
+    expect(checkpointScore("Yes, it will double.", "no")).toBe(0);
+    expect(checkpointScore("The change is negative along the field direction.", "negative")).toBe(1);
+  });
+
+  it("accepts one numeric answer with units and rejects answer fishing", () => {
+    expect(checkpointScore("24 V", "24")).toBe(1);
+    expect(checkpointScore("I tried 12 V, then 24 V", "24")).toBe(0);
   });
 });

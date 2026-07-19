@@ -2,15 +2,13 @@
 
 import { CheckCircle2, Database, FileText, FlaskConical, Plus, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { Badge, Button, Card } from "@/components/ui";
 import { PageIntro } from "./page-intro";
 import { formatDate, list, postState, text, type WorkspaceState } from "./types";
 
 type Toast = (message: string | null) => void;
 
-export function ResearchScreen({ state, showToast }: { state: WorkspaceState; showToast: Toast }) {
-  const router = useRouter();
+export function ResearchScreen({ state, showToast, onRefresh }: { state: WorkspaceState; showToast: Toast; onRefresh: () => Promise<void> }) {
   const [panel, setPanel] = useState<"project" | "source" | "decision">();
   const [busy, setBusy] = useState(false);
 
@@ -23,7 +21,7 @@ export function ResearchScreen({ state, showToast }: { state: WorkspaceState; sh
       setPanel(undefined);
       setBusy(false);
       showToast("Project saved to shared state.");
-      router.refresh();
+      await onRefresh();
     } catch (error) { showToast(error instanceof Error ? error.message : "The project could not be saved"); setBusy(false); }
   }
 
@@ -37,7 +35,7 @@ export function ResearchScreen({ state, showToast }: { state: WorkspaceState; sh
       setPanel(undefined);
       setBusy(false);
       showToast(body.duplicate ? "That exact source is already indexed." : "Source indexed with stable passages and retrieval metadata.");
-      router.refresh();
+      await onRefresh();
     } catch (error) { showToast(error instanceof Error ? error.message : "The source could not be indexed"); setBusy(false); }
   }
 
@@ -50,7 +48,7 @@ export function ResearchScreen({ state, showToast }: { state: WorkspaceState; sh
       setPanel(undefined);
       setBusy(false);
       showToast("Accepted decision saved with its source links.");
-      router.refresh();
+      await onRefresh();
     } catch (error) { showToast(error instanceof Error ? error.message : "The decision could not be saved"); setBusy(false); }
   }
 
@@ -63,7 +61,7 @@ export function ResearchScreen({ state, showToast }: { state: WorkspaceState; sh
       if (!response.ok) throw new Error(body.error ?? "The source could not be removed");
       setBusy(false);
       showToast("Source excluded from retrieval and cleanup queued.");
-      router.refresh();
+      await onRefresh();
     } catch (error) { showToast(error instanceof Error ? error.message : "The source could not be removed"); setBusy(false); }
   }
 

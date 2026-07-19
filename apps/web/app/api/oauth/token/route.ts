@@ -1,9 +1,9 @@
-import { issueToken, verifyClientRegistration, verifyPkce, verifyToken } from "@/lib/oauth";
+import { issueToken, mcpResource, validMcpResource, verifyClientRegistration, verifyPkce, verifyToken } from "@/lib/oauth";
 import { getStore } from "@/lib/store";
 import { NextResponse } from "next/server";
 import { enforceRateLimit } from "@/lib/auth";
 
-async function tokenResponse(payload: { sub: string; clientId: string; scopes: string[] }) {
+async function tokenResponse(payload: { sub: string; clientId: string; scopes: string[]; resource: string }) {
   const now = Math.floor(Date.now() / 1000);
   return {
     access_token: await issueToken({ ...payload, type: "access", exp: now + 3600 }),
@@ -25,9 +25,11 @@ export async function POST(request: Request) {
       const clientId = String(form.get("client_id") ?? "");
       verifyClientRegistration(clientId);
       if (clientId !== code.clientId) throw new Error("Authorization code was issued to a different client");
+      const resource = String(form.get("resource") ?? code.resource ?? mcpResource());
+      if (!validMcpResource(resource) || resource !== code.resource) throw new Error("Resource indicator does not match the authorization request");
       if (code.redirectUri !== String(form.get("redirect_uri") ?? "") || !code.codeChallenge || !verifyPkce(String(form.get("code_verifier") ?? ""), code.codeChallenge)) throw new Error("PKCE or redirect URI verification failed");
       await getStore(code.sub).consumeOAuthCode(code.jti);
-      return NextResponse.json(await tokenResponse(code), { headers: { "cache-control": "no-store" } });
+      return NextResponse.json(await tokenResponse({ ...code, resource }), { headers: { "cache-control": "no-store" } });
     }
     if (form.get("grant_type") === "refresh_token") {
       const raw = String(form.get("refresh_token") ?? "");
@@ -35,8 +37,10 @@ export async function POST(request: Request) {
       const clientId = String(form.get("client_id") ?? "");
       verifyClientRegistration(clientId);
       if (clientId !== refresh.clientId) throw new Error("Refresh token was issued to a different client");
+      const resource = String(form.get("resource") ?? refresh.resource ?? mcpResource());
+      if (!validMcpResource(resource) || resource !== refresh.resource) throw new Error("Resource indicator does not match the refresh token");
       await getStore(refresh.sub).consumeOAuthGrant(refresh.jti, "refresh");
-      return NextResponse.json(await tokenResponse(refresh), { headers: { "cache-control": "no-store" } });
+      return NextResponse.json(await tokenResponse({ ...refresh, resource }), { headers: { "cache-control": "no-store" } });
     }
     return NextResponse.json({ error: "unsupported_grant_type" }, { status: 400 });
   } catch (error) {

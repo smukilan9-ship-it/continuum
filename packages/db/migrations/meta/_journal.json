@@ -29,6 +29,20 @@
       "when": 1784428165734,
       "tag": "0003_productive_wind_dancer",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784457600000,
+      "tag": "0004_secure_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784457660000,
+      "tag": "0005_google_auth_identities",
+      "breakpoints": true
     }
   ]
 }

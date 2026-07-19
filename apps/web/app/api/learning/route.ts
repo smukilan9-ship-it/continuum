@@ -23,12 +23,8 @@ const requestSchema = z.discriminatedUnion("action", [
 
 function seededRoute(task: "diagnostic" | "lesson") {
   return {
-    route: "seeded",
-    model: `continuum/${task}-seed-v1`,
-    reason: "Live AI is off, so the validated curriculum seed was used for a stable demo path.",
-    sourceMode: "source_locked",
+    reason: `The reviewed ${task} curriculum path was used because live assistance was not requested.`,
     verification: "schema_passed",
-    costClass: "none",
     fallbackUsed: false,
   };
 }
@@ -42,7 +38,7 @@ async function tryLiveAi(request: Request, body: Record<string, unknown>) {
       cache: "no-store",
     });
     if (!response.ok) return undefined;
-    return await response.json() as { output?: unknown; decision?: unknown };
+    return await response.json() as { output?: unknown; assistance?: unknown };
   } catch {
     return undefined;
   }
@@ -113,7 +109,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       result,
       mastery,
-      route: live?.decision ?? seededRoute("diagnostic"),
+      assistance: live?.assistance ?? seededRoute("diagnostic"),
       generated: live?.output,
       liveFallback: data.liveAi && !live,
     });
@@ -129,7 +125,7 @@ export async function POST(request: Request) {
       sourceChunkIds: ["chunk_physics_seed_2"],
       evidenceState: "direct_support",
       promptVersion: "physics-seed-v1",
-      model: "continuum/lesson-seed-v1",
+      model: "reviewed-curriculum",
     });
     const live = parsed.data.liveAi ? await tryLiveAi(request, {
       taskClass: "lesson_generation",
@@ -137,7 +133,7 @@ export async function POST(request: Request) {
       sourceLocked: true,
     }) : undefined;
     const lesson = live?.output ? lessonOutputSchema.safeParse(live.output) : undefined;
-    return NextResponse.json({ lesson: lesson?.success ? lesson.data : seeded, route: live?.decision ?? seededRoute("lesson"), liveFallback: parsed.data.liveAi && !live });
+    return NextResponse.json({ lesson: lesson?.success ? lesson.data : seeded, assistance: live?.assistance ?? seededRoute("lesson"), liveFallback: parsed.data.liveAi && !live });
   }
 
   if (parsed.data.action === "lesson_read") {

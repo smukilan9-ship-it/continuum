@@ -34,6 +34,11 @@ export function environmentStatus(env: NodeJS.ProcessEnv = process.env) {
     if (!env.FEATHERLESS_API_KEY && !env.GROQ_API_KEY && !gateway && !ollama && !gemini) errors.push("At least one model provider must be configured");
     if (!(env.FEATHERLESS_API_KEY && env.FEATHERLESS_EMBEDDING_MODEL) && !gateway && !(env.OLLAMA_BASE_URL && env.OLLAMA_EMBEDDING_MODEL) && !gemini) errors.push("At least one configured 1536-dimensional embedding provider must be configured");
     if (env.MCP_JWT_SIGNING_SECRET && env.SESSION_PRIVACY_SALT && env.MCP_JWT_SIGNING_SECRET === env.SESSION_PRIVACY_SALT) errors.push("MCP_JWT_SIGNING_SECRET and SESSION_PRIVACY_SALT must be distinct");
+    const integrationKey = env.INTEGRATION_CREDENTIAL_ENCRYPTION_KEY ?? "";
+    let integrationKeyBytes = 0;
+    try { integrationKeyBytes = /^[a-f0-9]{64}$/i.test(integrationKey) ? 32 : Buffer.from(integrationKey, "base64url").length; } catch { integrationKeyBytes = 0; }
+    if (integrationKeyBytes !== 32) errors.push("INTEGRATION_CREDENTIAL_ENCRYPTION_KEY must contain exactly 32 random bytes");
+    if (Boolean(env.GOOGLE_CLIENT_ID) !== Boolean(env.GOOGLE_CLIENT_SECRET)) errors.push("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be configured together");
   }
   return {
     ready: errors.length === 0,

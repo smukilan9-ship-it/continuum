@@ -186,15 +186,23 @@ async function acquire(weight: number, limit: number) {
   return boundedWeight;
 }
 
-export async function withFeatherlessConcurrency<T>(concurrencyCost: number, run: () => Promise<T>, env: NodeJS.ProcessEnv = process.env) {
-  let limit = 4;
-  try { limit = Math.max(1, (await getFeatherlessPlan(env.FEATHERLESS_API_KEY, env)).concurrency); } catch { /* Upstream still enforces the account limit. */ }
+export async function acquireFeatherlessConcurrency(concurrencyCost: number, env: NodeJS.ProcessEnv = process.env) {
+  let limit = Number(env.FEATHERLESS_CONCURRENCY_UNITS ?? 4);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 64) limit = 4;
   const acquired = await acquire(concurrencyCost, limit);
-  try { return await run(); }
-  finally {
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
     localConcurrencyUsed = Math.max(0, localConcurrencyUsed - acquired);
     drainWaiters();
-  }
+  };
+}
+
+export async function withFeatherlessConcurrency<T>(concurrencyCost: number, run: () => Promise<T>, env: NodeJS.ProcessEnv = process.env) {
+  const release = await acquireFeatherlessConcurrency(concurrencyCost, env);
+  try { return await run(); }
+  finally { release(); }
 }
 
 export async function featherlessStatus(env: NodeJS.ProcessEnv = process.env) {

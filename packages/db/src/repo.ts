@@ -1,10 +1,12 @@
-import { and, asc, cosineDistance, desc, eq, gt, ilike, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, cosineDistance, desc, eq, gt, ilike, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import type { MasteryState, MemoryEvent, OutcomeReceipt, ResourceActivity, ResourceRegistryEntry } from "@continuum/schemas";
 import { getDatabase } from "./client";
 import {
   auditLog,
+  authIdentities,
   artifacts,
   appSessions,
+  calendarConstraints,
   concepts,
   claimEvidence,
   contextAccessLog,
@@ -13,6 +15,7 @@ import {
   entitySummaries,
   goals,
   integrationTokens,
+  integrations,
   learningStates,
   memoryChunks,
   memoryEvents,
@@ -248,7 +251,7 @@ export class NeonRepository {
       this.db.select().from(resourceActivities).where(eq(resourceActivities.userId, userId)).orderBy(desc(resourceActivities.startedAt)).limit(20),
       this.db.select().from(memoryProposals).where(and(eq(memoryProposals.userId, userId), or(eq(memoryProposals.status, "pending"), eq(memoryProposals.status, "confirmed")), gt(memoryProposals.expiresAt, new Date()))).orderBy(desc(memoryProposals.createdAt)),
       this.listSchedule(userId),
-      this.db.select().from(modelRoutes).where(eq(modelRoutes.userId, userId)).orderBy(desc(modelRoutes.createdAt)).limit(30),
+      this.db.select({ id: modelRoutes.id, taskClass: modelRoutes.taskClass, reason: modelRoutes.reason, verificationStatus: modelRoutes.verificationStatus, fallbackUsed: modelRoutes.fallbackUsed, createdAt: modelRoutes.createdAt }).from(modelRoutes).where(eq(modelRoutes.userId, userId)).orderBy(desc(modelRoutes.createdAt)).limit(30),
     ]);
     return {
       events: eventRows.map((event) => ({
@@ -256,7 +259,6 @@ export class NeonRepository {
         type: event.type,
         entityIds: event.entityId ? [event.entityId] : [],
         summary: typeof event.payload.summary === "string" ? event.payload.summary : event.type.replaceAll(".", " "),
-        payload: event.payload,
         occurredAt: event.occurredAt.toISOString(),
       })),
       goals: goalRows,
@@ -273,6 +275,89 @@ export class NeonRepository {
       schedule: scheduleRows,
       modelRoutes: routeRows,
     };
+  }
+
+  async getWorkspaceSnapshot(userId: string, view: string) {
+    await this.ensureDemoSeed();
+    const empty = {
+      events: [], goals: [], tasks: [], projects: [], decisions: [], notes: [], sources: [],
+      learningStates: [], memoryRecords: [], receipts: [], resourceActivities: [], proposals: [],
+      schedule: [], calendarConstraints: [], modelRoutes: [],
+    };
+    const userGoals = () => this.db.select().from(goals).where(and(eq(goals.userId, userId), eq(goals.deleted, false))).orderBy(desc(goals.createdAt));
+    const userTasks = () => this.db.select({ task: tasks }).from(tasks).innerJoin(goals, eq(tasks.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(goals.deleted, false), eq(tasks.deleted, false))).orderBy(desc(tasks.createdAt));
+    const userProjects = () => this.db.select().from(projects).where(and(eq(projects.userId, userId), eq(projects.deleted, false))).orderBy(desc(projects.updatedAt));
+    const userReceipts = (limit = 10) => this.db.select().from(sessionReceipts).where(eq(sessionReceipts.userId, userId)).orderBy(desc(sessionReceipts.createdAt)).limit(limit);
+    const userEvents = (limit = 40) => this.db.select().from(memoryEvents).where(eq(memoryEvents.userId, userId)).orderBy(desc(memoryEvents.occurredAt)).limit(limit);
+    const eventView = (rows: Array<typeof memoryEvents.$inferSelect>) => rows.map((event) => ({
+      id: event.id,
+      type: event.type,
+      entityIds: event.entityId ? [event.entityId] : [],
+      summary: typeof event.payload.summary === "string" ? event.payload.summary : event.type.replaceAll(".", " "),
+      occurredAt: event.occurredAt.toISOString(),
+    }));
+
+    if (view === "integrations") return empty;
+    if (view === "today") {
+      const [goalRows, taskRows, projectRows, receiptRows, activityRows, scheduleRows, constraintRows] = await Promise.all([
+        userGoals(), userTasks(), userProjects(), userReceipts(4),
+        this.db.select().from(resourceActivities).where(eq(resourceActivities.userId, userId)).orderBy(desc(resourceActivities.startedAt)).limit(8),
+        this.listSchedule(userId),
+        this.db.select().from(calendarConstraints).where(and(eq(calendarConstraints.userId, userId), eq(calendarConstraints.deleted, false), gt(calendarConstraints.endsAt, new Date(Date.now() - 24 * 3600_000)))).orderBy(asc(calendarConstraints.startsAt)).limit(100),
+      ]);
+      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), projects: projectRows, receipts: receiptRows, resourceActivities: activityRows, schedule: scheduleRows, calendarConstraints: constraintRows };
+    }
+    if (view === "goals") {
+      const [goalRows, taskRows, scheduleRows, constraintRows] = await Promise.all([
+        userGoals(), userTasks(), this.listSchedule(userId),
+        this.db.select().from(calendarConstraints).where(and(eq(calendarConstraints.userId, userId), eq(calendarConstraints.deleted, false), gt(calendarConstraints.endsAt, new Date(Date.now() - 24 * 3600_000)))).orderBy(asc(calendarConstraints.startsAt)).limit(100),
+      ]);
+      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), schedule: scheduleRows, calendarConstraints: constraintRows };
+    }
+    if (view === "learn") {
+      const [goalRows, taskRows, masteryRows, activityRows, receiptRows] = await Promise.all([
+        userGoals(), userTasks(),
+        this.db.select().from(learningStates).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false))),
+        this.db.select().from(resourceActivities).where(eq(resourceActivities.userId, userId)).orderBy(desc(resourceActivities.startedAt)).limit(20),
+        userReceipts(5),
+      ]);
+      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), learningStates: masteryRows, resourceActivities: activityRows, receipts: receiptRows };
+    }
+    if (view === "research") {
+      const [goalRows, projectRows, decisionRows, noteRows, sourceRows] = await Promise.all([
+        userGoals(), userProjects(),
+        this.db.select({ decision: projectDecisions }).from(projectDecisions).innerJoin(projects, eq(projectDecisions.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(projectDecisions.deleted, false))).orderBy(desc(projectDecisions.createdAt)),
+        this.db.select({ note: researchNotes }).from(researchNotes).innerJoin(projects, eq(researchNotes.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(researchNotes.deleted, false))).orderBy(desc(researchNotes.createdAt)),
+        this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).orderBy(desc(sources.createdAt)),
+      ]);
+      return { ...empty, goals: goalRows, projects: projectRows, decisions: decisionRows.map(({ decision }) => decision), notes: noteRows.map(({ note }) => note), sources: sourceRows.map(publicSourceMetadata) };
+    }
+    if (view === "memory") {
+      const [masteryRows, memoryRows, receiptRows, eventRows, sourceRows] = await Promise.all([
+        this.db.select().from(learningStates).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false))),
+        this.db.select().from(memoryRecords).where(and(eq(memoryRecords.userId, userId), eq(memoryRecords.deleted, false), eq(memoryRecords.superseded, false))).orderBy(desc(memoryRecords.updatedAt)).limit(100),
+        userReceipts(20), userEvents(30),
+        this.db.select({ id: sources.id }).from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).limit(100),
+      ]);
+      return { ...empty, learningStates: masteryRows, memoryRecords: memoryRows, receipts: receiptRows, events: eventView(eventRows), sources: sourceRows };
+    }
+    if (view === "activity") {
+      const [proposalRows, routeRows, eventRows] = await Promise.all([
+        this.db.select().from(memoryProposals).where(and(eq(memoryProposals.userId, userId), or(eq(memoryProposals.status, "pending"), eq(memoryProposals.status, "confirmed")), gt(memoryProposals.expiresAt, new Date()))).orderBy(desc(memoryProposals.createdAt)),
+        this.db.select({ id: modelRoutes.id, taskClass: modelRoutes.taskClass, reason: modelRoutes.reason, verificationStatus: modelRoutes.verificationStatus, fallbackUsed: modelRoutes.fallbackUsed, createdAt: modelRoutes.createdAt }).from(modelRoutes).where(eq(modelRoutes.userId, userId)).orderBy(desc(modelRoutes.createdAt)).limit(30),
+        userEvents(50),
+      ]);
+      return { ...empty, proposals: proposalRows, modelRoutes: routeRows, events: eventView(eventRows) };
+    }
+    if (view === "code") {
+      const [goalRows, taskRows, projectRows, masteryRows, receiptRows] = await Promise.all([
+        userGoals(), userTasks(), userProjects(),
+        this.db.select().from(learningStates).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false))),
+        userReceipts(5),
+      ]);
+      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), projects: projectRows, learningStates: masteryRows, receipts: receiptRows };
+    }
+    return empty;
   }
 
   async listSchedule(userId = DEMO_USER_ID, from?: string, to?: string) {
@@ -1030,6 +1115,23 @@ export class NeonRepository {
     return { id: input.id, email: input.email.toLowerCase(), displayName: input.displayName, timezone: input.timezone, ...(input.educationLevel ? { educationLevel: input.educationLevel } : {}) } satisfies AuthUser;
   }
 
+  async resolveOrCreateOAuthUser(input: { id: string; identityId: string; provider: string; subject: string; email: string; displayName: string; timezone: string }) {
+    return this.db.transaction(async (tx) => {
+      const existingIdentity = await tx.select({ user: users, profile: profiles }).from(authIdentities).innerJoin(users, eq(authIdentities.userId, users.id)).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(authIdentities.provider, input.provider), eq(authIdentities.subject, input.subject), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
+      if (existingIdentity[0]) return { id: existingIdentity[0].user.id, email: existingIdentity[0].user.email, displayName: existingIdentity[0].profile.displayName, timezone: existingIdentity[0].profile.timezone, ...(existingIdentity[0].profile.educationLevel ? { educationLevel: existingIdentity[0].profile.educationLevel } : {}) } satisfies AuthUser;
+
+      const normalizedEmail = input.email.toLowerCase();
+      const inserted = await tx.insert(users).values({ id: input.id, email: normalizedEmail }).onConflictDoNothing({ target: users.email }).returning({ id: users.id });
+      if (inserted[0]) await tx.insert(profiles).values({ id: `profile_${input.id.replace(/^user_/, "")}`, userId: input.id, displayName: input.displayName, timezone: input.timezone, preferences: { explanationStyle: "intuition_before_derivation", memoryWrites: true } });
+      const [account] = await tx.select({ user: users, profile: profiles }).from(users).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(users.email, normalizedEmail), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
+      if (!account) throw new Error("Verified account could not be created");
+      await tx.insert(authIdentities).values({ id: input.identityId, userId: account.user.id, provider: input.provider, subject: input.subject, email: normalizedEmail }).onConflictDoNothing();
+      const [resolved] = await tx.select({ user: users, profile: profiles }).from(authIdentities).innerJoin(users, eq(authIdentities.userId, users.id)).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(authIdentities.provider, input.provider), eq(authIdentities.subject, input.subject), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
+      if (!resolved) throw new Error("Verified identity could not be linked");
+      return { id: resolved.user.id, email: resolved.user.email, displayName: resolved.profile.displayName, timezone: resolved.profile.timezone, ...(resolved.profile.educationLevel ? { educationLevel: resolved.profile.educationLevel } : {}) } satisfies AuthUser;
+    });
+  }
+
   async findUserForLogin(email: string) {
     const [row] = await this.db.select({ user: users, profile: profiles, credential: userCredentials }).from(users).innerJoin(profiles, eq(profiles.userId, users.id)).innerJoin(userCredentials, eq(userCredentials.userId, users.id)).where(and(eq(users.email, email.toLowerCase()), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
     return row;
@@ -1057,7 +1159,6 @@ export class NeonRepository {
   async getSession(tokenHash: string) {
     const [row] = await this.db.select({ session: appSessions, user: users, profile: profiles }).from(appSessions).innerJoin(users, eq(appSessions.userId, users.id)).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(appSessions.tokenHash, tokenHash), isNull(appSessions.revokedAt), gt(appSessions.expiresAt, new Date()), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
     if (!row) return undefined;
-    await this.db.update(appSessions).set({ lastSeenAt: new Date() }).where(eq(appSessions.id, row.session.id));
     return { id: row.user.id, email: row.user.email, displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}) } satisfies AuthUser;
   }
 
@@ -1091,6 +1192,45 @@ export class NeonRepository {
 
   async listIntegrationTokens(userId: string) {
     return this.db.select({ id: integrationTokens.id, provider: integrationTokens.provider, name: integrationTokens.name, scopes: integrationTokens.scopes, lastUsedAt: integrationTokens.lastUsedAt, expiresAt: integrationTokens.expiresAt, revokedAt: integrationTokens.revokedAt, createdAt: integrationTokens.createdAt }).from(integrationTokens).where(eq(integrationTokens.userId, userId)).orderBy(desc(integrationTokens.createdAt));
+  }
+
+  async getIntegration(userId: string, provider: string) {
+    const [row] = await this.db.select().from(integrations).where(and(eq(integrations.userId, userId), eq(integrations.provider, provider), isNull(integrations.revokedAt), eq(integrations.deleted, false))).limit(1);
+    return row;
+  }
+
+  async listIntegrations(userId: string) {
+    return this.db.select({ id: integrations.id, provider: integrations.provider, scopes: integrations.scopes, createdAt: integrations.createdAt, updatedAt: integrations.updatedAt }).from(integrations).where(and(eq(integrations.userId, userId), isNull(integrations.revokedAt), eq(integrations.deleted, false))).orderBy(asc(integrations.provider));
+  }
+
+  async upsertIntegration(input: { id: string; userId: string; provider: string; encryptedCredentials: string; scopes: string[] }) {
+    const now = new Date();
+    const [row] = await this.db.insert(integrations).values({ ...input, revokedAt: null, deleted: false, updatedAt: now }).onConflictDoUpdate({
+      target: [integrations.userId, integrations.provider],
+      set: { encryptedCredentials: input.encryptedCredentials, scopes: input.scopes, revokedAt: null, deleted: false, updatedAt: now, version: sql`${integrations.version} + 1` },
+    }).returning({ id: integrations.id, provider: integrations.provider, scopes: integrations.scopes, updatedAt: integrations.updatedAt });
+    return row;
+  }
+
+  async revokeIntegration(userId: string, provider: string) {
+    const rows = await this.db.update(integrations).set({ revokedAt: new Date(), updatedAt: new Date(), version: sql`${integrations.version} + 1` }).where(and(eq(integrations.userId, userId), eq(integrations.provider, provider), isNull(integrations.revokedAt))).returning({ id: integrations.id });
+    return Boolean(rows.length);
+  }
+
+  async listMcpClientActivity(userId: string) {
+    return this.db.select({ clientId: contextAccessLog.clientId, lastUsedAt: sql<Date>`max(${contextAccessLog.occurredAt})`, calls: sql<number>`count(*)` }).from(contextAccessLog).where(and(eq(contextAccessLog.userId, userId), isNotNull(contextAccessLog.clientId))).groupBy(contextAccessLog.clientId);
+  }
+
+  async replaceCalendarConstraints(userId: string, provider: string, entries: Array<{ id: string; title: string; startsAt: string; endsAt: string }>) {
+    const prefix = `${provider}_`;
+    await this.db.transaction(async (tx) => {
+      await tx.update(calendarConstraints).set({ deleted: true, updatedAt: new Date() }).where(and(eq(calendarConstraints.userId, userId), like(calendarConstraints.id, `${prefix}%`)));
+      for (const entry of entries) {
+        const values = { id: entry.id, userId, title: entry.title, startsAt: new Date(entry.startsAt), endsAt: new Date(entry.endsAt), hard: true, deleted: false, updatedAt: new Date() };
+        await tx.insert(calendarConstraints).values(values).onConflictDoUpdate({ target: calendarConstraints.id, set: values });
+      }
+    });
+    return entries.length;
   }
 
   async revokeIntegrationToken(tokenId: string, userId: string) {

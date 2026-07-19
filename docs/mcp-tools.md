@@ -1,6 +1,6 @@
 # Claude remote MCP contract
 
-Continuum exposes the official MCP SDK over stateless Streamable HTTP at `/api/mcp`. In production, connect Claude to `https://<continuum-domain>/api/mcp` as a custom connector. Claude discovers OAuth metadata, registers a public PKCE client, opens the Continuum authorization page, and receives only the scopes approved by the signed-in user.
+Continuum exposes the official MCP SDK over stateless Streamable HTTP at `/mcp`. In production, connect Claude to `https://<continuum-domain>/mcp` as a custom connector. `/api/mcp` remains a compatibility alias. Claude discovers OAuth metadata, registers a public PKCE client, opens the Continuum authorization page, and receives only the scopes approved by the signed-in user.
 
 The Integrations screen shows current client IDs, names, scopes, connection time, expiry, and revocation controls. Revocation is checked before every request.
 
@@ -52,7 +52,7 @@ Prompts such as `resume-active-project` guide the host to call selector tools fi
 2. Set `APP_BASE_URL` and `MCP_OAUTH_ISSUER_URL` to that exact origin.
 3. Set a random `MCP_JWT_SIGNING_SECRET` of at least 32 characters.
 4. Apply database migrations and create a Continuum account.
-5. In Claude’s custom connector UI, add `https://<origin>/api/mcp`.
+5. In Claude’s custom connector UI, add `https://<origin>/mcp`.
 6. Complete Continuum sign-in and approve the minimum needed scopes.
 7. In Continuum Integrations, verify that the connection and permissions appear.
 8. Test `list_projects` → `load_project` → `sync_session`; reload the app and verify the receipt appears.

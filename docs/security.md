@@ -6,9 +6,9 @@ This document describes controls implemented in the repository. It is not a clai
 
 - Database, Blob, model-provider, OAuth signing, and integration credentials are server-only.
 - `.env.local` and all `.env*` files are ignored except the value-free `.env.example`.
-- API responses expose provider presence and key counts, never values.
+- Consumer APIs and screens do not expose provider names, model IDs, key counts, or OAuth metadata. Production health responses expose only ready/misconfigured.
 - User provider keys are not stored in the database. Adding BYOK later requires a managed KMS/envelope-encryption design; plain application encryption is not an acceptable substitute.
-- Production environment validation requires HTTPS origin configuration, database state, a strong MCP signing secret, a session privacy salt, at least one model provider, and a 1536-dimensional embedding path.
+- Production environment validation requires HTTPS origin configuration, database state, a strong MCP signing secret, a session privacy salt, an independent 32-byte delegated-credential encryption key, at least one model provider, and a 1536-dimensional embedding path.
 - Local Ollama URLs are restricted to loopback unless an operator explicitly enables remote access.
 
 No design makes credentials impossible to compromise. Use least-privilege keys, encrypted environment storage, separate development/production projects, rotation, revocation, usage alerts, and provider budgets.
@@ -21,6 +21,7 @@ No design makes credentials impossible to compromise. Use least-privilege keys, 
 - Login failures are counted and can trigger a temporary lock.
 - Registration, login, AI, MCP, and other sensitive routes use PostgreSQL-backed rate limits where appropriate.
 - Public registration is closed by default in production until the operator explicitly enables it with an account-verification and recovery process.
+- Google sign-in uses an exact callback, encrypted and expiring state, PKCE S256, a verified Google email, durable provider-subject identity mapping, and the same revocable HttpOnly session layer. It does not grant Calendar access.
 - Browser writes require the request origin to match the application origin in production.
 - Return paths reject protocol-relative and backslash-based redirects.
 

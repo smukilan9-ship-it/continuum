@@ -4,7 +4,7 @@
 
 1. PostgreSQL with the `vector` extension and the checked-in migrations.
 2. A public HTTPS application origin.
-3. Strong MCP signing and session privacy secrets.
+3. Strong MCP signing, session privacy, and delegated-credential encryption secrets.
 4. At least one generation provider.
 5. At least one 1536-dimensional embedding provider.
 6. Optional private Blob storage for original uploads and non-text Obsidian files.
@@ -26,9 +26,9 @@ pnpm build
 
 For local work, put values in `.env.local`, which is ignored. For a hosted deployment, use the platform’s encrypted environment-variable store. Never paste keys into source, client-side variables, screenshots, logs, issue text, or documentation.
 
-Minimum production values are documented in `.env.example`. Generate high-entropy values for `MCP_JWT_SIGNING_SECRET` and `SESSION_PRIVACY_SALT`; do not reuse provider keys across environments. The exact local and Vercel locations, provider instructions, and first-party links are in [integration setup](integrations.md).
+Minimum production values are documented in `.env.example`. Generate independent high-entropy values for `MCP_JWT_SIGNING_SECRET` and `SESSION_PRIVACY_SALT`, plus a 32-byte base64url or 64-hex `INTEGRATION_CREDENTIAL_ENCRYPTION_KEY` for delegated connection credentials. Do not reuse provider keys across environments. The exact local and Vercel locations, provider instructions, and first-party links are in [integration setup](integrations.md).
 
-Public registration is closed by default in production. Enable `PUBLIC_REGISTRATION_ENABLED=true` only after adding the intended email-verification, recovery, abuse-monitoring, and user-support process; local development registration remains available.
+Password registration is closed by default in production. Enable `PUBLIC_REGISTRATION_ENABLED=true` only after adding the intended email-verification, recovery, abuse-monitoring, and user-support process. A configured Google OAuth web client enables the separate verified Google sign-in path without enabling password registration.
 
 ## Featherless
 
@@ -74,7 +74,10 @@ Server-side Ollama embeddings/generation can use `OLLAMA_BASE_URL`. Non-loopback
 - Health endpoint reports a ready production environment.
 - Migrations and a restore test have passed.
 - Registration/login/logout and tenant isolation pass against production-like infrastructure.
+- Google sign-in validates state, PKCE, exact callback, and a verified Google email before creating or resuming an account.
 - Claude connects through OAuth, loads real context, syncs a receipt, and revocation fails the next call.
+- Google Calendar OAuth uses the exact production callback, imports constraints, creates one idempotent committed block, and disconnect revokes local access.
+- A Zotero read-only key is validated, encrypted, synced without attachment overclaiming, and revocable.
 - External-resource start/return/verify creates a receipt and a schedule block.
 - Provider failure degrades to another configured provider or a clear error; it does not fabricate output.
 - Private original storage is configured before promising original-file retention.

@@ -2,7 +2,6 @@
 
 import { ArrowRight, CalendarClock, Check, Clock3, FileCheck2, Link2, Play, Target } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { Badge, Button, Card } from "@/components/ui";
 import { PageIntro } from "./page-intro";
 import { formatDate, list, postState, text, type Row, type WorkspaceState } from "./types";
@@ -10,8 +9,7 @@ import type { WorkspaceView } from "@/lib/workspace-routes";
 
 type PlanPreview = { proposalId?: string; items: Row[]; assumptions: string[] };
 
-export function TodayScreen({ state, userName, onNavigate }: { state: WorkspaceState; userName: string; onNavigate: (view: WorkspaceView) => void }) {
-  const router = useRouter();
+export function TodayScreen({ state, userName, onNavigate, onRefresh }: { state: WorkspaceState; userName: string; onNavigate: (view: WorkspaceView) => void; onRefresh: () => Promise<void> }) {
   const nextTask = state.tasks.find((task) => text(task, "status") !== "done");
   const upcoming = state.schedule.filter((block) => new Date(text(block, "end", text(block, "endsAt", "0"))).valueOf() > Date.now());
   const nextBlock = upcoming[0];
@@ -43,11 +41,11 @@ export function TodayScreen({ state, userName, onNavigate }: { state: WorkspaceS
       if (!response.ok) throw new Error(body.error ?? "The plan could not be committed");
       setPlan(undefined);
       setPlanBusy(false);
-      router.refresh();
+      await onRefresh();
     } catch (error) { setPlanError(error instanceof Error ? error.message : "The plan could not be committed"); setPlanBusy(false); }
   }
 
-  if (!state.goals.length) return <OnboardingScreen userName={userName} />;
+  if (!state.goals.length) return <OnboardingScreen userName={userName} onRefresh={onRefresh} />;
 
   return (
     <div className="screen">
@@ -84,8 +82,7 @@ export function TodayScreen({ state, userName, onNavigate }: { state: WorkspaceS
   );
 }
 
-function OnboardingScreen({ userName }: { userName: string }) {
-  const router = useRouter();
+function OnboardingScreen({ userName, onRefresh }: { userName: string; onRefresh: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -97,7 +94,7 @@ function OnboardingScreen({ userName }: { userName: string }) {
     try {
       await postState("goal.created", "Created the first academic goal during onboarding.", { title: String(form.get("title")), outcome: String(form.get("outcome")), date: String(form.get("date")) });
       setBusy(false);
-      router.refresh();
+      await onRefresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "The goal could not be saved"); setBusy(false); }
   }
 

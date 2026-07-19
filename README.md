@@ -9,7 +9,7 @@ Its two product rules are:
 
 ## Implemented product paths
 
-- Persistent accounts with slow-hashed passwords, revocable opaque sessions, same-origin write protection, and PostgreSQL-backed rate limits.
+- Persistent accounts with slow-hashed passwords or verified Google OpenID sign-in, durable provider identities, revocable opaque sessions, same-origin write protection, and PostgreSQL-backed rate limits.
 - User-scoped goals, tasks, projects, learning states, research notes and decisions, source passages, claims, schedule blocks, resource activities, audit events, and compact outcome receipts.
 - Token-efficient context assembly: structured current state plus hybrid semantic/lexical retrieval, ranking, a caller-selected token budget, provenance, and an access log. Raw transcripts are not copied into memory chunks.
 - A remote Streamable HTTP MCP server with OAuth authorization code + PKCE, dynamic client registration, per-tool scopes, durable grants, token rotation, and immediate revocation checks.
@@ -19,7 +19,9 @@ Its two product rules are:
 - Deterministic plan generation and repair. Generated schedules become expiring proposals; explicit confirmation and commit are separate writes.
 - Evidence-linked research retrieval over real user sources. Claims saved by assistants remain `unverified`; they may link only to exact user-owned passages.
 - Private PDF/text ingestion with sanitization, stable chunks, content hashes, duplicate detection, optional private Blob originals, pgvector embeddings, lexical fallback, and source deletion from retrieval.
+- A syllabus-aware Code workspace with streaming coaching, safe Markdown/math rendering, server-selected Featherless/Groq routes, abort support, per-user limits, optional browser-to-loopback Ollama, and memory checkpoints.
 - Featherless task-aware routing from the live plan/catalog with reviewed task fallbacks, Groq low-latency and reasoning routes, direct Gemini generation/embeddings with up to ten server-side keys, AI Gateway fallback, Featherless embeddings, and optional local Ollama.
+- Real user connection flows for Claude remote MCP, Google Calendar OAuth and explicit two-way schedule sync, encrypted paginated Zotero library indexing, NotebookLM source-pack handoff, Obsidian, and Ollama. Personal NotebookLM is correctly labeled as a handoff because it exposes no general account API.
 - An optional Obsidian plugin. The user chooses one folder or explicitly opts into the whole vault; secrets use Obsidian SecretStorage, generated Continuum notes cannot overwrite ordinary notes, and original binaries require private Blob storage.
 
 Zero-credential local mode uses an explicitly labeled in-memory development identity. The optional Maya database seed is a separate acceptance fixture. Ordinary persistent accounts never receive its goals or research data; they start with honest onboarding and user-owned records.
@@ -81,7 +83,7 @@ See [deployment and configuration](docs/deployment.md) and the [exact integratio
 
 ## Claude MCP
 
-The endpoint is `https://<your-domain>/api/mcp`. Production requires HTTPS, `APP_BASE_URL`, `MCP_OAUTH_ISSUER_URL`, and a strong `MCP_JWT_SIGNING_SECRET`. Claude completes OAuth in the browser and receives only approved scopes. Connection status and revocation are visible under Integrations.
+The canonical endpoint is `https://<your-domain>/mcp` (`/api/mcp` remains a compatibility alias). Production requires HTTPS, `APP_BASE_URL`, `MCP_OAUTH_ISSUER_URL`, and a strong `MCP_JWT_SIGNING_SECRET`. Claude completes OAuth in the browser and receives only approved scopes. Connection status and revocation are visible under Connections.
 
 The local development token path is disabled in production unless the operator explicitly overrides the safety flag. Do not use a shared static token in production.
 
@@ -120,7 +122,7 @@ Continuum itself does not require an end-user subscription in this repository. I
 - Ollama and Obsidian are local/free software paths, but use the user’s hardware and storage.
 - Neon, Vercel, and Blob can exceed free allowances in real production use.
 
-Continuum therefore exposes provider status and supports local fallbacks, but does not label a hosted production deployment as universally free.
+Continuum supports local fallbacks and operator-side provider health checks, but does not expose infrastructure details in the consumer Connections screen or label a hosted production deployment as universally free.
 
 ## License
 

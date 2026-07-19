@@ -10,8 +10,11 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const rate = await enforceRateLimit(request, "state-read", Number(process.env.STATE_READS_PER_MINUTE ?? 120), 60_000, user.id);
   if (!rate.allowed) return NextResponse.json({ error: "State read rate limit exceeded", resetAt: rate.resetAt }, { status: 429, headers: { "retry-after": "60" } });
+  const view = new URL(request.url).searchParams.get("view") ?? "today";
+  const allowedViews = new Set(["today", "goals", "learn", "research", "memory", "activity", "integrations", "code"]);
+  if (!allowedViews.has(view)) return NextResponse.json({ error: "Unknown workspace view" }, { status: 400 });
   const store = getStore(user.id);
-  return NextResponse.json({ data: await store.snapshot(), adapter: store.kind, freshness: new Date().toISOString() }, { headers: { "cache-control": "private, no-store" } });
+  return NextResponse.json({ data: await store.workspace(view), freshness: new Date().toISOString() }, { headers: { "cache-control": "private, no-store" } });
 }
 
 const appEventSchema = z.object({

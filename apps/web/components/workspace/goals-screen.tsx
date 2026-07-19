@@ -2,15 +2,13 @@
 
 import { CalendarClock, Check, CheckCircle2, Circle, Flag, Plus, Target } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { Badge, Button, Card } from "@/components/ui";
 import { PageIntro } from "./page-intro";
 import { formatDate, number, postState, text, type WorkspaceState } from "./types";
 
 type Toast = (message: string | null) => void;
 
-export function GoalsScreen({ state, showToast }: { state: WorkspaceState; showToast: Toast }) {
-  const router = useRouter();
+export function GoalsScreen({ state, showToast, onRefresh }: { state: WorkspaceState; showToast: Toast; onRefresh: () => Promise<void> }) {
   const [form, setForm] = useState<"goal" | "task">();
   const [busy, setBusy] = useState(false);
 
@@ -23,7 +21,7 @@ export function GoalsScreen({ state, showToast }: { state: WorkspaceState; showT
       setForm(undefined);
       setBusy(false);
       showToast("Goal saved to the shared academic state.");
-      router.refresh();
+      await onRefresh();
     } catch (error) { showToast(error instanceof Error ? error.message : "The goal could not be saved"); setBusy(false); }
   }
 
@@ -45,7 +43,7 @@ export function GoalsScreen({ state, showToast }: { state: WorkspaceState; showT
       setForm(undefined);
       setBusy(false);
       showToast("Task saved. It is available to the scheduler and connected assistants.");
-      router.refresh();
+      await onRefresh();
     } catch (error) { showToast(error instanceof Error ? error.message : "The task could not be saved"); setBusy(false); }
   }
 
@@ -55,13 +53,18 @@ export function GoalsScreen({ state, showToast }: { state: WorkspaceState; showT
       await postState("task.progress.recorded", "Marked a task complete in the standalone app.", { entityId: taskId, status: "done" });
       setBusy(false);
       showToast("Task completed and recorded in shared state.");
-      router.refresh();
+      await onRefresh();
     } catch (error) { showToast(error instanceof Error ? error.message : "The task could not be updated"); setBusy(false); }
   }
 
   return (
     <div className="screen">
-      <PageIntro eyebrow="GOALS" title="Outcomes, tasks, and proof of completion." description="Goals are shared with authorized assistants. Tasks stay concrete: time estimate, deadline, priority, and the evidence that counts as done." action={<><Button className="button-secondary" onClick={() => setForm(form === "task" ? undefined : "task")} disabled={!state.goals.length}><Plus size={16} />New task</Button><Button className="button-primary" onClick={() => setForm(form === "goal" ? undefined : "goal")}><Plus size={16} />New goal</Button></>} />
+      <PageIntro eyebrow="PLAN" title="Turn outcomes into work you can actually finish." description="Keep deadlines, concrete tasks, calendar constraints, and proof of completion in one plan shared with authorized assistants." action={<><Button className="button-secondary" onClick={() => setForm(form === "task" ? undefined : "task")} disabled={!state.goals.length}><Plus size={16} />New task</Button><Button className="button-primary" onClick={() => setForm(form === "goal" ? undefined : "goal")}><Plus size={16} />New goal</Button></>} />
+
+      <section className="calendar-strip">
+        <div><CalendarClock size={19} /><div><strong>Google Calendar</strong><span>{state.calendarConstraints.length ? `${state.calendarConstraints.length} upcoming commitment${state.calendarConstraints.length === 1 ? "" : "s"} are protecting your study time.` : "Connect your calendar so Continuum plans around classes and commitments."}</span></div></div>
+        <a href="/integrations#google-calendar">{state.calendarConstraints.length ? "Manage calendar" : "Connect calendar"}</a>
+      </section>
 
       {form === "goal" ? <Card className="inline-form-card"><div className="inline-form-heading"><div><h2>Create a goal</h2><p>Define the outcome before creating work.</p></div><button onClick={() => setForm(undefined)}>Cancel</button></div><form className="workspace-form form-grid" onSubmit={submitGoal}><label>Goal title<input name="title" required minLength={3} maxLength={120} placeholder="Complete the statistics module" /></label><label>Target date<input name="date" type="date" required /></label><label className="full-field">Successful outcome<textarea name="outcome" required minLength={3} maxLength={500} placeholder="Pass the final assessment and explain each core method" /></label><div className="form-actions"><Button className="button-primary" disabled={busy}>{busy ? "Saving…" : "Save goal"}</Button></div></form></Card> : null}
 

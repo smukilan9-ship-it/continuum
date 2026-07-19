@@ -73,7 +73,12 @@ function userInput(snapshot: Record<string, unknown>, timezone: string, now: str
     end: new Date(start + day * 24 * 3600_000 + (day === 0 ? 8 : 6) * 3600_000).toISOString(),
     energy: day === 0 ? "high" as const : "medium" as const,
   }));
-  return { input: { tasks, availability, constraints: [], timezone, bufferMinutes: 10, now }, tasks: rows };
+  const constraints = (Array.isArray(snapshot.calendarConstraints) ? snapshot.calendarConstraints as Row[] : []).flatMap((constraint) => {
+    const start = constraint.startsAt instanceof Date ? constraint.startsAt.toISOString() : String(constraint.startsAt ?? "");
+    const end = constraint.endsAt instanceof Date ? constraint.endsAt.toISOString() : String(constraint.endsAt ?? "");
+    return Number.isFinite(Date.parse(start)) && Number.isFinite(Date.parse(end)) && Date.parse(start) < Date.parse(end) ? [{ id: String(constraint.id), title: String(constraint.title ?? "Busy"), start, end, hard: constraint.hard !== false }] : [];
+  });
+  return { input: { tasks, availability, constraints, timezone, bufferMinutes: 10, now }, tasks: rows };
 }
 
 export async function POST(request: Request) {
@@ -97,7 +102,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const snapshot = await store.snapshot();
+  const snapshot = await store.workspace("goals");
   const useSeed = user.id === "user_maya" && (!Array.isArray(snapshot.tasks) || snapshot.tasks.length === 0);
   const prepared = useSeed ? { input: demoInput(), tasks: scheduleSeed.tasks as unknown as Row[] } : userInput(snapshot, user.timezone, now);
   const scheduler = new DeterministicScheduler();
@@ -119,7 +124,6 @@ export async function POST(request: Request) {
     proposal,
     proposalId: durableProposalId,
     items: displayItems(proposal, prepared.tasks, user.timezone),
-    assumptions: useSeed ? ["No user tasks were available, so local development used the documented seeded planning input.", "No external calendar events were read or written."] : ["Until personal availability or a calendar connector is configured, Continuum uses seven six-to-eight-hour flexible study windows starting from now.", "No external calendar events were read or written."],
-    route: { route: "deterministic", model: "continuum/constraint-solver-v1", reason: proposal.explanation[0], costClass: "none" },
+    assumptions: useSeed ? ["No user tasks were available, so local development used the documented seeded planning input.", "No external calendar events were read or written."] : ["Continuum uses seven flexible study windows starting from now and subtracts connected calendar commitments.", "The proposal changes only after confirmation. Connected calendar export happens on the user's next explicit sync."],
   });
 }

@@ -2,7 +2,6 @@
 
 import { Check, Clock3, GitBranch, ShieldCheck, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Badge, Button, Card } from "@/components/ui";
 import { PageIntro } from "./page-intro";
 import { formatDate, text, type Row, type WorkspaceState } from "./types";
@@ -16,8 +15,7 @@ function changes(proposal: Row) {
   return next && typeof next === "object" ? Object.entries(next as Row) : [];
 }
 
-export function ActivityScreen({ state, showToast }: { state: WorkspaceState; showToast: Toast }) {
-  const router = useRouter();
+export function ActivityScreen({ state, showToast, onRefresh }: { state: WorkspaceState; showToast: Toast; onRefresh: () => Promise<void> }) {
   const [busyId, setBusyId] = useState("");
   const proposals = useMemo(() => state.proposals.filter((proposal) => ["pending", "confirmed"].includes(text(proposal, "status", "pending"))), [state.proposals]);
 
@@ -31,7 +29,7 @@ export function ActivityScreen({ state, showToast }: { state: WorkspaceState; sh
       if (!response.ok) throw new Error(body.error ?? "The proposal could not be reviewed");
       setBusyId("");
       showToast(body.changeSummary ?? "Proposal reviewed.");
-      router.refresh();
+      await onRefresh();
     } catch (error) {
       showToast(error instanceof Error ? error.message : "The proposal could not be reviewed");
       setBusyId("");
@@ -40,11 +38,11 @@ export function ActivityScreen({ state, showToast }: { state: WorkspaceState; sh
 
   return (
     <div className="screen">
-      <PageIntro eyebrow="ACTIVITY" title="Review changes and understand every automated decision." description="Assistant writes are auditable. High-impact changes begin as proposals, and schedule changes require a separate confirmation and commit." />
+      <PageIntro eyebrow="REVIEW" title="Nothing consequential changes behind your back." description="Assistant writes are auditable. High-impact changes begin as proposals, and schedule changes require a separate confirmation and commit." />
 
       <section className="activity-summary">
         <Card><span><ShieldCheck size={18} /></span><div><strong>{proposals.length}</strong><small>changes needing attention</small></div></Card>
-        <Card><span><GitBranch size={18} /></span><div><strong>{state.modelRoutes.length}</strong><small>recorded model routes</small></div></Card>
+        <Card><span><GitBranch size={18} /></span><div><strong>{state.modelRoutes.length}</strong><small>AI assists audited</small></div></Card>
         <Card><span><Clock3 size={18} /></span><div><strong>{state.events.length}</strong><small>durable audit events</small></div></Card>
       </section>
 
@@ -68,7 +66,7 @@ export function ActivityScreen({ state, showToast }: { state: WorkspaceState; sh
         </div>
       </section>
 
-      {state.modelRoutes.length ? <section className="activity-section"><div className="section-heading"><div><p className="eyebrow">MODEL ROUTING</p><h2>Why each model was selected</h2></div></div><div className="memory-list">{state.modelRoutes.slice(0, 20).map((route) => <Card className="memory-row" key={text(route, "id")}><div><Badge tone="blue">{text(route, "provider")}</Badge><h3>{text(route, "model")}</h3><p>{text(route, "reason", "Selected by task capability, reliability, context, and cost policy.")}</p></div><span>{formatDate(route.createdAt)}</span></Card>)}</div></section> : null}
+      {state.modelRoutes.length ? <section className="activity-section"><div className="section-heading"><div><p className="eyebrow">AI ASSISTANCE</p><h2>Why Continuum used cloud assistance</h2></div></div><div className="memory-list">{state.modelRoutes.slice(0, 20).map((route) => <Card className="memory-row" key={text(route, "id")}><div><Badge tone="blue">{text(route, "taskClass", "assistance").replaceAll("_", " ")}</Badge><h3>Continuum assistance</h3><p>{text(route, "reason", "Selected by task capability, reliability, context, and cost policy.")}</p></div><span>{formatDate(route.createdAt)}</span></Card>)}</div></section> : null}
 
       <section className="activity-section"><div className="section-heading"><div><p className="eyebrow">AUDIT TRAIL</p><h2>Recent durable events</h2></div></div><div className="memory-list">{state.events.slice(0, 50).map((event) => <Card className="memory-row" key={text(event, "id")}><div><Badge tone="neutral">{text(event, "type", "event").replaceAll(".", " ")}</Badge><h3>{text(event, "summary")}</h3><p>{formatDate(event.occurredAt)}</p></div></Card>)}{!state.events.length ? <Card className="empty-record"><Clock3 size={24} /><h3>No durable event yet</h3><p>Completed work, accepted decisions, learning evidence, and assistant updates will appear here with provenance.</p></Card> : null}</div></section>
     </div>

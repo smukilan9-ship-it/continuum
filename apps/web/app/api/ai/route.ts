@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     ...(providers.gemini ? ["gemini" as const] : []),
     ...(providers.aiGateway ? ["ai_gateway" as const] : []),
   ];
-  if (!availableProviders.length) return NextResponse.json({ error: "No AI provider is configured", providers }, { status: 503 });
+  if (!availableProviders.length) return NextResponse.json({ error: "Cloud assistance is temporarily unavailable" }, { status: 503 });
   const decision = routeTask({
     id: `route_${Date.now()}`,
     taskClass: parsed.data.taskClass,
@@ -48,8 +48,8 @@ export async function POST(request: Request) {
       ? await generateStructured({ ...common, schema: diagnosticResultSchema })
       : await generateStructured({ ...common, schema: lessonOutputSchema });
     await logModelUsage({ userId: user.id, decision: result.decision, usage: result.usage });
-    return NextResponse.json(result);
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Generation failed", decision }, { status: 502 });
+    return NextResponse.json({ output: result.output, assistance: { reason: result.decision.reason, verification: result.decision.verification, fallbackUsed: result.decision.fallbackUsed } });
+  } catch {
+    return NextResponse.json({ error: "Cloud assistance could not complete this request" }, { status: 502 });
   }
 }

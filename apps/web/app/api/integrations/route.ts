@@ -1,9 +1,10 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { configuredProviders, embeddingProviderStatus, featherlessStatus, groqStatus } from "@continuum/ai";
 import { NeonRepository } from "@continuum/db";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
+import { openCredential } from "@/lib/credential-vault";
+import { googleCalendarConfigured, type GoogleCalendarCredential } from "@/lib/google-calendar";
 import { verifyClientRegistration } from "@/lib/oauth";
 
 export const runtime = "nodejs";
@@ -29,32 +30,39 @@ export async function GET(request: Request) {
   const rate = await enforceRateLimit(request, "integration-status", Number(process.env.INTEGRATION_STATUS_REQUESTS_PER_MINUTE ?? 30), 60_000, user.id);
   if (!rate.allowed) return NextResponse.json({ error: "Integration status rate limit exceeded", resetAt: rate.resetAt }, { status: 429, headers: { "retry-after": "60" } });
   const origin = appOrigin(request);
-  const [featherless, groq, persistent] = await Promise.all([
-    featherlessStatus(),
-    groqStatus(),
-    process.env.DATABASE_URL ? Promise.all([new NeonRepository().listOAuthConnections(user.id), new NeonRepository().listIntegrationTokens(user.id)]) : Promise.resolve([[], []] as const),
-  ]);
-  const [grants, integrationTokens] = persistent;
-  const grouped = new Map<string, { clientId: string; name: string; scopes: Set<string>; expiresAt: Date; connectedAt: Date }>();
+  const repo = process.env.DATABASE_URL ? new NeonRepository() : undefined;
+  const [grants, integrationTokens, activity, google, zotero] = repo ? await Promise.all([
+    repo.listOAuthConnections(user.id),
+    repo.listIntegrationTokens(user.id),
+    repo.listMcpClientActivity(user.id),
+    repo.getIntegration(user.id, "google-calendar"),
+    repo.getIntegration(user.id, "zotero"),
+  ]) : [[], [], [], undefined, undefined] as const;
+  const activityByClient = new Map(activity.map((entry) => [entry.clientId, entry]));
+  const grouped = new Map<string, { clientId: string; name: string; scopes: Set<string>; expiresAt: Date; connectedAt: Date; lastUsedAt?: Date; calls: number }>();
   for (const grant of grants) {
     const current = grouped.get(grant.clientId);
     let name = "MCP client";
     try { name = verifyClientRegistration(grant.clientId).clientName; } catch { /* Older registrations remain revocable. */ }
+    const used = activityByClient.get(grant.clientId);
     if (current) {
       grant.scopes.forEach((scope) => current.scopes.add(scope));
       if (grant.expiresAt > current.expiresAt) current.expiresAt = grant.expiresAt;
-    } else grouped.set(grant.clientId, { clientId: grant.clientId, name, scopes: new Set(grant.scopes), expiresAt: grant.expiresAt, connectedAt: grant.createdAt });
+    } else grouped.set(grant.clientId, { clientId: grant.clientId, name, scopes: new Set(grant.scopes), expiresAt: grant.expiresAt, connectedAt: grant.createdAt, ...(used?.lastUsedAt ? { lastUsedAt: used.lastUsedAt } : {}), calls: Number(used?.calls ?? 0) });
   }
+  let googleDetails: { email?: string; lastSyncAt?: string } = {};
+  let zoteroDetails: { username?: string; lastSyncAt?: string } = {};
+  try { if (google?.encryptedCredentials) { const value = openCredential<GoogleCalendarCredential>(google.encryptedCredentials); googleDetails = { email: value.email, lastSyncAt: value.lastSyncAt }; } } catch { /* Surface connected state without exposing a credential error. */ }
+  try { if (zotero?.encryptedCredentials) { const value = openCredential<{ username?: string; lastSyncAt?: string }>(zotero.encryptedCredentials); zoteroDetails = { username: value.username, lastSyncAt: value.lastSyncAt }; } } catch { /* Surface connected state without exposing a credential error. */ }
   return NextResponse.json({
     mcp: {
-      endpoint: `${origin}/api/mcp`,
-      oauthMetadata: `${origin}/.well-known/oauth-authorization-server`,
-      status: process.env.DATABASE_URL && process.env.MCP_JWT_SIGNING_SECRET ? "ready" : process.env.NODE_ENV === "production" ? "misconfigured" : "development",
-      connections: [...grouped.values()].map((connection) => ({ ...connection, scopes: [...connection.scopes], expiresAt: connection.expiresAt.toISOString(), connectedAt: connection.connectedAt.toISOString() })),
-      claude: { supported: true, instructions: ["Open Customize → Connectors in Claude.", "Choose Add custom connector.", `Enter ${origin}/api/mcp and complete Continuum OAuth.`, "Enable Continuum for the conversation and review granted scopes."] },
-      chatgpt: { supported: false, status: "future_scope" },
+      endpoint: `${origin}/mcp`,
+      connections: [...grouped.values()].map((connection) => ({ ...connection, scopes: [...connection.scopes], expiresAt: connection.expiresAt.toISOString(), connectedAt: connection.connectedAt.toISOString(), lastUsedAt: connection.lastUsedAt?.toISOString() })),
+      claude: { supported: true, instructions: ["In Claude, open Customize → Connectors.", "Choose Add custom connector.", `Paste ${origin}/mcp as the remote MCP URL.`, "Sign in to Continuum, review the requested permissions, then enable the connector for your chat."] },
     },
-    providers: { ...configuredProviders(), embeddings: embeddingProviderStatus(), featherless, groqStatus: groq },
+    googleCalendar: { connected: Boolean(google), available: googleCalendarConfigured(), ...googleDetails, scopes: google?.scopes ?? [] },
+    zotero: { connected: Boolean(zotero), available: Boolean(process.env.DATABASE_URL), ...zoteroDetails, scopes: zotero?.scopes ?? [] },
+    notebooklm: { mode: "source_pack", accountConnectionAvailable: false },
     obsidian: {
       available: Boolean(process.env.DATABASE_URL),
       tokens: integrationTokens.filter((token) => token.provider === "obsidian" && !token.revokedAt).map((token) => ({ ...token, lastUsedAt: token.lastUsedAt?.toISOString(), expiresAt: token.expiresAt?.toISOString(), createdAt: token.createdAt.toISOString() })),

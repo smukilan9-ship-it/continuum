@@ -12,6 +12,7 @@ export function GET(request: Request) {
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
+    resource_indicators_supported: true,
     scopes_supported: ["memory:read", "memory:write", "goals:read", "goals:write", "learning:read", "learning:write", "research:read", "research:write", "schedule:read", "schedule:propose", "schedule:commit", "resources:read", "routing:invoke"],
-  });
+  }, { headers: { "cache-control": "public, max-age=300" } });
 }

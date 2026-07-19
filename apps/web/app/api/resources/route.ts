@@ -4,6 +4,7 @@ import { outcomeReceiptSchema, resourceActivitySchema, type ResourceRecommendati
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
+import { checkpointScore } from "@/lib/resource-verification";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -28,21 +29,6 @@ const actionRequest = z.discriminatedUnion("action", [
 
 function id(prefix: string) {
   return `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
-}
-
-function normal(value: string) {
-  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9.+-]/g, "");
-  if (["n", "false", "unchanged"].includes(normalized)) return "no";
-  if (["y", "true"].includes(normalized)) return "yes";
-  return normalized;
-}
-
-function checkpointScore(answer: string | undefined, expected: string | undefined) {
-  if (!answer || !expected) return 0;
-  const actualNumber = Number(answer);
-  const expectedNumber = Number(expected);
-  if (Number.isFinite(actualNumber) && Number.isFinite(expectedNumber)) return Math.abs(actualNumber - expectedNumber) <= Math.max(0.01, Math.abs(expectedNumber) * 0.005) ? 1 : 0;
-  return normal(answer) === normal(expected) ? 1 : 0;
 }
 
 function serializedActivity(row: Record<string, unknown>) {

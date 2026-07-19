@@ -1,10 +1,10 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { generateText, gateway, Output, type LanguageModel } from "ai";
+import { generateText, gateway, Output, streamText, type LanguageModel } from "ai";
 import type { z } from "zod";
 import type { RouteDecision } from "@continuum/schemas";
 import { geminiApiKeys } from "./embeddings";
-import { selectFeatherlessModel, withFeatherlessConcurrency } from "./featherless";
+import { acquireFeatherlessConcurrency, selectFeatherlessModel, withFeatherlessConcurrency } from "./featherless";
 import { selectGroqModel } from "./groq";
 
 export interface ProviderEnvironment {
@@ -41,6 +41,15 @@ export interface StructuredGenerationRequest<T> {
   system?: string;
   maxOutputTokens?: number;
   userId?: string;
+}
+
+export interface StreamingGenerationRequest {
+  decision: RouteDecision;
+  prompt: string;
+  system?: string;
+  maxOutputTokens?: number;
+  userId?: string;
+  abortSignal?: AbortSignal;
 }
 
 const defaults = {
@@ -199,6 +208,34 @@ export async function generateStructured<T>(request: StructuredGenerationRequest
     }
   }
   throw lastError instanceof Error ? lastError : new Error("Every qualified model route failed");
+}
+
+export async function streamGeneration(request: StreamingGenerationRequest, env: ProviderEnvironment = providerEnvironmentFromProcess()) {
+  const target = await modelForDecision(request.decision, env, request.userId);
+  const release = target.provider === "featherless" ? await acquireFeatherlessConcurrency(target.concurrencyCost ?? 1, env as NodeJS.ProcessEnv) : undefined;
+  let finished = false;
+  const releaseOnce = () => {
+    if (finished) return;
+    finished = true;
+    release?.();
+  };
+  try {
+    const result = streamText({
+      model: target.model,
+      ...(target.providerOptions ? { providerOptions: target.providerOptions } : {}),
+      system: request.system,
+      prompt: request.prompt,
+      ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}),
+      abortSignal: request.abortSignal,
+      onFinish: releaseOnce,
+      onAbort: releaseOnce,
+      onError: releaseOnce,
+    });
+    return { result, decision: { ...request.decision, model: target.modelId } };
+  } catch (error) {
+    releaseOnce();
+    throw error;
+  }
 }
 
 export function configuredProviders(env: ProviderEnvironment = providerEnvironmentFromProcess()) {

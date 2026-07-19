@@ -3,7 +3,8 @@ import { getStore } from "@/lib/store";
 
 type TokenPayload = {
   iss: string;
-  aud: "continuum-mcp";
+  aud: string;
+  resource: string;
   sub: string;
   clientId: string;
   scopes: string[];
@@ -19,6 +20,14 @@ function issuer() {
   const value = process.env.MCP_OAUTH_ISSUER_URL ?? process.env.APP_BASE_URL;
   if (!value && process.env.NODE_ENV === "production") throw new Error("MCP OAuth issuer is required in production");
   return (value ?? "http://localhost:3000").replace(/\/$/, "");
+}
+
+export function mcpResource() {
+  return `${issuer()}/mcp`;
+}
+
+export function validMcpResource(value: string | null | undefined) {
+  return !value || value === mcpResource() || value === `${issuer()}/api/mcp`;
 }
 
 export type OAuthClientRegistration = {
@@ -79,8 +88,9 @@ export function verifyClientRegistration(clientId: string): OAuthClientRegistrat
   return registration;
 }
 
-export async function issueToken(payload: Omit<TokenPayload, "iat" | "jti" | "iss" | "aud">) {
-  const full: TokenPayload = { ...payload, iss: issuer(), aud: "continuum-mcp", iat: Math.floor(Date.now() / 1000), jti: randomUUID() };
+export async function issueToken(payload: Omit<TokenPayload, "iat" | "jti" | "iss" | "aud" | "resource"> & { resource?: string }) {
+  const resource = payload.resource && validMcpResource(payload.resource) ? payload.resource : mcpResource();
+  const full: TokenPayload = { ...payload, resource, iss: issuer(), aud: resource, iat: Math.floor(Date.now() / 1000), jti: randomUUID() };
   const encoded = encode(JSON.stringify(full));
   await getStore(full.sub).registerOAuthGrant({
     jti: full.jti,
@@ -100,7 +110,10 @@ export async function verifyToken(token: string, expectedType?: TokenPayload["ty
   const expected = signature(encoded);
   if (!signaturesMatch(provided, expected)) throw new Error("Invalid token signature");
   const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as TokenPayload;
-  if (payload.iss !== issuer() || payload.aud !== "continuum-mcp") throw new Error("Token issuer or audience is invalid");
+  const legacyAudience = payload.aud === "continuum-mcp" && !payload.resource;
+  if (legacyAudience) payload.resource = mcpResource();
+  else if (payload.iss !== issuer() || payload.aud !== payload.resource || !validMcpResource(payload.resource)) throw new Error("Token issuer, audience, or resource is invalid");
+  if (payload.iss !== issuer()) throw new Error("Token issuer is invalid");
   if (payload.exp <= Math.floor(Date.now() / 1000)) throw new Error("Token expired");
   if (await getStore(payload.sub).oauthGrantUnavailable(payload.jti)) throw new Error("Token revoked or already used");
   if (expectedType && payload.type !== expectedType) throw new Error("Unexpected token type");

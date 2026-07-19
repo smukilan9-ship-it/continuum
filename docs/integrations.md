@@ -1,6 +1,6 @@
 # Integration setup
 
-Continuum shows these same instructions under **Integrations**. Third-party links below point only to the provider's official documentation or account console.
+Continuum shows end-user connection instructions under **Connections**. Provider-key sections in this document are for the deployment operator and are intentionally not shown in the consumer app. Third-party links below point only to official documentation or account consoles.
 
 ## Secret locations
 
@@ -16,20 +16,58 @@ For production, open **Vercel Dashboard → continuum → Settings → Environme
 
 ## Claude remote MCP
 
-1. Deploy Continuum to a public HTTPS origin and confirm `/api/mcp` reports ready under Integrations.
+1. Deploy Continuum to a public HTTPS origin and confirm `/mcp` returns an OAuth challenge.
 2. In Claude, open **Customize → Connectors → Add custom connector**.
-3. Paste `https://<continuum-domain>/api/mcp`.
+3. Paste `https://<continuum-domain>/mcp`.
 4. Complete Continuum OAuth, review the requested read/write scopes, and enable the connector for the conversation.
-5. Return to Continuum Integrations to inspect or revoke the client.
+5. Return to Continuum Connections to inspect its permissions, last use, or revoke the client.
 
 Official guide: [Claude remote MCP custom connectors](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
+
+## Google sign-in and Calendar
+
+Operator setup is required once. The same Google OAuth web client can support verified account sign-in and the separately consented Calendar connection.
+
+1. In [Google Cloud credentials](https://console.cloud.google.com/apis/credentials), create an OAuth 2.0 **Web application** client for the Continuum deployment.
+2. Configure the OAuth consent screen and request only the Calendar list read, event read, and user-owned event write scopes listed in `.env.example`/the application code. Public apps must complete Google's verification requirements before general release.
+3. Add both exact authorized redirect URIs:
+   - `https://<continuum-domain>/api/auth/google/callback`
+   - `https://<continuum-domain>/api/connections/google/callback`
+4. Store the client values only as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` server-side. Also configure a 32-byte `INTEGRATION_CREDENTIAL_ENCRYPTION_KEY`.
+5. On the login screen, **Continue with Google** requests only OpenID profile/email scopes and accepts only a verified Google email. Calendar access is not granted by sign-in.
+6. In Continuum, the user separately selects **Connect Google Calendar**, reviews the Calendar consent screen, and returns to Connections.
+7. Sync is explicit. It imports primary-calendar busy events as planning constraints and creates only committed Continuum study blocks. Created events carry a private Continuum block ID to prevent duplicates.
+
+Official references: [Google OAuth for web server apps](https://developers.google.com/identity/protocols/oauth2/web-server), [Google Calendar authorization](https://developers.google.com/workspace/calendar/api/auth), and [manage third-party account access](https://support.google.com/accounts/answer/3466521).
+
+## Zotero
+
+Zotero's Web API supports private-library access through user-created keys. Continuum deliberately asks for a dedicated read-only key instead of requesting write permission.
+
+1. The user opens Zotero's [official key creation page](https://www.zotero.org/settings/keys/new).
+2. Create a key named Continuum with personal-library read access and leave write access disabled.
+3. Paste it into Continuum Connections. The server validates it with Zotero's `/keys/current` endpoint, encrypts it with AES-256-GCM, and never returns it to the browser.
+4. **Sync library** imports citation metadata and sanitized abstracts into source-grounded retrieval in resumable 100-item pages. It remembers the library version for incremental updates and does not silently import attachment files or PDFs.
+
+Official reference: [Zotero Web API v3](https://www.zotero.org/support/dev/web_api/v3/start).
+
+## NotebookLM
+
+Personal NotebookLM does not expose a general account-connection API. Continuum therefore provides a transparent source-pack handoff rather than a fake OAuth connection:
+
+1. Select **Download source pack** in Connections.
+2. Review the Markdown file containing project context, decision summaries, indexed-source titles, and recent verified outcomes.
+3. Open [NotebookLM](https://notebooklm.google.com/) and add the file to a notebook.
+4. Return to Continuum to record evidence and verify progress.
+
+Official reference: [NotebookLM help](https://support.google.com/notebooklm/answer/14278184).
 
 ## Featherless
 
 1. Create a key in the [official Featherless API Keys page](https://featherless.ai/account/api-keys); see the [official quickstart](https://featherless.ai/docs/quickstart-guide).
 2. Local: set `FEATHERLESS_API_KEY` in `.env.local`.
 3. Production: add `FEATHERLESS_API_KEY` as a Sensitive Vercel Production variable and redeploy.
-4. Reload Integrations and confirm both configured and reachable.
+4. Run the operator health and provider smoke tests; provider status is not exposed in the consumer Connections screen.
 
 The router normally evaluates the account plan and live catalog by task. If catalog discovery is unavailable it uses the reviewed Qwen3.5 9B fast, Qwen3.6 27B reasoning, Qwen3 Coder Next, and GPT-OSS 20B verifier routes. Featherless embeddings use `Qwen/Qwen3-Embedding-8B` with 1,536 output dimensions. The model-specific `FEATHERLESS_FAST_MODEL`, `FEATHERLESS_REASONING_MODEL`, `FEATHERLESS_CODE_MODEL`, and `FEATHERLESS_VERIFIER_MODEL` variables are optional reviewed overrides.
 
@@ -53,7 +91,7 @@ GEMINI_DATA_USE_ACKNOWLEDGED=true
 ```
 
 3. Keep `GEMINI_MODEL=gemini-3.5-flash`, `GEMINI_EMBEDDING_MODEL=gemini-embedding-001`, and `EMBEDDING_DIMENSIONS=1536` unless a tested migration changes all corresponding storage dimensions.
-4. Redeploy and confirm Integrations reports `10/10` key slots.
+4. Redeploy and run the operator embedding smoke test. Key counts are not exposed to consumers.
 
 The generation cursor rotates keys and retries a bounded number of times. The embedding pool also has bounded concurrency. Multiple keys in one Google Cloud project do not multiply project quota, and this mechanism must not be used to evade provider limits. Current production model IDs are listed in Google's [official Gemini models guide](https://ai.google.dev/gemini-api/docs/models).
 

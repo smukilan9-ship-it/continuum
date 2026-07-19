@@ -21,7 +21,7 @@ const needs = [
   ["coding_practice", "Use a coding environment"],
 ] as const;
 
-export function LearnScreen({ state, showToast }: { state: WorkspaceState; showToast: Toast }) {
+export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceState; showToast: Toast; onRefresh: () => Promise<void> }) {
   const [topic, setTopic] = useState("");
   const [need, setNeed] = useState("conceptual_intuition");
   const [goalType, setGoalType] = useState("school");
@@ -109,6 +109,7 @@ export function LearnScreen({ state, showToast }: { state: WorkspaceState; showT
       setActivity(body.activity);
       setResult(body);
       showToast(body.verified ? "Progress verified. Mastery, memory, receipt, and follow-up are now in sync." : body.needsReview ? "Evidence saved for review; mastery was not changed." : "The checkpoint did not pass; mastery was not changed.");
+      await onRefresh();
     } catch (error) { showToast(error instanceof Error ? error.message : "Verification failed"); }
     finally { setBusy(false); }
   }
@@ -144,7 +145,7 @@ export function LearnScreen({ state, showToast }: { state: WorkspaceState; showT
 
         {activity && ["returned", "needs_review"].includes(activity.status) ? <div className="verification-panel"><div><Badge tone="blue">Verification required</Badge><h3>Opening a resource is not learning evidence.</h3><p>{recommendation.selected.verification.prompt}</p></div><label>Your answer or artifact reference<input value={answer} onChange={(event) => setAnswer(event.target.value)} /></label><Button className="button-primary" disabled={busy || !answer.trim()} onClick={() => void verify()}><ShieldCheck size={16} />{busy ? "Checking…" : "Verify progress"}</Button></div> : null}
 
-        {result ? <div className={result.verified ? "outcome-receipt success" : "outcome-receipt pending"}>{result.verified ? <CheckCircle2 size={22} /> : <ShieldCheck size={22} />}<div><strong>{result.verified ? "Progress verified and written back" : result.needsReview ? "Evidence saved for review" : "Checkpoint not passed"}</strong><span>{result.verified ? "Mastery, memory, an outcome receipt, and a spaced follow-up now reflect this activity." : "Mastery did not increase. The evidence and audit event were still preserved."}</span></div></div> : null}
+        {result ? <div className={result.verified ? "outcome-receipt success" : "outcome-receipt pending"}>{result.verified ? <CheckCircle2 size={22} /> : <ShieldCheck size={22} />}<div><strong>{result.verified ? "Progress verified and written back" : result.needsReview ? "Evidence saved for review" : "Checkpoint not passed"}</strong><span>{result.verified ? result.scheduleUpdate?.status === "scheduled" ? "Mastery, memory, an outcome receipt, and a spaced follow-up now reflect this activity." : "Mastery, memory, and an outcome receipt are updated. Link future activities to a goal to schedule the follow-up automatically." : "Mastery did not increase. The evidence and audit event were still preserved."}</span></div></div> : null}
 
         {recommendation.alternatives.length ? <details className="resource-alternatives"><summary>Why the other {recommendation.alternatives.length} option{recommendation.alternatives.length === 1 ? " was" : "s were"} not selected</summary>{recommendation.alternatives.map((alternative) => <div key={alternative.resource.id}><strong>{alternative.resource.title}</strong><span>{alternative.whyNotSelected}</span></div>)}</details> : null}
       </Card> : null}

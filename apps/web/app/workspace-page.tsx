@@ -9,7 +9,7 @@ export const workspacePageMetadata = { robots: { index: false, follow: false } }
 export async function WorkspacePage({ view }: { view: WorkspaceView }) {
   const user = await getServerUser();
   if (!user) redirect(`/login?returnTo=${encodeURIComponent(view === "today" ? "/" : `/${view}`)}`);
-  const snapshot = await getStore(user.id).snapshot();
+  const snapshot = await getStore(user.id).workspace(view);
   const initialState = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
   return <ContinuumApp user={user} initialState={initialState} view={view} />;
 }

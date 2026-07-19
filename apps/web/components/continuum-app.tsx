@@ -7,6 +7,7 @@ import {
   BookOpen,
   CalendarDays,
   Command,
+  Code2,
   Database,
   FlaskConical,
   Goal,
@@ -16,10 +17,10 @@ import {
   Search,
   X,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { IntegrationsScreen } from "@/components/integrations-screen";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { normalizeWorkspaceState, WorkspaceScreens, type WorkspaceState } from "@/components/workspace-screens";
 import { workspaceMeta, workspacePath, type WorkspaceView } from "@/lib/workspace-routes";
 
@@ -33,25 +34,32 @@ const navGroups: NavGroup[] = [
     label: "Workspace",
     items: [
       { id: "today", label: "Today", icon: CalendarDays },
-      { id: "goals", label: "Goals", icon: Goal },
+      { id: "goals", label: "Plan", icon: Goal },
       { id: "learn", label: "Learn", icon: BookOpen },
+      { id: "code", label: "Code", icon: Code2 },
       { id: "research", label: "Research", icon: FlaskConical },
     ],
   },
   {
-    label: "Context",
-    items: [{ id: "memory", label: "Memory", icon: Database }],
+    label: "Library",
+    items: [
+      { id: "memory", label: "Memory", icon: Database },
+      { id: "activity", label: "Review", icon: Activity },
+    ],
   },
   {
-    label: "System",
-    items: [
-      { id: "integrations", label: "Integrations", icon: Link2 },
-      { id: "activity", label: "Activity", icon: Activity },
-    ],
+    label: "Account",
+    items: [{ id: "integrations", label: "Connections", icon: Link2 }],
   },
 ];
 
-const mobileItems = navGroups[0]!.items;
+const mobileItems = navGroups[0]!.items.filter((item) => item.id !== "research");
+
+const IntegrationsScreen = dynamic(() => import("@/components/integrations-screen").then((module) => module.IntegrationsScreen), { loading: () => <ScreenLoading /> });
+
+function ScreenLoading() {
+  return <div className="screen-loading" role="status" aria-label="Loading workspace"><span /><span /><span /></div>;
+}
 
 function initials(name: string) {
   return name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
@@ -62,8 +70,17 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
   const [mobileNav, setMobileNav] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
-  const state = useMemo(() => normalizeWorkspaceState(initialState), [initialState]);
+  const [state, setState] = useState<WorkspaceState>(() => normalizeWorkspaceState(initialState));
   const meta = workspaceMeta[view];
+
+  useEffect(() => setState(normalizeWorkspaceState(initialState)), [initialState, view]);
+
+  const refreshState = useCallback(async () => {
+    const response = await fetch(`/api/state?view=${encodeURIComponent(view)}`, { cache: "no-store" });
+    const payload = await response.json() as { data?: Record<string, unknown>; error?: string };
+    if (!response.ok || !payload.data) throw new Error(payload.error ?? "Workspace refresh failed");
+    setState(normalizeWorkspaceState(payload.data));
+  }, [view]);
 
   useEffect(() => {
     if (!toast) return;
@@ -98,7 +115,7 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
     <div className="app-shell">
       <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`} aria-label="Workspace navigation">
         <div className="sidebar-head">
-          <Link className="brand" href="/" onClick={() => setMobileNav(false)} aria-label="Continuum home">
+          <Link className="brand" href="/" prefetch={false} onClick={() => setMobileNav(false)} aria-label="Continuum home">
             <span className="brand-symbol">C</span>
             <span>Continuum</span>
           </Link>
@@ -111,9 +128,9 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
               <p>{group.label}</p>
               {group.items.map((item) => {
                 const Icon = item.icon;
-                const count = item.id === "goals" ? state.goals.length : item.id === "research" ? state.projects.length : item.id === "activity" ? state.proposals.filter((proposal) => proposal.status === "pending").length : undefined;
+                const count = item.id === "activity" ? state.proposals.filter((proposal) => proposal.status === "pending").length : undefined;
                 return (
-                  <Link key={item.id} href={workspacePath[item.id]} className={view === item.id ? "nav-item active" : "nav-item"} aria-current={view === item.id ? "page" : undefined} onClick={() => setMobileNav(false)}>
+                  <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={view === item.id ? "nav-item active" : "nav-item"} aria-current={view === item.id ? "page" : undefined} onClick={() => setMobileNav(false)}>
                     <Icon size={18} strokeWidth={1.8} />
                     <span>{item.label}</span>
                     {typeof count === "number" && count > 0 ? <small>{count}</small> : null}
@@ -138,24 +155,24 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
       <main className="main-area">
         <header className="topbar">
           <button className="icon-button mobile-only" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Menu size={20} /></button>
-          <div className="location-label"><span>Workspace</span><strong>{meta.title}</strong></div>
+          <div className="location-label"><span>Continuum</span><strong>{meta.title}</strong></div>
           <button className="search-button" onClick={() => setCommandOpen(true)}><Search size={17} /><span>Search workspace</span><kbd>⌘K</kbd></button>
-          <div className="topbar-right"><span className="privacy-state"><i />Private workspace</span></div>
+          <div className="topbar-right"><span className="privacy-state"><i />Saved</span></div>
         </header>
 
         <div className="content-wrap">
           {view === "integrations"
             ? <IntegrationsScreen showToast={setToast} />
-            : <WorkspaceScreens view={view} state={state} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} onNavigate={navigate} showToast={setToast} />}
+            : <WorkspaceScreens view={view} state={state} user={user} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} onNavigate={navigate} onRefresh={refreshState} showToast={setToast} />}
         </div>
       </main>
 
       <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
         {mobileItems.map((item) => {
           const Icon = item.icon;
-          return <Link key={item.id} href={workspacePath[item.id]} className={view === item.id ? "active" : ""} aria-current={view === item.id ? "page" : undefined}><Icon size={19} /><span>{item.label}</span></Link>;
+          return <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={view === item.id ? "active" : ""} aria-current={view === item.id ? "page" : undefined}><Icon size={19} /><span>{item.label}</span></Link>;
         })}
-        <button className={["memory", "integrations", "activity"].includes(view) ? "active" : ""} onClick={() => setMobileNav(true)}><Menu size={19} /><span>More</span></button>
+        <button className={["research", "memory", "integrations", "activity"].includes(view) ? "active" : ""} onClick={() => setMobileNav(true)}><Menu size={19} /><span>More</span></button>
       </nav>
 
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} state={state} onNavigate={navigate} />

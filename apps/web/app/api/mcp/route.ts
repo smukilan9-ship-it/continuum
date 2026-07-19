@@ -106,17 +106,35 @@ async function runSpecialistTask(args: Record<string, unknown>, identity: Author
     verifierRoute = checked.decision;
     await logModelUsage({ userId: identity.userId, decision: checked.decision, usage: checked.usage });
   }
-  await getStore(identity.userId).appendEvent({ type: "model.specialist.routed", summary: `Routed ${taskClass} to ${primary.decision.model}${verification ? " with independent verification" : ""}.`, entityIds: [primary.decision.id], payload: { route: primary.decision, verifierRoute, verification }, source: { surface: "mcp" }, importance: 0.55 });
-  return { result: primary.output, route: primary.decision, verification, verifierRoute };
+  await getStore(identity.userId).appendEvent({ type: "model.specialist.routed", summary: `Used specialist assistance for ${taskClass.replaceAll("_", " ")}${verification ? " with an independent check" : ""}.`, entityIds: [primary.decision.id], payload: { route: primary.decision, verifierRoute, verification }, source: { surface: "mcp" }, importance: 0.55 });
+  return {
+    result: primary.output,
+    assistance: { reason: `Selected for ${taskClass.replaceAll("_", " ")} based on capability, context, reliability, and cost policy.`, verification: primary.decision.verification, fallbackUsed: primary.decision.fallbackUsed },
+    verification,
+    ...(verificationDecisionSummary(verifierRoute) ? { verifierAssistance: verificationDecisionSummary(verifierRoute) } : {}),
+  };
+}
+
+function verificationDecisionSummary(value: unknown) {
+  if (!value || typeof value !== "object") return undefined;
+  const decision = value as { reason?: unknown; verification?: unknown; fallbackUsed?: unknown };
+  return { reason: "Used a separate qualified route for the independent evidence check.", verification: typeof decision.verification === "string" ? decision.verification : "completed", fallbackUsed: decision.fallbackUsed === true };
 }
 
 async function handle(request: Request) {
+  const requestOrigin = request.headers.get("origin");
+  const serviceOrigin = new URL(request.url).origin;
+  const configuredOrigins = (process.env.MCP_ALLOWED_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+  const allowedOrigins = new Set([serviceOrigin, process.env.APP_BASE_URL?.replace(/\/$/, ""), "https://claude.ai", "https://www.claude.ai", ...configuredOrigins].filter(Boolean));
+  if (requestOrigin && !allowedOrigins.has(requestOrigin)) {
+    return new Response(JSON.stringify({ jsonrpc: "2.0", error: { code: -32003, message: "Origin is not allowed" }, id: null }), { status: 403, headers: { "content-type": "application/json" } });
+  }
   const identity = await authorizedMcpIdentity(request);
   if (!identity) {
-    const origin = new URL(request.url).origin;
+    const readScopes = "memory:read goals:read learning:read research:read schedule:read resources:read";
     return new Response(JSON.stringify({ jsonrpc: "2.0", error: { code: -32001, message: "Valid OAuth bearer token required" }, id: null }), {
       status: 401,
-      headers: { "content-type": "application/json", "www-authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"` },
+      headers: { "content-type": "application/json", "cache-control": "no-store", "www-authenticate": `Bearer realm="continuum", resource_metadata="${serviceOrigin}/.well-known/oauth-protected-resource/mcp", scope="${readScopes}"` },
     });
   }
   const limit = await enforceRateLimit(request, "mcp", Number(process.env.MCP_REQUESTS_PER_MINUTE ?? 120), 60_000, `${identity.userId}:${identity.clientId}`);
@@ -126,7 +144,8 @@ async function handle(request: Request) {
   await server.connect(transport);
   const response = await transport.handleRequest(request);
   const headers = new Headers(response.headers);
-  headers.set("access-control-allow-origin", "*");
+  if (requestOrigin) headers.set("access-control-allow-origin", requestOrigin);
+  headers.set("vary", "Origin");
   headers.set("access-control-expose-headers", "mcp-session-id, mcp-protocol-version");
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
@@ -135,11 +154,17 @@ export const POST = handle;
 export const GET = handle;
 export const DELETE = handle;
 
-export function OPTIONS() {
+export function OPTIONS(request: Request) {
+  const requestOrigin = request.headers.get("origin");
+  const serviceOrigin = new URL(request.url).origin;
+  const configuredOrigins = (process.env.MCP_ALLOWED_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+  const allowed = !requestOrigin || new Set([serviceOrigin, process.env.APP_BASE_URL?.replace(/\/$/, ""), "https://claude.ai", "https://www.claude.ai", ...configuredOrigins].filter(Boolean)).has(requestOrigin);
+  if (!allowed) return new Response(null, { status: 403 });
   return new Response(null, { status: 204, headers: {
-    "access-control-allow-origin": "*",
+    ...(requestOrigin ? { "access-control-allow-origin": requestOrigin } : {}),
     "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
     "access-control-allow-headers": "content-type,authorization,mcp-session-id,last-event-id,mcp-protocol-version",
     "access-control-expose-headers": "mcp-session-id,mcp-protocol-version",
+    "vary": "Origin",
   } });
 }

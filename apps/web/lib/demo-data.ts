@@ -123,7 +123,7 @@ export const researchClaims = [
       { id: "evidence_mendez_2", source: "Mendez & Rao (2023)", passage: "Passage 2 · Validation design", text: "When image patches from one patient occur in both training and validation sets, patient-specific staining and morphology can create optimistic performance estimates. Grouped partitioning at the patient level prevents this pathway of leakage." },
       { id: "evidence_huang_4", source: "Huang et al. (2024)", passage: "Passage 4 · Study protocol", text: "All serial-section pairs belonging to a patient were assigned to a single fold before any patch extraction. This preserves independence between evaluation units." },
     ],
-    verifier: "Featherless specialist · independently verified",
+    verifier: "Evidence route · independently verified",
   },
   {
     id: "claim_registration",
@@ -132,7 +132,7 @@ export const researchClaims = [
     evidence: [
       { id: "evidence_okafor_3", source: "Okafor et al. (2025)", passage: "Passage 3 · Sensitivity analysis", text: "Neighbourhood association was stable under simulated displacement up to 8 µm. Beyond that range, effects varied with marker density and tissue architecture." },
     ],
-    verifier: "AI Gateway verifier · qualified support",
+    verifier: "Evidence route · qualified support",
   },
 ];
 
@@ -145,27 +145,18 @@ export const memories = [
 ];
 
 export const activity = [
-  { id: "a1", type: "route", title: "Diagnostic classified", detail: "Groq fast route · schema valid", time: "09:04", icon: "route" },
+  { id: "a1", type: "route", title: "Diagnostic classified", detail: "Fast assistance · response validated", time: "09:04", icon: "route" },
   { id: "a2", type: "memory", title: "Misconception recorded", detail: "Append-only learning event · evt_learning_21", time: "09:05", icon: "memory" },
   { id: "a3", type: "schedule", title: "Review block proposed", detail: "Deterministic solver · awaiting calendar confirmation", time: "09:06", icon: "calendar" },
-  { id: "a4", type: "research", title: "Claim support verified", detail: "Featherless specialist + independent AI Gateway verifier", time: "Yesterday", icon: "shield" },
+  { id: "a4", type: "research", title: "Claim support verified", detail: "Specialist check + independent verification", time: "Yesterday", icon: "shield" },
   { id: "a5", type: "mcp", title: "Claude read project context", detail: "research:read · 6 compact records · 1.2k tokens", time: "Yesterday", icon: "link" },
 ];
 
 export const routes = [
-  { task: "Schedule optimization", route: "Deterministic", model: "Constraint solver v1", reason: "Dates and dependencies must be exact", verification: "Rules checked", cost: "No tokens", color: "green" },
-  { task: "Misconception diagnosis", route: "Fast model", model: "Groq · fast classifier", reason: "Bounded classification with Zod output", verification: "Schema passed", cost: "Low", color: "blue" },
-  { task: "Claim entailment", route: "Specialist", model: "Featherless · reasoning", reason: "Research-critical evidence check", verification: "Independent verifier passed", cost: "Medium", color: "orange" },
-  { task: "Source retrieval", route: "Retrieval", model: "pgvector · exact passage", reason: "Claims require source evidence", verification: "Chunk IDs present", cost: "No generation", color: "purple" },
-];
-
-export const integrations = [
-  { name: "Claude", description: "Read goals, research, memory, and today’s plan through MCP.", status: "Connected", scopes: "6 read · 2 propose", lastSync: "2 min ago", color: "clay", enabled: true },
-  { name: "ChatGPT", description: "Standards-compliant MCP app contract for developer mode.", status: "Ready to connect", scopes: "Choose on connect", lastSync: "Not connected", color: "ink", enabled: true },
-  { name: "Obsidian", description: "Export durable academic memory as linked Markdown.", status: "Preview", scopes: "Export only", lastSync: "Not connected", color: "violet", enabled: false },
-  { name: "Google Calendar", description: "Read commitments and commit approved study blocks.", status: "Feature flagged", scopes: "Free/busy · confirmed writes", lastSync: "Off for demo", color: "blue", enabled: false },
-  { name: "Zotero", description: "Import papers and citation metadata into research projects.", status: "Feature flagged", scopes: "Library read", lastSync: "Off for demo", color: "red", enabled: false },
-  { name: "NotebookLM", description: "Export a source and study pack for optional exploration.", status: "Export ready", scopes: "No account access", lastSync: "On demand", color: "yellow", enabled: true },
+  { task: "Schedule optimization", route: "Rules", model: "", reason: "Dates and dependencies must be exact", verification: "Rules checked", cost: "No tokens", color: "green" },
+  { task: "Misconception diagnosis", route: "Fast assistance", model: "", reason: "A bounded classification is enough for this step", verification: "Response validated", cost: "Low", color: "blue" },
+  { task: "Claim entailment", route: "Specialist", model: "", reason: "Research-critical evidence needs a deeper check", verification: "Independent check passed", cost: "Medium", color: "orange" },
+  { task: "Source retrieval", route: "Exact passage", model: "", reason: "Claims require source evidence", verification: "Passage references present", cost: "No generation", color: "purple" },
 ];
 
 export const learningResources = [
