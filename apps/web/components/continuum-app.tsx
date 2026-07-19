@@ -1,58 +1,73 @@
 "use client";
 
+import * as Dialog from "@radix-ui/react-dialog";
+import type { AuthUser } from "@continuum/db";
 import {
   Activity,
   BookOpen,
   CalendarDays,
-  ChevronDown,
   Command,
+  Database,
   FlaskConical,
   Goal,
   Link2,
+  LogOut,
   Menu,
   Search,
-  Sparkles,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { ActivityScreen, GoalsScreen, IntegrationsScreen, LearnScreen, MemoryScreen, ResearchScreen, TodayScreen } from "@/components/screens";
-import { demoUser, initialSchedule } from "@/lib/demo-data";
-import { Tooltip } from "@/components/ui";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { IntegrationsScreen } from "@/components/integrations-screen";
+import { normalizeWorkspaceState, WorkspaceScreens, type WorkspaceState } from "@/components/workspace-screens";
+import { workspaceMeta, workspacePath, type WorkspaceView } from "@/lib/workspace-routes";
 
-export type View = "today" | "goals" | "learn" | "research" | "memory" | "integrations" | "activity";
-export type ScheduleItem = (typeof initialSchedule)[number];
+export type View = WorkspaceView;
 
-const navItems: Array<{ id: View; label: string; icon: typeof CalendarDays }> = [
-  { id: "today", label: "Today", icon: CalendarDays },
-  { id: "goals", label: "Goals", icon: Goal },
-  { id: "learn", label: "Learn", icon: BookOpen },
-  { id: "research", label: "Research", icon: FlaskConical },
-  { id: "memory", label: "Memory", icon: Sparkles },
-  { id: "integrations", label: "Integrations", icon: Link2 },
-  { id: "activity", label: "Activity", icon: Activity },
+type NavItem = { id: WorkspaceView; label: string; icon: typeof CalendarDays };
+type NavGroup = { label: string; items: NavItem[] };
+
+const navGroups: NavGroup[] = [
+  {
+    label: "Workspace",
+    items: [
+      { id: "today", label: "Today", icon: CalendarDays },
+      { id: "goals", label: "Goals", icon: Goal },
+      { id: "learn", label: "Learn", icon: BookOpen },
+      { id: "research", label: "Research", icon: FlaskConical },
+    ],
+  },
+  {
+    label: "Context",
+    items: [{ id: "memory", label: "Memory", icon: Database }],
+  },
+  {
+    label: "System",
+    items: [
+      { id: "integrations", label: "Integrations", icon: Link2 },
+      { id: "activity", label: "Activity", icon: Activity },
+    ],
+  },
 ];
 
-const titles: Record<View, string> = {
-  today: "Today",
-  goals: "Goals",
-  learn: "Learn",
-  research: "Research",
-  memory: "Memory",
-  integrations: "Integrations",
-  activity: "Activity",
-};
+const mobileItems = navGroups[0]!.items;
 
-export function ContinuumApp() {
-  const [view, setView] = useState<View>("today");
+function initials(name: string) {
+  return name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+}
+
+export function ContinuumApp({ user, initialState, view }: { user: AuthUser; initialState: Record<string, unknown>; view: WorkspaceView }) {
+  const router = useRouter();
   const [mobileNav, setMobileNav] = useState(false);
-  const [schedule, setSchedule] = useState<ScheduleItem[]>(initialSchedule);
-  const [learningComplete, setLearningComplete] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
+  const state = useMemo(() => normalizeWorkspaceState(initialState), [initialState]);
+  const meta = workspaceMeta[view];
 
   useEffect(() => {
     if (!toast) return;
-    const timeout = window.setTimeout(() => setToast(null), 3600);
+    const timeout = window.setTimeout(() => setToast(null), 4200);
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
@@ -67,107 +82,126 @@ export function ContinuumApp() {
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
-  const navigate = (next: View) => {
-    setView(next);
+  function navigate(next: WorkspaceView) {
     setMobileNav(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+    setCommandOpen(false);
+    router.push(workspacePath[next]);
+  }
 
-  const markLearningComplete = () => {
-    setLearningComplete(true);
-    setSchedule((items) => items.map((item) => item.id === "block_diagnostic_1" ? { ...item, status: "done" } : item));
-    setToast("Checkpoint verified. Mastery and today’s plan are now in sync.");
-  };
+  async function signOut() {
+    const response = await fetch("/api/auth/logout", { method: "POST" });
+    if (response.ok) window.location.assign("/login");
+    else setToast("Sign out failed. Your current session is still active.");
+  }
 
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
+      <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`} aria-label="Workspace navigation">
         <div className="sidebar-head">
-          <button className="brand" onClick={() => navigate("today")} aria-label="Continuum home">
-            <span className="brand-symbol"><span /><span /><span /></span>
-            <span>continuum</span>
-          </button>
-          <button className="icon-button mobile-only" onClick={() => setMobileNav(false)} aria-label="Close navigation"><X size={19} /></button>
+          <Link className="brand" href="/" onClick={() => setMobileNav(false)} aria-label="Continuum home">
+            <span className="brand-symbol">C</span>
+            <span>Continuum</span>
+          </Link>
+          <button className="icon-button mobile-only" onClick={() => setMobileNav(false)} aria-label="Close navigation"><X size={20} /></button>
         </div>
+
         <nav className="main-nav" aria-label="Primary navigation">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button key={item.id} className={view === item.id ? "nav-item active" : "nav-item"} onClick={() => navigate(item.id)}>
-                <Icon size={18} strokeWidth={1.8} />
-                <span>{item.label}</span>
-                {item.id === "learn" && <i className="nav-dot" />}
-              </button>
-            );
-          })}
+          {navGroups.map((group) => (
+            <div className="nav-group" key={group.label}>
+              <p>{group.label}</p>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const count = item.id === "goals" ? state.goals.length : item.id === "research" ? state.projects.length : item.id === "activity" ? state.proposals.filter((proposal) => proposal.status === "pending").length : undefined;
+                return (
+                  <Link key={item.id} href={workspacePath[item.id]} className={view === item.id ? "nav-item active" : "nav-item"} aria-current={view === item.id ? "page" : undefined} onClick={() => setMobileNav(false)}>
+                    <Icon size={18} strokeWidth={1.8} />
+                    <span>{item.label}</span>
+                    {typeof count === "number" && count > 0 ? <small>{count}</small> : null}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
+
         <div className="sidebar-spacer" />
-        <button className="command-hint" onClick={() => setCommandOpen(true)}>
-          <Command size={15} /><span>Ask Continuum</span><kbd>⌘ K</kbd>
-        </button>
+        <button className="command-hint" onClick={() => setCommandOpen(true)}><Command size={16} /><span>Jump to anything</span><kbd>⌘K</kbd></button>
         <div className="profile-card">
-          <div className="avatar">{demoUser.initials}</div>
-          <div><strong>{demoUser.name}</strong><span>{demoUser.level}</span></div>
-          <ChevronDown size={15} />
+          <div className="avatar">{initials(user.displayName)}</div>
+          <div><strong>{user.displayName}</strong><span>{user.educationLevel ?? user.email}</span></div>
+          <button className="profile-signout" onClick={() => void signOut()} aria-label="Sign out"><LogOut size={16} /></button>
         </div>
       </aside>
 
-      {mobileNav && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
+      {mobileNav ? <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} /> : null}
 
       <main className="main-area">
         <header className="topbar">
           <button className="icon-button mobile-only" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Menu size={20} /></button>
-          <span className="mobile-title">{titles[view]}</span>
-          <button className="search-button" onClick={() => setCommandOpen(true)}><Search size={16} /><span>Search anything…</span><kbd>⌘ K</kbd></button>
-          <div className="topbar-right">
-            <Tooltip label="12-day verified progress streak"><div className="streak"><span>✦</span>{demoUser.streak} day streak</div></Tooltip>
-            <div className="sync-state"><i /> All changes saved</div>
-          </div>
+          <div className="location-label"><span>Workspace</span><strong>{meta.title}</strong></div>
+          <button className="search-button" onClick={() => setCommandOpen(true)}><Search size={17} /><span>Search workspace</span><kbd>⌘K</kbd></button>
+          <div className="topbar-right"><span className="privacy-state"><i />Private workspace</span></div>
         </header>
 
         <div className="content-wrap">
-          {view === "today" && <TodayScreen schedule={schedule} setSchedule={setSchedule} onNavigate={navigate} showToast={setToast} learningComplete={learningComplete} />}
-          {view === "goals" && <GoalsScreen onNavigate={navigate} showToast={setToast} />}
-          {view === "learn" && <LearnScreen completed={learningComplete} onComplete={markLearningComplete} showToast={setToast} />}
-          {view === "research" && <ResearchScreen showToast={setToast} />}
-          {view === "memory" && <MemoryScreen showToast={setToast} />}
-          {view === "integrations" && <IntegrationsScreen showToast={setToast} />}
-          {view === "activity" && <ActivityScreen />}
+          {view === "integrations"
+            ? <IntegrationsScreen showToast={setToast} />
+            : <WorkspaceScreens view={view} state={state} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} onNavigate={navigate} showToast={setToast} />}
         </div>
       </main>
 
       <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
-        {navItems.slice(0, 5).map((item) => {
+        {mobileItems.map((item) => {
           const Icon = item.icon;
-          return <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => navigate(item.id)}><Icon size={19} /><span>{item.label}</span></button>;
+          return <Link key={item.id} href={workspacePath[item.id]} className={view === item.id ? "active" : ""} aria-current={view === item.id ? "page" : undefined}><Icon size={19} /><span>{item.label}</span></Link>;
         })}
+        <button className={["memory", "integrations", "activity"].includes(view) ? "active" : ""} onClick={() => setMobileNav(true)}><Menu size={19} /><span>More</span></button>
       </nav>
 
-      {commandOpen && <CommandPalette onClose={() => setCommandOpen(false)} onNavigate={navigate} />}
-      {toast && <div className="toast" role="status"><span className="toast-icon">✓</span>{toast}<button onClick={() => setToast(null)} aria-label="Dismiss"><X size={15} /></button></div>}
+      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} state={state} onNavigate={navigate} />
+      {toast ? <div className="toast" role="status"><span className="toast-icon">✓</span><span>{toast}</span><button onClick={() => setToast(null)} aria-label="Dismiss"><X size={16} /></button></div> : null}
     </div>
   );
 }
 
-function CommandPalette({ onClose, onNavigate }: { onClose: () => void; onNavigate: (view: View) => void }) {
+type SearchAction = { id: string; label: string; hint: string; view: WorkspaceView };
+
+function rowString(row: Record<string, unknown>, key: string) {
+  return typeof row[key] === "string" ? row[key] : undefined;
+}
+
+function workspaceActions(state: WorkspaceState): SearchAction[] {
+  const destinations = navGroups.flatMap((group) => group.items.map((item) => ({ id: `view-${item.id}`, label: item.label, hint: workspaceMeta[item.id].description, view: item.id })));
+  const goals = state.goals.map((goal) => ({ id: `goal-${rowString(goal, "id")}`, label: rowString(goal, "title") ?? "Untitled goal", hint: "Goal", view: "goals" as const }));
+  const tasks = state.tasks.map((task) => ({ id: `task-${rowString(task, "id")}`, label: rowString(task, "title") ?? "Untitled task", hint: "Task", view: "goals" as const }));
+  const projects = state.projects.map((project) => ({ id: `project-${rowString(project, "id")}`, label: rowString(project, "title") ?? "Untitled project", hint: "Research project", view: "research" as const }));
+  const receipts = state.receipts.map((receipt) => ({ id: `receipt-${rowString(receipt, "id")}`, label: rowString(receipt, "summary") ?? "Outcome receipt", hint: "Memory receipt", view: "memory" as const }));
+  return [...destinations, ...goals, ...tasks, ...projects, ...receipts];
+}
+
+function CommandPalette({ open, onOpenChange, state, onNavigate }: { open: boolean; onOpenChange: (open: boolean) => void; state: WorkspaceState; onNavigate: (view: WorkspaceView) => void }) {
   const [query, setQuery] = useState("");
-  const actions = [
-    { label: "Start the Physics diagnostic", hint: "Learn", view: "learn" as View },
-    { label: "Show my highest-priority task", hint: "Today", view: "today" as View },
-    { label: "Find evidence for grouped validation", hint: "Research", view: "research" as View },
-    { label: "Inspect what Continuum remembers", hint: "Memory", view: "memory" as View },
-    { label: "Explain model routing", hint: "Activity", view: "activity" as View },
-  ].filter((item) => item.label.toLowerCase().includes(query.toLowerCase()));
+  const actions = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return workspaceActions(state).filter((item) => !needle || `${item.label} ${item.hint}`.toLowerCase().includes(needle)).slice(0, 12);
+  }, [query, state]);
+
   return (
-    <div className="command-overlay" onMouseDown={onClose}>
-      <section className="command-panel" onMouseDown={(event) => event.stopPropagation()} aria-label="Continuum command menu">
-        <div className="command-input"><Sparkles size={18} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ask about your goals, learning, or research…" /><kbd>esc</kbd></div>
-        <div className="command-results">
-          <p>Suggested actions</p>
-          {actions.map((action) => <button key={action.label} onClick={() => { onNavigate(action.view); onClose(); }}><span>{action.label}</span><small>{action.hint}</small></button>)}
-        </div>
-        <footer><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span>Memory writes are off until confirmed</span></footer>
-      </section>
-    </div>
+    <Dialog.Root open={open} onOpenChange={(next) => { onOpenChange(next); if (!next) setQuery(""); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="command-overlay" />
+        <Dialog.Content className="command-panel" aria-describedby="command-description">
+          <Dialog.Title className="sr-only">Search Continuum</Dialog.Title>
+          <Dialog.Description className="sr-only" id="command-description">Search sections, goals, tasks, projects, and outcome receipts.</Dialog.Description>
+          <div className="command-input"><Search size={19} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sections, goals, tasks, and projects" /><Dialog.Close aria-label="Close search"><X size={17} /></Dialog.Close></div>
+          <div className="command-results">
+            <p>{query ? "Matches" : "Workspace"}</p>
+            {actions.map((action) => <button key={action.id} onClick={() => onNavigate(action.view)}><span>{action.label}</span><small>{action.hint}</small></button>)}
+            {!actions.length ? <div className="command-empty"><Search size={20} /><span>No workspace item matches “{query}”.</span></div> : null}
+          </div>
+          <footer><span><kbd>esc</kbd> close</span><span>Search opens the matching workspace; it never changes your data.</span></footer>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
