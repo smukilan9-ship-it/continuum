@@ -30,11 +30,17 @@ let planCache: CacheEntry<FeatherlessPlan> | undefined;
 let modelCache: CacheEntry<FeatherlessModel[]> | undefined;
 let modelErrorCache: CacheEntry<string> | undefined;
 
+// Featherless removed its public `/v1/models` catalogue endpoint (it now returns
+// 410/404 "Gone"), so live discovery is no longer available on this plan and the
+// selector relies on these curated IDs. Every ID below has been verified to
+// return real, non-empty completions on the configured Feather Chat plan
+// (Qwen2.5 family). The previously shipped Qwen3.x IDs were forward-dated and
+// silently returned empty 200s.
 const curatedModels: Record<string, { id: string; concurrencyCost: number }> = {
-  fast: { id: "Qwen/Qwen3.5-9B", concurrencyCost: 1 },
-  reasoning: { id: "Qwen/Qwen3.6-27B", concurrencyCost: 2 },
-  code: { id: "Qwen/Qwen3-Coder-Next", concurrencyCost: 4 },
-  verifier: { id: "openai/gpt-oss-20b", concurrencyCost: 2 },
+  fast: { id: "Qwen/Qwen2.5-7B-Instruct", concurrencyCost: 1 },
+  reasoning: { id: "Qwen/Qwen2.5-72B-Instruct", concurrencyCost: 2 },
+  code: { id: "Qwen/Qwen2.5-Coder-32B-Instruct", concurrencyCost: 2 },
+  verifier: { id: "Qwen/Qwen2.5-72B-Instruct", concurrencyCost: 2 },
 };
 
 function headers(apiKey: string, env: NodeJS.ProcessEnv) {

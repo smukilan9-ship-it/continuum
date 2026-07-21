@@ -15,8 +15,10 @@ describe("Featherless catalog routing", () => {
       FEATHERLESS_API_KEY: "test-key",
     } as NodeJS.ProcessEnv);
 
+    // Live-verified curated fallback: Featherless removed /v1/models (404 "Gone"),
+    // so discovery is degraded and the selector uses a real, non-empty model.
     expect(selected).toMatchObject({
-      id: "Qwen/Qwen3.6-27B",
+      id: "Qwen/Qwen2.5-72B-Instruct",
       concurrencyCost: 2,
       selectedBy: "curated_fallback_policy",
     });

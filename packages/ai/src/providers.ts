@@ -6,6 +6,7 @@ import type { RouteDecision } from "@continuum/schemas";
 import { geminiApiKeys } from "./embeddings";
 import { acquireFeatherlessConcurrency, selectFeatherlessModel, withFeatherlessConcurrency } from "./featherless";
 import { selectGroqModel } from "./groq";
+import { isTripped, recordFailure, recordSuccess, selectGeminiModel } from "./health";
 
 export interface ProviderEnvironment {
   [key: string]: string | undefined;
@@ -127,7 +128,9 @@ async function modelForDecision(decision: RouteDecision, env: ProviderEnvironmen
     if (!keys.length) throw new Error("Gemini is not configured");
     const key = keys[geminiGenerationCursor % keys.length]!;
     geminiGenerationCursor = (geminiGenerationCursor + 1) % keys.length;
-    const id = env.GEMINI_MODEL ?? "gemini-3.5-flash";
+    // Runtime discovery + health selection instead of a hard-coded (often dead)
+    // model ID. This avoids defaulting to a 503/404 model like gemini-3.5-flash.
+    const id = await selectGeminiModel(env as NodeJS.ProcessEnv, { vision: decision.taskClass === "image_understanding" || decision.taskClass === "document_understanding" });
     return { model: createGoogleGenerativeAI({ apiKey: key })(id), modelId: id, provider: "gemini", providerOptions: { google: { thinkingConfig: { thinkingLevel: "minimal", includeThoughts: false } } } };
   }
   if (env.AI_GATEWAY_ENABLED !== "true" || (!env.AI_GATEWAY_API_KEY && !env.VERCEL_OIDC_TOKEN)) throw new Error("AI Gateway is not explicitly enabled");
@@ -154,11 +157,25 @@ function routeConfigured(route: RouteDecision["route"], env: ProviderEnvironment
   return route === "deterministic";
 }
 
+const routeBreakerKey = (route: RouteDecision["route"]) => `route:${route}`;
+
+/**
+ * Drop routes whose circuit breaker is currently open, but never return an empty
+ * list: if every configured route is tripped we keep the original order so the
+ * caller still attempts one (the breaker cooldown may have just lapsed) rather
+ * than failing without trying.
+ */
+function healthAwareOrder(order: RouteDecision["route"][]): RouteDecision["route"][] {
+  const healthy = order.filter((route) => route === "deterministic" || !isTripped(routeBreakerKey(route)));
+  return healthy.length ? healthy : order;
+}
+
 export function generationRouteOrder(decision: RouteDecision, env: ProviderEnvironment) {
   const preferred: RouteDecision["route"][] = ["classification", "extraction", "summarization", "misconception_diagnosis"].includes(decision.taskClass)
     ? ["groq", "featherless", "gemini", "ai_gateway"]
     : ["featherless", "gemini", "groq", "ai_gateway"];
-  return [decision.route, ...preferred.filter((route) => route !== decision.route && routeConfigured(route, env))];
+  const order = [decision.route, ...preferred.filter((route) => route !== decision.route && routeConfigured(route, env))];
+  return healthAwareOrder([...new Set(order)]);
 }
 
 /**
@@ -176,7 +193,7 @@ export function structuredRouteOrder(decision: RouteDecision, env: ProviderEnvir
   // originally routed provider and the rest follow as fallbacks. When Groq is not
   // configured, the routed provider leads as before.
   const order: RouteDecision["route"][] = ["groq", decision.route, "gemini", "featherless", "ai_gateway"];
-  return [...new Set(order)].filter((route) => routeConfigured(route, env));
+  return healthAwareOrder([...new Set(order)].filter((route) => routeConfigured(route, env)));
 }
 
 const clamp = (value: number, min: number, max: number, fallback: number) =>
@@ -225,7 +242,10 @@ async function openAICompatibleStructured<T>(target: OpenAICompatibleTarget, req
   });
   if (!response.ok) throw new Error(`${target.modelId} structured completion failed (${response.status})`);
   const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } };
-  const content = payload.choices?.[0]?.message?.content;
+  const content = payload.choices?.[0]?.message?.content?.trim();
+  // Empty-response detection: forward-dated or misconfigured model IDs can return
+  // a 200 with empty content. Treat that as a hard failure so the route cascade
+  // moves on instead of trying to JSON.parse "".
   if (!content) throw new Error(`${target.modelId} returned no structured content`);
   const output = request.schema.parse(JSON.parse(content));
   return { output, usage: { inputTokens: payload.usage?.prompt_tokens, outputTokens: payload.usage?.completion_tokens, totalTokens: payload.usage?.total_tokens } };
@@ -275,6 +295,7 @@ export async function generateStructured<T>(request: StructuredGenerationRequest
           const result = decision.route === "featherless"
             ? await withFeatherlessConcurrency(target.concurrencyCost ?? 1, run, env as NodeJS.ProcessEnv)
             : await run();
+          recordSuccess(`route:${decision.route}`);
           return {
             output: result.output,
             decision: { ...decision, model: target.modelId, fallbackUsed: index > 0 || routeAttempt > 0 },
@@ -292,6 +313,7 @@ export async function generateStructured<T>(request: StructuredGenerationRequest
           ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}),
           abortSignal: AbortSignal.timeout(attemptTimeout),
         });
+        recordSuccess(`route:${decision.route}`);
         return {
           output: request.schema.parse(result.output),
           decision: { ...decision, model: target.modelId, fallbackUsed: index > 0 || routeAttempt > 0 },
@@ -300,6 +322,7 @@ export async function generateStructured<T>(request: StructuredGenerationRequest
         };
       } catch (error) {
         lastError = error;
+        recordFailure(`route:${decision.route}`, error);
         if (process.env.AI_DEBUG_ROUTES === "true") console.error(`[generateStructured] ${decision.route} attempt failed:`, error instanceof Error ? error.message : error);
         if (routeAttempt + 1 < routeAttempts && remaining() > 3_000) await new Promise((resolve) => setTimeout(resolve, 250 * (routeAttempt + 1)));
       }
@@ -326,12 +349,13 @@ export async function streamGeneration(request: StreamingGenerationRequest, env:
       prompt: request.prompt,
       ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}),
       abortSignal: request.abortSignal,
-      onFinish: releaseOnce,
+      onFinish: () => { recordSuccess(`route:${request.decision.route}`); releaseOnce(); },
       onAbort: releaseOnce,
-      onError: releaseOnce,
+      onError: (event) => { recordFailure(`route:${request.decision.route}`, (event as { error?: unknown })?.error ?? event); releaseOnce(); },
     });
     return { result, decision: { ...request.decision, model: target.modelId } };
   } catch (error) {
+    recordFailure(`route:${request.decision.route}`, error);
     releaseOnce();
     throw error;
   }

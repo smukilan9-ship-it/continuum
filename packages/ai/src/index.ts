@@ -4,3 +4,4 @@ export * from "./validation";
 export * from "./embeddings";
 export * from "./featherless";
 export * from "./groq";
+export * from "./health";
