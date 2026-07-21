@@ -77,9 +77,11 @@ Open [http://localhost:3000](http://localhost:3000). Never commit `.env.local`; 
 - Embeddings: keep `EMBEDDING_DIMENSIONS=1536`. Provider order may include Gemini, Featherless, AI Gateway, or Ollama. Lexical retrieval remains available if every embedding provider fails.
 - Ollama: browser-local generation accepts only loopback endpoints by default. Server-side remote Ollama is rejected unless `ALLOW_REMOTE_OLLAMA=true` is deliberately set.
 
-Provider keys belong in an encrypted deployment secret store or the ignored local environment file. No system can make a key literally impossible to compromise; Continuum reduces exposure through server-only access, least privilege, no logging/display of values, rotation, and revocation.
+Structured (JSON-schema) generation is bounded by an overall deadline (`AI_STRUCTURED_DEADLINE_MS`, default 40 s) and a per-attempt timeout (`AI_ATTEMPT_TIMEOUT_MS`, default 20 s), and it uses a schema-capable model per provider (`GROQ_STRUCTURED_MODEL`, default `openai/gpt-oss-120b`). Groq's GPT-OSS models are the most reliable JSON-schema route and are tried first for schema-bound tasks; if a configured provider's model IDs are unavailable, generation routes around it and fails fast rather than hanging.
 
-See [deployment and configuration](docs/deployment.md) and the [exact integration setup guide](docs/integrations.md).
+Provider keys belong in an encrypted deployment secret store or the ignored local environment file. No system can make a key literally impossible to compromise; Continuum reduces exposure through server-only access, least privilege, no logging/display of values, rotation, and revocation. Set `GEMINI_MODEL` and Featherless model IDs to models that are actually available to your accounts — the reviewed defaults are forward-dated and must be updated per deployment (see [AUDIT_REPORT.md](AUDIT_REPORT.md)).
+
+See [deployment and configuration](docs/deployment.md) and the [exact integration setup guide](docs/integrations.md). A full audit of performance, security, and feature verification is in [AUDIT_REPORT.md](AUDIT_REPORT.md).
 
 ## Claude MCP
 
