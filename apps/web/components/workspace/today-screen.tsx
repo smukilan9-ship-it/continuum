@@ -4,7 +4,7 @@ import { ArrowRight, CalendarClock, Check, Clock3, FileCheck2, Link2, Play, Targ
 import { useState, type FormEvent } from "react";
 import { Badge, Button, Card } from "@/components/ui";
 import { PageIntro } from "./page-intro";
-import { formatDate, list, postState, text, type Row, type WorkspaceState } from "./types";
+import { formatDate, list, text, type Row, type WorkspaceState } from "./types";
 import type { WorkspaceView } from "@/lib/workspace-routes";
 
 type PlanPreview = { proposalId?: string; items: Row[]; assumptions: string[] };
@@ -91,28 +91,53 @@ function OnboardingScreen({ userName, onRefresh }: { userName: string; onRefresh
     setBusy(true);
     setError("");
     const form = new FormData(event.currentTarget);
+    const subjects = String(form.get("subjects") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+    const preferredTimes = form.getAll("preferredTimes").map(String);
     try {
-      const created = await postState("goal.created", "Created the first academic goal during onboarding.", { title: String(form.get("title")), outcome: String(form.get("outcome")), date: String(form.get("date")) }) as { data?: { id?: string } };
-      // Seed a concrete first action so a fresh account lands with a real next
-      // step, not an empty board. Best-effort: the goal is already saved, so a
-      // task failure must not fail onboarding.
-      const goalId = created.data?.id;
-      if (goalId) {
-        try {
-          await postState("task.created", "Added a baseline diagnostic as the first step.", { goalId, title: "Take a short baseline diagnostic", description: "Answer a few questions so Continuum can gauge your current level and tailor the plan.", estimatedMinutes: 20, priority: 2 });
-        } catch { /* non-blocking: the goal exists; the first task can be added later */ }
-      }
+      // One deterministic call builds the goal, milestones, actionable tasks with
+      // dependencies, and a committed initial schedule. Retries are idempotent.
+      const response = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          academicLevel: String(form.get("academicLevel") ?? ""),
+          subjects: subjects.length ? subjects : ["General"],
+          primarySubject: subjects[0],
+          goalTitle: String(form.get("goalTitle") ?? ""),
+          goalOutcome: String(form.get("goalOutcome") ?? ""),
+          goalType: String(form.get("goalType") ?? "exam"),
+          deadline: String(form.get("deadline") ?? ""),
+          weeklyHours: Number(form.get("weeklyHours") ?? 8),
+          preferredTimes,
+          confidence: String(form.get("confidence") ?? "medium"),
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Onboarding could not be completed");
       setBusy(false);
       await onRefresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "The goal could not be saved"); setBusy(false); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Onboarding could not be completed"); setBusy(false); }
   }
 
+  const today = new Date().toISOString().slice(0, 10);
   return (
     <div className="screen onboarding-screen">
-      <PageIntro eyebrow="GET STARTED" title={`Create the first real goal, ${userName}.`} description="This becomes shared, user-owned context for the app and every assistant you authorize." />
+      <PageIntro eyebrow="GET STARTED" title={`Let's build your real plan, ${userName}.`} description="Continuum turns this into a goal, milestones, tasks, and a first-week schedule — shared context for the app and every assistant you authorize." />
       <Card className="onboarding-card">
-        <div><Badge tone="blue">Step 1 of 3</Badge><h2>What outcome are you working toward?</h2><p>Next, add a task and connect Claude if you want the same memory in another assistant. High-impact assistant changes stay pending until you approve them.</p></div>
-        <form onSubmit={submit} className="workspace-form"><label>Goal title<input name="title" minLength={3} maxLength={120} required placeholder="Prepare for a physics assessment" /></label><label>Successful outcome<textarea name="outcome" minLength={3} maxLength={500} required placeholder="Score 85% or higher and explain the hard concepts independently" /></label><label>Target date<input name="date" type="date" required min={new Date().toISOString().slice(0, 10)} /></label>{error ? <p className="form-error" role="alert">{error}</p> : null}<Button className="button-primary button-large" disabled={busy}>{busy ? "Creating…" : "Create workspace"}<ArrowRight size={16} /></Button></form>
+        <div><Badge tone="blue">One step</Badge><h2>Tell us about your goal.</h2><p>We generate milestones, actionable tasks, and an initial schedule deterministically. High-impact assistant changes always stay pending until you approve them.</p></div>
+        <form onSubmit={submit} className="workspace-form">
+          <label>Academic level<input name="academicLevel" minLength={1} maxLength={120} required placeholder="e.g. CBSE Class 12" /></label>
+          <label>Subjects (comma-separated)<input name="subjects" required placeholder="Physics, Mathematics" /></label>
+          <label>Goal title<input name="goalTitle" minLength={3} maxLength={120} required placeholder="Ace the Class 12 Physics board exam" /></label>
+          <label>Successful outcome<textarea name="goalOutcome" minLength={3} maxLength={500} required placeholder="Score 90%+ and explain the hard concepts independently" /></label>
+          <label>Goal type<select name="goalType" defaultValue="exam"><option value="exam">Exam</option><option value="school">School</option><option value="university">University</option><option value="research">Research</option><option value="coding">Coding</option></select></label>
+          <label>Deadline<input name="deadline" type="date" required min={today} /></label>
+          <label>Weekly study hours<input name="weeklyHours" type="number" min={1} max={80} defaultValue={8} required /></label>
+          <label>Starting confidence<select name="confidence" defaultValue="medium"><option value="low">Low — start slow</option><option value="medium">Medium</option><option value="high">High — move fast</option></select></label>
+          <fieldset className="onboarding-times"><legend>Preferred study times</legend>{["morning", "afternoon", "evening", "night"].map((slot) => (<label key={slot} className="checkbox-inline"><input type="checkbox" name="preferredTimes" value={slot} />{slot}</label>))}</fieldset>
+          {error ? <p className="form-error" role="alert">{error}</p> : null}
+          <Button className="button-primary button-large" disabled={busy}>{busy ? "Building your plan…" : "Generate my plan"}<ArrowRight size={16} /></Button>
+        </form>
       </Card>
     </div>
   );
