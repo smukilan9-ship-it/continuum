@@ -12,6 +12,12 @@ const defaults = {
   verifier: "openai/gpt-oss-20b",
 };
 
+// Only a subset of Groq models honor `response_format: json_schema`. The fast
+// Llama/Qwen instruct models reject it, which is what made structured generation
+// fall through the whole fallback chain. These GPT-OSS models support strict
+// JSON schema output and are used whenever a schema-bound result is required.
+const structuredCapable = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"];
+
 export async function listGroqModels(apiKey = process.env.GROQ_API_KEY) {
   if (!apiKey) throw new Error("Groq is not configured");
   if (modelCache && modelCache.expiresAt > Date.now()) return modelCache.value;
@@ -34,12 +40,21 @@ export function preferredGroqModel(taskClass: RouteDecision["taskClass"], env: N
   return env.GROQ_MODEL ?? defaults.general;
 }
 
-export async function selectGroqModel(taskClass: RouteDecision["taskClass"], env: NodeJS.ProcessEnv = process.env) {
-  const preferred = preferredGroqModel(taskClass, env);
+export async function selectGroqModel(taskClass: RouteDecision["taskClass"], env: NodeJS.ProcessEnv = process.env, options: { structured?: boolean } = {}) {
   const models = await listGroqModels(env.GROQ_API_KEY);
-  if (models.some((model) => model.id === preferred)) return preferred;
+  const enabled = (id: string) => models.some((model) => model.id === id);
+  if (options.structured) {
+    // Schema-bound tasks must run on a json_schema-capable model regardless of the
+    // latency-optimized default for the task class.
+    const preferredStructured = env.GROQ_STRUCTURED_MODEL ?? structuredCapable[0]!;
+    const structured = [preferredStructured, ...structuredCapable].find(enabled);
+    if (!structured) throw new Error("No Groq model that supports structured JSON output is enabled for this project");
+    return structured;
+  }
+  const preferred = preferredGroqModel(taskClass, env);
+  if (enabled(preferred)) return preferred;
   const safeFallbacks = [defaults.fast, defaults.reasoning, defaults.general, defaults.verifier];
-  const fallback = safeFallbacks.find((id) => models.some((model) => model.id === id));
+  const fallback = safeFallbacks.find(enabled);
   if (!fallback) throw new Error("No reviewed Groq text model is enabled for this project");
   return fallback;
 }

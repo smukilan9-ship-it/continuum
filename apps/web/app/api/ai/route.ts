@@ -1,16 +1,35 @@
 import { configuredProviders, generateStructured, routeTask } from "@continuum/ai";
-import { diagnosticResultSchema, lessonOutputSchema } from "@continuum/schemas";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { checkDailyAiBudget, logModelUsage } from "@/lib/ai-budget";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const requestSchema = z.object({
   taskClass: z.enum(["misconception_diagnosis", "lesson_generation"]),
   prompt: z.string().min(10).max(8000),
   sourceLocked: z.boolean().default(false),
+});
+
+// Model-facing schemas contain only the fields a language model can actually
+// produce. Server-controlled identifiers, timestamps, and provenance are never
+// delegated to the model — that is what previously made every structured
+// generation fail schema validation and fall through the whole fallback chain.
+const diagnosisContentSchema = z.object({
+  score: z.number().min(0).max(1),
+  misconceptionLabel: z.string().max(160).nullable().default(null),
+  misconceptionExplanation: z.string().max(1200).nullable().default(null),
+  missingPrerequisites: z.array(z.string().max(160)).max(8).default([]),
+  recommendedIntervention: z.string().min(1).max(1200),
+  rationale: z.string().min(1).max(1600),
+});
+
+const lessonContentSchema = z.object({
+  title: z.string().min(1).max(200),
+  explanation: z.string().min(1).max(4000),
+  checksForUnderstanding: z.array(z.string().max(400)).min(1).max(6),
 });
 
 export async function POST(request: Request) {
@@ -45,8 +64,8 @@ export async function POST(request: Request) {
       userId: user.id,
     };
     const result = parsed.data.taskClass === "misconception_diagnosis"
-      ? await generateStructured({ ...common, schema: diagnosticResultSchema })
-      : await generateStructured({ ...common, schema: lessonOutputSchema });
+      ? await generateStructured({ ...common, schema: diagnosisContentSchema })
+      : await generateStructured({ ...common, schema: lessonContentSchema });
     await logModelUsage({ userId: user.id, decision: result.decision, usage: result.usage });
     return NextResponse.json({ output: result.output, assistance: { reason: result.decision.reason, verification: result.decision.verification, fallbackUsed: result.decision.fallbackUsed } });
   } catch {

@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText, gateway, Output, streamText, type LanguageModel } from "ai";
-import type { z } from "zod";
+import { z } from "zod";
 import type { RouteDecision } from "@continuum/schemas";
 import { geminiApiKeys } from "./embeddings";
 import { acquireFeatherlessConcurrency, selectFeatherlessModel, withFeatherlessConcurrency } from "./featherless";
@@ -79,10 +79,13 @@ export function providerEnvironmentFromProcess(): ProviderEnvironment {
     GROQ_REASONING_MODEL: process.env.GROQ_REASONING_MODEL,
     GROQ_CODE_MODEL: process.env.GROQ_CODE_MODEL,
     GROQ_VERIFIER_MODEL: process.env.GROQ_VERIFIER_MODEL,
+    GROQ_STRUCTURED_MODEL: process.env.GROQ_STRUCTURED_MODEL,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     GEMINI_API_KEYS: process.env.GEMINI_API_KEYS,
     GEMINI_MODEL: process.env.GEMINI_MODEL,
     GEMINI_DATA_USE_ACKNOWLEDGED: process.env.GEMINI_DATA_USE_ACKNOWLEDGED,
+    AI_STRUCTURED_DEADLINE_MS: process.env.AI_STRUCTURED_DEADLINE_MS,
+    AI_ATTEMPT_TIMEOUT_MS: process.env.AI_ATTEMPT_TIMEOUT_MS,
     ...Object.fromEntries(Array.from({ length: 10 }, (_, index) => [`GEMINI_API_KEY_${index + 1}`, process.env[`GEMINI_API_KEY_${index + 1}`]])),
   };
 }
@@ -106,11 +109,11 @@ function gatewayFallbackModels(env: ProviderEnvironment, primary: string) {
 
 let geminiGenerationCursor = 0;
 
-async function modelForDecision(decision: RouteDecision, env: ProviderEnvironment, userId = "anonymous"): Promise<GenerationTarget> {
+async function modelForDecision(decision: RouteDecision, env: ProviderEnvironment, userId = "anonymous", structured = false): Promise<GenerationTarget> {
   if (decision.route === "deterministic") throw new Error("Deterministic tasks must not invoke a language model");
   if (decision.route === "groq") {
     if (!env.GROQ_API_KEY) throw new Error("Groq is not configured");
-    const id = await selectGroqModel(decision.taskClass, env as NodeJS.ProcessEnv);
+    const id = await selectGroqModel(decision.taskClass, env as NodeJS.ProcessEnv, { structured });
     return { model: createOpenAICompatible({ name: "groq", apiKey: env.GROQ_API_KEY, baseURL: "https://api.groq.com/openai/v1" }).languageModel(id), modelId: id, provider: "groq" };
   }
   if (decision.route === "featherless") {
@@ -158,43 +161,137 @@ export function generationRouteOrder(decision: RouteDecision, env: ProviderEnvir
   return [decision.route, ...preferred.filter((route) => route !== decision.route && routeConfigured(route, env))];
 }
 
+/**
+ * Ordering used specifically for JSON-schema (structured) generation. Groq's
+ * default low-latency model rejects `response_format` json_schema, so leading
+ * with it makes every structured request waste an attempt and often fall all
+ * the way through the fallback chain. Providers that reliably honor JSON schema
+ * (Gemini native structured output, Featherless Qwen) lead; Groq is kept only as
+ * a last-resort fallback so structured tasks never depend on it.
+ */
+export function structuredRouteOrder(decision: RouteDecision, env: ProviderEnvironment): RouteDecision["route"][] {
+  // For schema-bound generation, lead with Groq: its GPT-OSS models are the most
+  // reliable json_schema route and return in ~1s, so structured calls succeed fast
+  // instead of burning the deadline on providers that stream prose or time out. The
+  // originally routed provider and the rest follow as fallbacks. When Groq is not
+  // configured, the routed provider leads as before.
+  const order: RouteDecision["route"][] = ["groq", decision.route, "gemini", "featherless", "ai_gateway"];
+  return [...new Set(order)].filter((route) => routeConfigured(route, env));
+}
+
+const clamp = (value: number, min: number, max: number, fallback: number) =>
+  Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+
+type OpenAICompatibleTarget = { baseURL: string; apiKey: string; headers: Record<string, string>; modelId: string; concurrencyCost?: number };
+type StructuredUsage = { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+
+async function openAICompatibleTarget(decision: RouteDecision, env: ProviderEnvironment): Promise<OpenAICompatibleTarget> {
+  if (decision.route === "groq") {
+    if (!env.GROQ_API_KEY) throw new Error("Groq is not configured");
+    const modelId = await selectGroqModel(decision.taskClass, env as NodeJS.ProcessEnv, { structured: true });
+    return { baseURL: "https://api.groq.com/openai/v1", apiKey: env.GROQ_API_KEY, headers: {}, modelId };
+  }
+  if (!env.FEATHERLESS_API_KEY) throw new Error("Featherless is not configured");
+  const selected = await selectFeatherlessModel(decision.taskClass, env as NodeJS.ProcessEnv);
+  return {
+    baseURL: "https://api.featherless.ai/v1",
+    apiKey: env.FEATHERLESS_API_KEY,
+    headers: { "HTTP-Referer": env.APP_BASE_URL ?? "https://continuum.app", "X-Title": "Continuum" },
+    modelId: selected.id,
+    concurrencyCost: selected.concurrencyCost,
+  };
+}
+
+/**
+ * The AI SDK's OpenAI-compatible provider does not send `response_format:
+ * json_schema`, so `Output.object` degrades to prompt-only JSON that reasoning
+ * models frequently break. Groq and Featherless both honor json_schema over the
+ * raw endpoint, so schema-bound generation calls it directly and validates with
+ * Zod. `strict: false` is required because our schemas use optional fields.
+ */
+async function openAICompatibleStructured<T>(target: OpenAICompatibleTarget, request: { schema: z.ZodType<T>; system?: string; prompt: string; maxOutputTokens?: number; signal: AbortSignal }): Promise<{ output: T; usage: StructuredUsage }> {
+  const jsonSchema = z.toJSONSchema(request.schema, { io: "output" }) as Record<string, unknown>;
+  const response = await fetch(`${target.baseURL.replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${target.apiKey}`, ...target.headers },
+    body: JSON.stringify({
+      model: target.modelId,
+      messages: [...(request.system ? [{ role: "system", content: request.system }] : []), { role: "user", content: request.prompt }],
+      response_format: { type: "json_schema", json_schema: { name: "continuum_result", schema: jsonSchema, strict: false } },
+      temperature: 0.2,
+      ...(request.maxOutputTokens ? { max_tokens: request.maxOutputTokens } : {}),
+    }),
+    signal: request.signal,
+  });
+  if (!response.ok) throw new Error(`${target.modelId} structured completion failed (${response.status})`);
+  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } };
+  const content = payload.choices?.[0]?.message?.content;
+  if (!content) throw new Error(`${target.modelId} returned no structured content`);
+  const output = request.schema.parse(JSON.parse(content));
+  return { output, usage: { inputTokens: payload.usage?.prompt_tokens, outputTokens: payload.usage?.completion_tokens, totalTokens: payload.usage?.total_tokens } };
+}
+
 export async function generateStructured<T>(request: StructuredGenerationRequest<T>, env: ProviderEnvironment = providerEnvironmentFromProcess()) {
-  const taskPreferredRoutes = generationRouteOrder(request.decision, env).slice(1);
-  const attempts = [
-    request.decision,
-    ...taskPreferredRoutes
-      .filter((route) => route !== request.decision.route && routeConfigured(route, env))
-      .map((route) => ({
-        ...request.decision,
-        route,
-        model: `${route}/fallback`,
-        reason: `${request.decision.route} was unavailable; ${route} is the next configured provider qualified for this task.`,
-        fallbackUsed: true,
-      } satisfies RouteDecision)),
-  ];
+  // Hard wall-clock budget so a slow or non-conforming provider can never freeze
+  // the caller. The route cascade fails fast within this deadline and the request
+  // handler surfaces a recoverable error instead of hanging for minutes.
+  const deadlineMs = clamp(Number(env.AI_STRUCTURED_DEADLINE_MS), 8_000, 90_000, 40_000);
+  const perAttemptMs = clamp(Number(env.AI_ATTEMPT_TIMEOUT_MS), 4_000, 45_000, 20_000);
+  const startedAt = Date.now();
+  const remaining = () => deadlineMs - (Date.now() - startedAt);
+
+  const routes = structuredRouteOrder(request.decision, env);
+  const attempts: RouteDecision[] = routes.map((route, index) =>
+    index === 0 && route === request.decision.route
+      ? request.decision
+      : ({
+          ...request.decision,
+          route,
+          model: `${route}/structured`,
+          reason: index === 0
+            ? `${route} was selected first because it reliably returns schema-valid JSON for this task.`
+            : `A preceding provider was unavailable; ${route} is the next configured provider that supports structured output.`,
+          fallbackUsed: index > 0,
+        } satisfies RouteDecision));
   let lastError: unknown;
 
   let totalAttempts = 0;
   for (let index = 0; index < attempts.length; index += 1) {
     const decision = attempts[index]!;
-    const routeAttempts = decision.route === "gemini" ? Math.min(3, Math.max(1, geminiApiKeys(env as NodeJS.ProcessEnv).length)) : decision.route === "featherless" ? 2 : 1;
+    // Gemini rotates through a couple of keys; every other provider gets a single
+    // attempt so a hanging or non-conforming route cannot consume the whole budget
+    // before the next provider is tried.
+    const routeAttempts = decision.route === "gemini" ? Math.min(2, Math.max(1, geminiApiKeys(env as NodeJS.ProcessEnv).length)) : 1;
     for (let routeAttempt = 0; routeAttempt < routeAttempts; routeAttempt += 1) {
+      const budget = remaining();
+      if (budget < 3_000) { lastError ??= new Error("Structured generation deadline exceeded"); break; }
       totalAttempts += 1;
+      const attemptTimeout = Math.min(perAttemptMs, budget);
+      const structuredSystem = [request.system, "Return valid JSON matching the requested schema. Do not add prose outside the JSON value."].filter(Boolean).join("\n\n");
       try {
-        const target = await modelForDecision(decision, env, request.userId);
-        const structuredSystem = [request.system, "Return valid JSON matching the requested schema. Do not add prose outside the JSON value."].filter(Boolean).join("\n\n");
-        const run = () => generateText({
-            model: target.model,
-            output: Output.object({ schema: request.schema }),
-            ...(target.providerOptions ? { providerOptions: target.providerOptions } : {}),
-            system: structuredSystem,
-            prompt: request.prompt,
-            ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}),
-            abortSignal: AbortSignal.timeout(45_000),
-          });
-        const result = target.provider === "featherless"
-          ? await withFeatherlessConcurrency(target.concurrencyCost ?? 1, run, env as NodeJS.ProcessEnv)
-          : await run();
+        if (decision.route === "groq" || decision.route === "featherless") {
+          const target = await openAICompatibleTarget(decision, env);
+          const run = () => openAICompatibleStructured(target, { schema: request.schema, system: structuredSystem, prompt: request.prompt, maxOutputTokens: request.maxOutputTokens, signal: AbortSignal.timeout(attemptTimeout) });
+          const result = decision.route === "featherless"
+            ? await withFeatherlessConcurrency(target.concurrencyCost ?? 1, run, env as NodeJS.ProcessEnv)
+            : await run();
+          return {
+            output: result.output,
+            decision: { ...decision, model: target.modelId, fallbackUsed: index > 0 || routeAttempt > 0 },
+            attempts: totalAttempts,
+            usage: result.usage,
+          };
+        }
+        const target = await modelForDecision(decision, env, request.userId, true);
+        const result = await generateText({
+          model: target.model,
+          output: Output.object({ schema: request.schema }),
+          ...(target.providerOptions ? { providerOptions: target.providerOptions } : {}),
+          system: structuredSystem,
+          prompt: request.prompt,
+          ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}),
+          abortSignal: AbortSignal.timeout(attemptTimeout),
+        });
         return {
           output: request.schema.parse(result.output),
           decision: { ...decision, model: target.modelId, fallbackUsed: index > 0 || routeAttempt > 0 },
@@ -203,9 +300,11 @@ export async function generateStructured<T>(request: StructuredGenerationRequest
         };
       } catch (error) {
         lastError = error;
-        if (routeAttempt + 1 < routeAttempts) await new Promise((resolve) => setTimeout(resolve, 250 * (routeAttempt + 1)));
+        if (process.env.AI_DEBUG_ROUTES === "true") console.error(`[generateStructured] ${decision.route} attempt failed:`, error instanceof Error ? error.message : error);
+        if (routeAttempt + 1 < routeAttempts && remaining() > 3_000) await new Promise((resolve) => setTimeout(resolve, 250 * (routeAttempt + 1)));
       }
     }
+    if (remaining() < 3_000) break;
   }
   throw lastError instanceof Error ? lastError : new Error("Every qualified model route failed");
 }
