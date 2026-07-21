@@ -44,6 +44,20 @@ import {
 
 export const DEMO_USER_ID = "user_maya";
 
+/**
+ * Whether the built-in "Maya" acceptance fixture should be auto-seeded on the
+ * first repository call. It is enabled in development (so the local MCP demo
+ * token and seeded workspace work) and disabled in production by default, so a
+ * real deployment is never polluted with demo goals and a demo user, and real
+ * requests never pay for 13 sequential fixture inserts on a cold start.
+ * `CONTINUUM_SEED_DEMO=true|false` overrides the default in either direction.
+ */
+function demoSeedEnabled(env: NodeJS.ProcessEnv = process.env) {
+  if (env.CONTINUUM_SEED_DEMO === "true") return true;
+  if (env.CONTINUUM_SEED_DEMO === "false") return false;
+  return env.NODE_ENV !== "production";
+}
+
 function publicSourceMetadata(source: typeof sources.$inferSelect) {
   const { storagePath, ...metadata } = source;
   void storagePath;
@@ -106,6 +120,13 @@ export class NeonRepository {
   private seedPromise?: Promise<void>;
 
   ensureDemoSeed() {
+    if (!demoSeedEnabled()) return (this.seedPromise ??= Promise.resolve());
+    this.seedPromise ??= this.seedDemoData();
+    return this.seedPromise;
+  }
+
+  /** Explicit, environment-independent demo seed used by `pnpm db:seed`. */
+  runDemoSeed() {
     this.seedPromise ??= this.seedDemoData();
     return this.seedPromise;
   }
