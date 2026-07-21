@@ -39,7 +39,7 @@ end-to-end. See [provider-registry.md](docs/provider-registry.md),
 | # | Step | Status | Evidence |
 |---|------|--------|----------|
 | 1 | Fresh user creates an account | ✅ Verified live | `POST /api/auth/register` → 201, real `user_id`, scrypt hash, session cookie |
-| 2 | User completes onboarding | ⚠️ Partial (real but minimal) | Empty-state onboarding creates a real **goal**; grade/subjects/deadlines/weekly-time/learning-style and auto-milestones/tasks/schedule are **not** yet created (see §5) |
+| 2 | User completes onboarding | ⚠️ Partial (real but minimal) | Empty-state onboarding creates a real **goal + a first actionable task** (verified live, persisted & linked); grade/subjects/deadlines/weekly-time/learning-style and auto-milestones/schedule/diagnostic are **not** yet created (see §5) |
 | 3 | Creates a real academic goal | ✅ Verified live | `goal.created` → 201, persisted `goal_…`, visible on reload via `/api/state?view=goals` |
 | 4 | Continuum generates & persists a real plan | ◻️ Prior-verified only | Deterministic scheduler exists; not re-run live this session |
 | 5 | User receives real AI assistance | ✅ Verified live | `POST /api/ai` misconception diagnosis → valid structured output in ~2.6s |
@@ -104,11 +104,13 @@ Provider health (live): `groq healthy (15 models)`, `gemini healthy
 
 ## 5. Exact remaining limitations (honest)
 
-- **Onboarding depth (P0 gap).** The fresh-user onboarding creates a real goal
-  but does **not** yet capture grade/subjects/deadlines/weekly-time/learning-
-  style, nor auto-generate milestones, initial tasks, a schedule, an initial
-  diagnostic, or a recommended next action. Steps 2 and 4 of the completion
-  standard are therefore only partially real. This is the top follow-up.
+- **Onboarding depth (P0 gap, partially closed).** Onboarding now creates a real
+  goal **and a first actionable task** (a baseline diagnostic), so a fresh
+  account no longer lands on an empty board. It does **not** yet capture
+  grade/subjects/deadlines/weekly-time/learning-style, nor auto-generate
+  milestones, a full schedule, or an initial diagnostic result. Steps 2 and 4 of
+  the completion standard are therefore still only partially real — the richer
+  intake + deterministic plan generation is the top follow-up.
 - **Not re-run live this session** (exist + passed in the prior audit, but this
   session focused on the provider layer + fresh-user entry): source ingestion &
   retrieval, resource-broker completion loop, mastery/schedule updates, and MCP

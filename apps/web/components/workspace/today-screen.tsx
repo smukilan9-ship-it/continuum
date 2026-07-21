@@ -92,7 +92,16 @@ function OnboardingScreen({ userName, onRefresh }: { userName: string; onRefresh
     setError("");
     const form = new FormData(event.currentTarget);
     try {
-      await postState("goal.created", "Created the first academic goal during onboarding.", { title: String(form.get("title")), outcome: String(form.get("outcome")), date: String(form.get("date")) });
+      const created = await postState("goal.created", "Created the first academic goal during onboarding.", { title: String(form.get("title")), outcome: String(form.get("outcome")), date: String(form.get("date")) }) as { data?: { id?: string } };
+      // Seed a concrete first action so a fresh account lands with a real next
+      // step, not an empty board. Best-effort: the goal is already saved, so a
+      // task failure must not fail onboarding.
+      const goalId = created.data?.id;
+      if (goalId) {
+        try {
+          await postState("task.created", "Added a baseline diagnostic as the first step.", { goalId, title: "Take a short baseline diagnostic", description: "Answer a few questions so Continuum can gauge your current level and tailor the plan.", estimatedMinutes: 20, priority: 2 });
+        } catch { /* non-blocking: the goal exists; the first task can be added later */ }
+      }
       setBusy(false);
       await onRefresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "The goal could not be saved"); setBusy(false); }
