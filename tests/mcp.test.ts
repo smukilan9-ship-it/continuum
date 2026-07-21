@@ -44,4 +44,29 @@ describe("MCP contract", () => {
   it("rejects unregistered tool names", async () => {
     await expect(executeTool("instructions_from_paper", {}, context(["memory:read"]))).rejects.toThrow(/unknown|disallowed/i);
   });
+
+  it("threads shared state: an MCP write is retrievable by a subsequent MCP read", async () => {
+    // Backs read/write with one store so this asserts read-after-write continuity
+    // through the real tool dispatch + scope checks, not a per-call stub.
+    const receipts: Array<Record<string, unknown>> = [];
+    const sharedContext = (scopes: string[]) => ({
+      scopes,
+      now,
+      read: (name: string, args: Record<string, unknown>) => {
+        if (name === "load_outcome_receipt") return args.sessionId ? receipts.find((r) => r.sessionId === args.sessionId) ?? null : receipts.at(-1) ?? null;
+        return { name, current: true };
+      },
+      write: (name: string, args: Record<string, unknown>) => {
+        if (name === "sync_session") { const receipt = { id: "receipt_test", sessionId: args.sessionId, summary: args.summary, createdAt: now }; receipts.push(receipt); return { data: receipt, entityIds: [receipt.id], evidenceIds: [], summary: "Saved outcome receipt." }; }
+        return { data: { name }, entityIds: ["task_created"], evidenceIds: [], summary: "Change recorded." };
+      },
+    });
+
+    const written = await executeTool("sync_session", { sessionId: "session_abc", summary: "Passed the checkpoint." }, sharedContext(["memory:write"]));
+    expect(written.entityIds).toContain("receipt_test");
+
+    const read = await executeTool("load_outcome_receipt", { sessionId: "session_abc" }, sharedContext(["memory:read"]));
+    expect((read.data as { sessionId?: string; summary?: string }).sessionId).toBe("session_abc");
+    expect((read.data as { summary?: string }).summary).toBe("Passed the checkpoint.");
+  });
 });
