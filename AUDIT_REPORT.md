@@ -5,6 +5,16 @@ Scope: full-repository audit, high-impact performance and reliability fixes,
 security review, and live verification of the core product flows.
 Branch: `audit/perf-security-fixes` (off `main`).
 
+> **Correction (later same day):** the "provider model IDs are forward-dated /
+> unavailable — worked around" conclusion below (item 4, §2.4, §7) was
+> **superseded**. Live probing showed all 10 Gemini keys are valid and both
+> Gemini and Featherless generate real content — the failures were entirely
+> hard-coded, forward-dated model IDs plus Featherless's removed `/v1/models`
+> endpoint, not credentials. This was fixed with real runtime discovery + health
+> checks + circuit breakers, verified end-to-end. See
+> [REAL_APP_REPORT.md](REAL_APP_REPORT.md) and
+> [docs/provider-registry.md](docs/provider-registry.md).
+
 ---
 
 ## 1. Initial state (verdict up front)
