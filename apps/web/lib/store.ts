@@ -60,6 +60,9 @@ export interface Store {
   searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }): Promise<StoredMemoryChunk[]>;
   saveReceipt(receipt: OutcomeReceipt, clientId?: string): Promise<void>;
   listReceipts(limit?: number): Promise<unknown[]>;
+  createMilestone(input: { id: string; goalId: string; title: string; order: number; dueAt?: string }, now: string): Promise<void>;
+  listMilestones(goalId?: string): Promise<unknown[]>;
+  saveOnboardingIntake(educationLevel: string, intake: Record<string, unknown>, now: string): Promise<void>;
   seedResources(): Promise<void>;
   recommendResource(args: Record<string, unknown>): Promise<ResourceRecommendation>;
   saveResourceActivity(activity: ResourceActivity, metadata?: Record<string, unknown>): Promise<void>;
@@ -324,6 +327,10 @@ class MemoryStore implements Store {
   }
   async saveReceipt(receipt: OutcomeReceipt) { demoStore.receipts.unshift(receipt as unknown as Record<string, unknown>); }
   async listReceipts(limit = 10) { return demoStore.receipts.slice(0, limit); }
+  private memoryMilestones: Array<Record<string, unknown>> = [];
+  async createMilestone(input: { id: string; goalId: string; title: string; order: number; dueAt?: string }) { this.memoryMilestones.push({ ...input, status: "upcoming" }); }
+  async listMilestones(goalId?: string) { return this.memoryMilestones.filter((milestone) => !goalId || milestone.goalId === goalId).sort((left, right) => Number(left.order) - Number(right.order)); }
+  async saveOnboardingIntake() { /* Local development identity does not persist a profile. */ }
   async seedResources() { /* Curated registry is already in the application bundle. */ }
   async recommendResource(args: Record<string, unknown>) { return recommendBestResource({ id: opaqueId("recommendation"), topic: String(args.topic ?? "electric potential"), goalId: args.goalId ? String(args.goalId) : undefined, conceptId: args.conceptId ? String(args.conceptId) : undefined, goalType: (args.goalType as "school" | "exam" | "university" | "research" | "coding" | undefined) ?? "school", need: (args.need as ResourceNeed | undefined) ?? "conceptual_intuition", level: args.level ? String(args.level) : undefined, minutesAvailable: args.minutesAvailable ? Number(args.minutesAvailable) : undefined, costPreference: (args.costPreference as "free_only" | "free_preferred" | "any" | undefined) ?? "free_only", preferredFormats: Array.isArray(args.preferredFormats) ? args.preferredFormats.map(String) : undefined }); }
   async saveResourceActivity(activity: ResourceActivity, metadata: Record<string, unknown> = {}) { const index = demoStore.resourceActivities.findIndex((item) => item.id === activity.id); const value = { ...activity, metadata }; if (index >= 0) demoStore.resourceActivities[index] = value; else demoStore.resourceActivities.unshift(value); }
@@ -524,6 +531,9 @@ class NeonStore implements Store {
   }
   async saveReceipt(receipt: OutcomeReceipt, clientId?: string) { await this.repo.saveSessionReceipt(receipt, clientId); }
   async listReceipts(limit = 10) { return this.repo.listSessionReceipts(this.userId, limit); }
+  async createMilestone(input: { id: string; goalId: string; title: string; order: number; dueAt?: string }, now: string) { await this.repo.createMilestone(input, now, this.userId); }
+  async listMilestones(goalId?: string) { return this.repo.listMilestones(this.userId, goalId); }
+  async saveOnboardingIntake(educationLevel: string, intake: Record<string, unknown>, now: string) { await this.repo.saveOnboardingIntake(this.userId, educationLevel, intake, now); }
   async seedResources() { this.resourceSeed ??= this.repo.seedResources(curatedResourceRegistry); await this.resourceSeed; }
   async recommendResource(args: Record<string, unknown>) { await this.seedResources(); const registry = await this.repo.listResources(); return recommendBestResource({ id: opaqueId("recommendation"), topic: String(args.topic ?? "electric potential"), goalId: args.goalId ? String(args.goalId) : undefined, conceptId: args.conceptId ? String(args.conceptId) : undefined, goalType: (args.goalType as "school" | "exam" | "university" | "research" | "coding" | undefined) ?? "school", need: (args.need as ResourceNeed | undefined) ?? "conceptual_intuition", level: args.level ? String(args.level) : undefined, minutesAvailable: args.minutesAvailable ? Number(args.minutesAvailable) : undefined, costPreference: (args.costPreference as "free_only" | "free_preferred" | "any" | undefined) ?? "free_only", preferredFormats: Array.isArray(args.preferredFormats) ? args.preferredFormats.map(String) : undefined }, registry.length ? registry : curatedResourceRegistry); }
   async saveResourceActivity(activity: ResourceActivity, metadata?: Record<string, unknown>) { await this.seedResources(); await this.repo.saveResourceActivity(activity, metadata); }

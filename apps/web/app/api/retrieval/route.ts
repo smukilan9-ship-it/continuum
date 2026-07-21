@@ -21,8 +21,11 @@ export async function POST(request: Request) {
   if (store.kind === "neon" && embeddingConfiguration() && persisted.length) {
     try {
       const matches = await store.vectorSearch(await embedQuery(parsed.data.query), 3);
-      const configuredThreshold = Number(process.env.RETRIEVAL_COSINE_THRESHOLD ?? 0.45);
-      const threshold = Number.isFinite(configuredThreshold) ? Math.max(-1, Math.min(1, configuredThreshold)) : 0.45;
+      // Calibrated against gemini-embedding-001: on-topic queries score ~0.72+,
+      // unrelated queries ~0.42–0.46, so 0.6 cleanly separates grounded from
+      // unanswerable instead of citing an irrelevant passage.
+      const configuredThreshold = Number(process.env.RETRIEVAL_COSINE_THRESHOLD ?? 0.6);
+      const threshold = Number.isFinite(configuredThreshold) ? Math.max(-1, Math.min(1, configuredThreshold)) : 0.6;
       const vectorAnswer = answerFromVectorMatches(matches.map((match) => ({ ...match, score: match.score ?? 0 })), parsed.data.sourceLocked, threshold);
       if (vectorAnswer.citations.length || parsed.data.sourceLocked) return NextResponse.json({ ...vectorAnswer, retrievalMode: "vector" });
     } catch {

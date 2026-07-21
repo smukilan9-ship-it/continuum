@@ -1,4 +1,4 @@
-import { and, asc, cosineDistance, desc, eq, gt, ilike, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
+import { and, asc, cosineDistance, desc, eq, gt, ilike, inArray, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import type { MasteryState, MemoryEvent, OutcomeReceipt, ResourceActivity, ResourceRegistryEntry } from "@continuum/schemas";
 import { getDatabase } from "./client";
 import {
@@ -21,10 +21,12 @@ import {
   memoryEvents,
   memoryProposals,
   memoryRecords,
+  milestones,
   modelRoutes,
   modelUsage,
   oauthGrants,
   profiles,
+  taskDependencies,
   projectDecisions,
   projects,
   rateLimitBuckets,
@@ -301,10 +303,11 @@ export class NeonRepository {
   async getWorkspaceSnapshot(userId: string, view: string) {
     await this.ensureDemoSeed();
     const empty = {
-      events: [], goals: [], tasks: [], projects: [], decisions: [], notes: [], sources: [],
+      events: [], goals: [], tasks: [], milestones: [], projects: [], decisions: [], notes: [], sources: [],
       learningStates: [], memoryRecords: [], receipts: [], resourceActivities: [], proposals: [],
       schedule: [], calendarConstraints: [], modelRoutes: [],
     };
+    const userMilestones = () => this.db.select({ milestone: milestones }).from(milestones).innerJoin(goals, eq(milestones.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(goals.deleted, false), eq(milestones.deleted, false))).orderBy(asc(milestones.order));
     const userGoals = () => this.db.select().from(goals).where(and(eq(goals.userId, userId), eq(goals.deleted, false))).orderBy(desc(goals.createdAt));
     const userTasks = () => this.db.select({ task: tasks }).from(tasks).innerJoin(goals, eq(tasks.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(goals.deleted, false), eq(tasks.deleted, false))).orderBy(desc(tasks.createdAt));
     const userProjects = () => this.db.select().from(projects).where(and(eq(projects.userId, userId), eq(projects.deleted, false))).orderBy(desc(projects.updatedAt));
@@ -320,20 +323,20 @@ export class NeonRepository {
 
     if (view === "integrations") return empty;
     if (view === "today") {
-      const [goalRows, taskRows, projectRows, receiptRows, activityRows, scheduleRows, constraintRows] = await Promise.all([
-        userGoals(), userTasks(), userProjects(), userReceipts(4),
+      const [goalRows, taskRows, milestoneRows, projectRows, receiptRows, activityRows, scheduleRows, constraintRows] = await Promise.all([
+        userGoals(), userTasks(), userMilestones(), userProjects(), userReceipts(4),
         this.db.select().from(resourceActivities).where(eq(resourceActivities.userId, userId)).orderBy(desc(resourceActivities.startedAt)).limit(8),
         this.listSchedule(userId),
         this.db.select().from(calendarConstraints).where(and(eq(calendarConstraints.userId, userId), eq(calendarConstraints.deleted, false), gt(calendarConstraints.endsAt, new Date(Date.now() - 24 * 3600_000)))).orderBy(asc(calendarConstraints.startsAt)).limit(100),
       ]);
-      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), projects: projectRows, receipts: receiptRows, resourceActivities: activityRows, schedule: scheduleRows, calendarConstraints: constraintRows };
+      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), milestones: milestoneRows.map(({ milestone }) => milestone), projects: projectRows, receipts: receiptRows, resourceActivities: activityRows, schedule: scheduleRows, calendarConstraints: constraintRows };
     }
     if (view === "goals") {
-      const [goalRows, taskRows, scheduleRows, constraintRows] = await Promise.all([
-        userGoals(), userTasks(), this.listSchedule(userId),
+      const [goalRows, taskRows, milestoneRows, scheduleRows, constraintRows] = await Promise.all([
+        userGoals(), userTasks(), userMilestones(), this.listSchedule(userId),
         this.db.select().from(calendarConstraints).where(and(eq(calendarConstraints.userId, userId), eq(calendarConstraints.deleted, false), gt(calendarConstraints.endsAt, new Date(Date.now() - 24 * 3600_000)))).orderBy(asc(calendarConstraints.startsAt)).limit(100),
       ]);
-      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), schedule: scheduleRows, calendarConstraints: constraintRows };
+      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), milestones: milestoneRows.map(({ milestone }) => milestone), schedule: scheduleRows, calendarConstraints: constraintRows };
     }
     if (view === "learn") {
       const [goalRows, taskRows, masteryRows, activityRows, receiptRows] = await Promise.all([
@@ -427,6 +430,8 @@ export class NeonRepository {
     if (!Number.isInteger(priority) || priority < 1 || priority > 5) throw new Error("Priority must be an integer between 1 and 5");
     const deadline = input.deadline ? new Date(String(input.deadline)) : undefined;
     if (deadline && Number.isNaN(deadline.valueOf())) throw new Error("Task deadline is invalid");
+    const energyRequired = ["low", "medium", "high"].includes(String(input.energyRequired)) ? String(input.energyRequired) : "medium";
+    const dependsOn = Array.isArray(input.dependsOn) ? input.dependsOn.map(String).filter(Boolean) : [];
     await this.db.insert(tasks).values({
       id,
       goalId: String(input.goalId),
@@ -436,13 +441,51 @@ export class NeonRepository {
       estimatedMinutes,
       deadline,
       priority,
-      energyRequired: "medium",
+      energyRequired,
       completionEvidence: input.completionEvidence ? String(input.completionEvidence) : undefined,
-      generatedBy: "mcp",
+      generatedBy: input.generatedBy ? String(input.generatedBy) : "mcp",
       promptVersion: "mcp-v1",
       createdAt: new Date(now),
       updatedAt: new Date(now),
     });
+    if (dependsOn.length) {
+      // Only persist dependencies on tasks that belong to the same owned goal.
+      const owned = await this.db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.goalId, String(input.goalId)), inArray(tasks.id, dependsOn)));
+      const validIds = new Set(owned.map((row) => row.id));
+      const rows = dependsOn.filter((dependencyId) => validIds.has(dependencyId)).map((dependencyId) => ({ id: `dep_${id.replace(/^task_/, "")}_${dependencyId.replace(/^task_/, "").slice(0, 8)}`, taskId: id, dependsOnTaskId: dependencyId, createdAt: new Date(now), updatedAt: new Date(now) }));
+      if (rows.length) await this.db.insert(taskDependencies).values(rows);
+    }
+  }
+
+  async createMilestone(input: { id: string; goalId: string; title: string; order: number; dueAt?: string }, now: string, userId = DEMO_USER_ID) {
+    const [ownedGoal] = await this.db.select({ id: goals.id }).from(goals).where(and(eq(goals.id, input.goalId), eq(goals.userId, userId), eq(goals.deleted, false))).limit(1);
+    if (!ownedGoal) throw new Error("Goal not found for this user");
+    await this.db.insert(milestones).values({
+      id: input.id,
+      goalId: input.goalId,
+      title: input.title,
+      order: input.order,
+      status: "upcoming",
+      dueAt: input.dueAt ? new Date(input.dueAt) : undefined,
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
+    });
+  }
+
+  async listMilestones(userId: string, goalId?: string) {
+    const conditions = [eq(goals.userId, userId), eq(milestones.deleted, false), eq(goals.deleted, false)];
+    if (goalId) conditions.push(eq(milestones.goalId, goalId));
+    return this.db.select({ milestone: milestones }).from(milestones).innerJoin(goals, eq(milestones.goalId, goals.id)).where(and(...conditions)).orderBy(asc(milestones.order)).then((rows) => rows.map(({ milestone }) => milestone));
+  }
+
+  async listTaskDependencies(userId: string) {
+    return this.db.select({ taskId: taskDependencies.taskId, dependsOnTaskId: taskDependencies.dependsOnTaskId }).from(taskDependencies).innerJoin(tasks, eq(taskDependencies.taskId, tasks.id)).innerJoin(goals, eq(tasks.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(taskDependencies.deleted, false)));
+  }
+
+  async saveOnboardingIntake(userId: string, educationLevel: string, intake: Record<string, unknown>, now: string) {
+    const [profile] = await this.db.select({ id: profiles.id, preferences: profiles.preferences }).from(profiles).where(and(eq(profiles.userId, userId), eq(profiles.deleted, false))).limit(1);
+    if (!profile) throw new Error("Profile not found for this user");
+    await this.db.update(profiles).set({ educationLevel, preferences: { ...(profile.preferences ?? {}), onboarding: intake }, updatedAt: new Date(now) }).where(eq(profiles.id, profile.id));
   }
 
   async createGoal(input: Record<string, unknown>, id: string, now: string, userId = DEMO_USER_ID) {
