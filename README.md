@@ -67,7 +67,25 @@ pnpm db:seed
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Never commit `.env.local`; it is ignored by Git.
+The dev server prints the URL it actually bound to — usually [http://localhost:3000](http://localhost:3000), but if that port is busy Next.js falls back automatically (e.g. `http://localhost:3001`), so use whichever URL the terminal reports. Never commit `.env.local`; it is ignored by Git.
+
+Account passwords require a minimum of **6 characters** (client validation, server schema, and helper text share one policy in `apps/web/lib/password-policy.ts`).
+
+## Demo account
+
+For hackathon judges and local demos, a single disposable, fully populated demo account is available. From a clone with `.env.local` configured:
+
+```bash
+pnpm seed:demo            # create or reset the demo account + demonstration data
+pnpm dev                  # start the app; open the URL the terminal prints
+```
+
+- **Username:** `demo`  ·  **Password:** `demo123`
+- On the sign-in page, **“Try the demo”** logs in with one click (normal authentication — no bypass).
+- The account is a lived-in Class 12 student workspace: SAT prep, a SQL/Python–MySQL unit, the **OASIS** cross-marker IHC research (with citable sources), and an exoplanet classifier.
+- Seeding is **idempotent** and safe to re-run — it resets only the `demo` account to its canonical state and never touches other users. It is created **only** by this command, never by an ordinary request.
+
+Full details, the reset guarantees, and a 2–4 minute walkthrough are in [docs/demo-account.md](docs/demo-account.md) and [docs/demo-walkthrough.md](docs/demo-walkthrough.md).
 
 ## Provider configuration
 

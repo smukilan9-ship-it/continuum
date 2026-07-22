@@ -4,6 +4,7 @@ import { Check, Clock3, GitBranch, ShieldCheck, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Badge, Button, Card } from "@/components/ui";
 import { PageIntro } from "./page-intro";
+import { eventTypeLabel, formatLabel, humanize } from "@/lib/labels";
 import { formatDate, text, type Row, type WorkspaceState } from "./types";
 
 type Toast = (message: string | null) => void;
@@ -54,9 +55,9 @@ export function ActivityScreen({ state, showToast, onRefresh }: { state: Workspa
             const kind = text(proposal, "kind", "change");
             const id = text(proposal, "id");
             return <Card className="proposal-card" key={id}>
-              <div className="proposal-header"><div><Badge tone={text(proposal, "risk") === "high" ? "orange" : "blue"}>{text(proposal, "risk", "medium")} risk</Badge><Badge tone="neutral">{kind.replaceAll("_", " ")}</Badge></div><span>{formatDate(proposal.createdAt)}</span></div>
+              <div className="proposal-header"><div><Badge tone={text(proposal, "risk") === "high" ? "orange" : "blue"}>{formatLabel(text(proposal, "risk", "medium"))} risk</Badge><Badge tone="neutral">{formatLabel(kind)}</Badge></div><span>{formatDate(proposal.createdAt)}</span></div>
               <h3>{text(proposal, "summary", "Assistant-proposed update")}</h3>
-              {changes(proposal).length ? <dl>{changes(proposal).slice(0, 8).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{typeof value === "string" || typeof value === "number" ? String(value) : JSON.stringify(value)}</dd></div>)}</dl> : <p>The proposed payload is preserved in the audit ledger. Review the summary before applying it.</p>}
+              {changes(proposal).length ? <dl>{changes(proposal).slice(0, 8).map(([key, value]) => <div key={key}><dt>{humanize(key)}</dt><dd>{typeof value === "string" ? formatLabel(value, value) : typeof value === "number" ? String(value) : JSON.stringify(value)}</dd></div>)}</dl> : <p>The proposed payload is preserved in the audit ledger. Review the summary before applying it.</p>}
               <div className="proposal-actions">
                 {status === "pending" ? <><Button className="button-secondary" disabled={busyId === id} onClick={() => void review(proposal, "reject")}><X size={15} />Reject</Button><Button className="button-primary" disabled={busyId === id} onClick={() => void review(proposal, "confirm")}><Check size={15} />{busyId === id ? "Applying…" : kind === "schedule_change" ? "Confirm proposal" : "Confirm and apply"}</Button></> : <Button className="button-primary" disabled={busyId === id} onClick={() => void review(proposal, "commit_schedule")}><Check size={15} />{busyId === id ? "Committing…" : "Commit confirmed schedule"}</Button>}
               </div>
@@ -66,9 +67,9 @@ export function ActivityScreen({ state, showToast, onRefresh }: { state: Workspa
         </div>
       </section>
 
-      {state.modelRoutes.length ? <section className="activity-section"><div className="section-heading"><div><p className="eyebrow">AI ASSISTANCE</p><h2>Why Continuum used cloud assistance</h2></div></div><div className="memory-list">{state.modelRoutes.slice(0, 20).map((route) => <Card className="memory-row" key={text(route, "id")}><div><Badge tone="blue">{text(route, "taskClass", "assistance").replaceAll("_", " ")}</Badge><h3>Continuum assistance</h3><p>{text(route, "reason", "Selected by task capability, reliability, context, and cost policy.")}</p></div><span>{formatDate(route.createdAt)}</span></Card>)}</div></section> : null}
+      {state.modelRoutes.length ? <section className="activity-section"><div className="section-heading"><div><p className="eyebrow">AI ASSISTANCE</p><h2>Why Continuum used cloud assistance</h2></div></div><div className="memory-list">{state.modelRoutes.slice(0, 20).map((route) => <Card className="memory-row" key={text(route, "id")}><div><Badge tone="blue">{formatLabel(text(route, "taskClass", "assistance"))}</Badge><h3>Continuum assistance</h3><p>{text(route, "reason", "Selected by task capability, reliability, context, and cost policy.")}</p></div><span>{formatDate(route.createdAt)}</span></Card>)}</div></section> : null}
 
-      <section className="activity-section"><div className="section-heading"><div><p className="eyebrow">AUDIT TRAIL</p><h2>Recent durable events</h2></div></div><div className="memory-list">{state.events.slice(0, 50).map((event) => <Card className="memory-row" key={text(event, "id")}><div><Badge tone="neutral">{text(event, "type", "event").replaceAll(".", " ")}</Badge><h3>{text(event, "summary")}</h3><p>{formatDate(event.occurredAt)}</p></div></Card>)}{!state.events.length ? <Card className="empty-record"><Clock3 size={24} /><h3>No durable event yet</h3><p>Completed work, accepted decisions, learning evidence, and assistant updates will appear here with provenance.</p></Card> : null}</div></section>
+      <section className="activity-section"><div className="section-heading"><div><p className="eyebrow">AUDIT TRAIL</p><h2>Recent durable events</h2></div></div><div className="memory-list">{state.events.slice(0, 50).map((event) => <Card className="memory-row" key={text(event, "id")}><div><Badge tone="neutral">{eventTypeLabel(text(event, "type", "event"))}</Badge><h3>{text(event, "summary")}</h3><p>{formatDate(event.occurredAt)}</p></div></Card>)}{!state.events.length ? <Card className="empty-record"><Clock3 size={24} /><h3>No durable event yet</h3><p>Completed work, accepted decisions, learning evidence, and assistant updates will appear here with provenance.</p></Card> : null}</div></section>
     </div>
   );
 }

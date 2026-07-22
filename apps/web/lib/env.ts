@@ -23,6 +23,22 @@ export function publicRegistrationEnabled(env: NodeJS.ProcessEnv = process.env) 
   return env.NODE_ENV !== "production" || env.PUBLIC_REGISTRATION_ENABLED === "true";
 }
 
+/**
+ * Whether the one-click "Try the demo" login is offered. On by default outside
+ * production (local judging), and only in production when explicitly enabled.
+ * This never bypasses authentication — it signs in through the normal password
+ * path using the seeded demo account.
+ */
+export function demoLoginEnabled(env: NodeJS.ProcessEnv = process.env) {
+  if (env.DEMO_LOGIN_ENABLED === "false") return false;
+  return env.NODE_ENV !== "production" || env.DEMO_LOGIN_ENABLED === "true";
+}
+
+/** The demo account password used by the seed command and the demo-login route. */
+export function demoAccountPassword(env: NodeJS.ProcessEnv = process.env) {
+  return env.DEMO_ACCOUNT_PASSWORD?.trim() || "demo123";
+}
+
 export function environmentStatus(env: NodeJS.ProcessEnv = process.env) {
   const errors: string[] = [];
   if (env.NODE_ENV === "production") {

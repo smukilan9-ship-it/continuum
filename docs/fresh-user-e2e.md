@@ -72,7 +72,7 @@ PASS  15. MCP write appears immediately in the standalone app
   `NODE_ENV !== "production"`; this run used a real OAuth authorization-code +
   PKCE grant for the fresh user, not the bypass.
 
-## Automated coverage (CI-safe, `pnpm test` — 106 tests)
+## Automated coverage (CI-safe, `pnpm test` — 125 tests)
 
 - `tests/onboarding.test.ts` — deterministic planner: diagnostic-first
   milestones, acyclic dependency chain, bounded estimates, confidence scaling,

@@ -1,8 +1,9 @@
 "use client";
 
 import { ArrowRight, CalendarClock, Check, Clock3, FileCheck2, Link2, Play, Target } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { Badge, Button, Card } from "@/components/ui";
+import { OnboardingFlow } from "./onboarding-flow";
 import { PageIntro } from "./page-intro";
 import { formatDate, list, text, type Row, type WorkspaceState } from "./types";
 import type { WorkspaceView } from "@/lib/workspace-routes";
@@ -45,7 +46,7 @@ export function TodayScreen({ state, userName, onNavigate, onRefresh }: { state:
     } catch (error) { setPlanError(error instanceof Error ? error.message : "The plan could not be committed"); setPlanBusy(false); }
   }
 
-  if (!state.goals.length) return <OnboardingScreen userName={userName} onRefresh={onRefresh} />;
+  if (!state.goals.length) return <OnboardingFlow userName={userName} onRefresh={onRefresh} />;
 
   return (
     <div className="screen">
@@ -78,67 +79,6 @@ export function TodayScreen({ state, userName, onNavigate, onRefresh }: { state:
           {recentExternal ? <><p>You started an external resource and have not completed its return check.</p><Button className="button-secondary" onClick={() => onNavigate("learn")}>Resume handoff<ArrowRight size={15} /></Button></> : latestReceipt ? <><p>{text(latestReceipt, "summary")}</p>{list(latestReceipt, "nextActions").length ? <ul>{list(latestReceipt, "nextActions").slice(0, 3).map((action) => <li key={action}>{action}</li>)}</ul> : null}<span className="subtle-meta">Saved {formatDate(latestReceipt.createdAt)}</span></> : <p>Completing a session in Continuum or through MCP creates a compact receipt with decisions, evidence, unresolved questions, and next actions.</p>}
         </Card>
       </section>
-    </div>
-  );
-}
-
-function OnboardingScreen({ userName, onRefresh }: { userName: string; onRefresh: () => Promise<void> }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    const form = new FormData(event.currentTarget);
-    const subjects = String(form.get("subjects") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
-    const preferredTimes = form.getAll("preferredTimes").map(String);
-    try {
-      // One deterministic call builds the goal, milestones, actionable tasks with
-      // dependencies, and a committed initial schedule. Retries are idempotent.
-      const response = await fetch("/api/onboarding", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          academicLevel: String(form.get("academicLevel") ?? ""),
-          subjects: subjects.length ? subjects : ["General"],
-          primarySubject: subjects[0],
-          goalTitle: String(form.get("goalTitle") ?? ""),
-          goalOutcome: String(form.get("goalOutcome") ?? ""),
-          goalType: String(form.get("goalType") ?? "exam"),
-          deadline: String(form.get("deadline") ?? ""),
-          weeklyHours: Number(form.get("weeklyHours") ?? 8),
-          preferredTimes,
-          confidence: String(form.get("confidence") ?? "medium"),
-        }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error ?? "Onboarding could not be completed");
-      setBusy(false);
-      await onRefresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Onboarding could not be completed"); setBusy(false); }
-  }
-
-  const today = new Date().toISOString().slice(0, 10);
-  return (
-    <div className="screen onboarding-screen">
-      <PageIntro eyebrow="GET STARTED" title={`Let's build your real plan, ${userName}.`} description="Continuum turns this into a goal, milestones, tasks, and a first-week schedule — shared context for the app and every assistant you authorize." />
-      <Card className="onboarding-card">
-        <div><Badge tone="blue">One step</Badge><h2>Tell us about your goal.</h2><p>We generate milestones, actionable tasks, and an initial schedule deterministically. High-impact assistant changes always stay pending until you approve them.</p></div>
-        <form onSubmit={submit} className="workspace-form">
-          <label>Academic level<input name="academicLevel" minLength={1} maxLength={120} required placeholder="e.g. CBSE Class 12" /></label>
-          <label>Subjects (comma-separated)<input name="subjects" required placeholder="Physics, Mathematics" /></label>
-          <label>Goal title<input name="goalTitle" minLength={3} maxLength={120} required placeholder="Ace the Class 12 Physics board exam" /></label>
-          <label>Successful outcome<textarea name="goalOutcome" minLength={3} maxLength={500} required placeholder="Score 90%+ and explain the hard concepts independently" /></label>
-          <label>Goal type<select name="goalType" defaultValue="exam"><option value="exam">Exam</option><option value="school">School</option><option value="university">University</option><option value="research">Research</option><option value="coding">Coding</option></select></label>
-          <label>Deadline<input name="deadline" type="date" required min={today} /></label>
-          <label>Weekly study hours<input name="weeklyHours" type="number" min={1} max={80} defaultValue={8} required /></label>
-          <label>Starting confidence<select name="confidence" defaultValue="medium"><option value="low">Low — start slow</option><option value="medium">Medium</option><option value="high">High — move fast</option></select></label>
-          <fieldset className="onboarding-times"><legend>Preferred study times</legend>{["morning", "afternoon", "evening", "night"].map((slot) => (<label key={slot} className="checkbox-inline"><input type="checkbox" name="preferredTimes" value={slot} />{slot}</label>))}</fieldset>
-          {error ? <p className="form-error" role="alert">{error}</p> : null}
-          <Button className="button-primary button-large" disabled={busy}>{busy ? "Building your plan…" : "Generate my plan"}<ArrowRight size={16} /></Button>
-        </form>
-      </Card>
     </div>
   );
 }

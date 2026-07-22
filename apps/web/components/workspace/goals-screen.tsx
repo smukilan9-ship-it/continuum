@@ -4,6 +4,7 @@ import { CalendarClock, Check, CheckCircle2, Circle, Flag, Plus, Target } from "
 import { useState, type FormEvent } from "react";
 import { Badge, Button, Card } from "@/components/ui";
 import { PageIntro } from "./page-intro";
+import { formatLabel, statusTone } from "@/lib/labels";
 import { formatDate, number, postState, text, type WorkspaceState } from "./types";
 
 type Toast = (message: string | null) => void;
@@ -78,13 +79,13 @@ export function GoalsScreen({ state, showToast, onRefresh }: { state: WorkspaceS
           const progress = Math.max(number(goal, "progress"), tasks.length ? completed / tasks.length : 0);
           return (
             <Card className="goal-card" key={goalId}>
-              <div className="goal-card-head"><div><Badge tone={text(goal, "status", "active") === "active" ? "blue" : "neutral"}>{text(goal, "status", "active")}</Badge><h2>{text(goal, "title")}</h2><p>{text(goal, "outcome")}</p></div><div className="goal-progress"><strong>{Math.round(progress * 100)}%</strong><span>progress</span></div></div>
+              <div className="goal-card-head"><div><Badge tone={statusTone(text(goal, "status", "active"))}>{formatLabel(text(goal, "status", "active"))}</Badge><h2>{text(goal, "title")}</h2><p>{text(goal, "outcome")}</p></div><div className="goal-progress"><strong>{Math.round(progress * 100)}%</strong><span>progress</span></div></div>
               <div className="goal-meta"><span><CalendarClock size={15} />Due {formatDate(goal.targetDate ?? goal.date, { dateStyle: "medium" })}</span><span><Flag size={15} />{tasks.length} task{tasks.length === 1 ? "" : "s"}</span><span><CheckCircle2 size={15} />{completed} complete</span></div>
               <div className="goal-progress-track"><span style={{ width: `${Math.max(0, Math.min(100, progress * 100))}%` }} /></div>
               <div className="task-list">
                 {tasks.map((task) => {
                   const done = text(task, "status") === "done";
-                  return <div className="task-row" key={text(task, "id")}><span className={done ? "task-check done" : "task-check"}>{done ? <Check size={14} /> : <Circle size={14} />}</span><div><strong>{text(task, "title")}</strong><span>{number(task, "estimatedMinutes", 30)} min · {text(task, "completionEvidence", "No evidence rule set")}</span></div><Badge tone={done ? "green" : text(task, "status") === "blocked" ? "orange" : "neutral"}>{text(task, "status", "backlog")}</Badge>{!done ? <button className="task-complete" disabled={busy} onClick={() => void completeTask(text(task, "id"))}>Mark done</button> : null}</div>;
+                  return <div className="task-row" key={text(task, "id")}><span className={done ? "task-check done" : "task-check"}>{done ? <Check size={14} /> : <Circle size={14} />}</span><div><strong>{text(task, "title")}</strong><span>{number(task, "estimatedMinutes", 30)} min · {text(task, "completionEvidence", "No evidence rule set")}</span></div><Badge tone={statusTone(text(task, "status", "backlog"))}>{formatLabel(text(task, "status", "backlog"))}</Badge>{!done ? <button className="task-complete" disabled={busy} onClick={() => void completeTask(text(task, "id"))}>Mark done</button> : null}</div>;
                 })}
                 {!tasks.length ? <div className="empty-inline"><Target size={18} /><span>No tasks yet. Add the first concrete step.</span></div> : null}
               </div>
