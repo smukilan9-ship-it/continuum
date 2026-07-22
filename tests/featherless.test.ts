@@ -1,7 +1,15 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { selectFeatherlessModel } from "../packages/ai/src/featherless";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  featherlessCredentialHealth,
+  featherlessCredentials,
+  recordFeatherlessCredentialFailure,
+  resetFeatherlessCredentialState,
+  selectFeatherlessCredential,
+  selectFeatherlessModel,
+} from "../packages/ai/src/featherless";
 
 describe("Featherless catalog routing", () => {
+  beforeEach(() => resetFeatherlessCredentialState());
   afterEach(() => vi.unstubAllGlobals());
 
   it("uses a task-specific curated fallback when catalog discovery is degraded", async () => {
@@ -31,5 +39,35 @@ describe("Featherless catalog routing", () => {
       FEATHERLESS_FALLBACK_MODEL: "owner/reviewed-model",
       FEATHERLESS_MODEL_CONCURRENCY_COST: "3",
     } as NodeJS.ProcessEnv)).resolves.toMatchObject({ id: "owner/reviewed-model", concurrencyCost: 3 });
+  });
+});
+
+describe("Featherless credential pool", () => {
+  beforeEach(() => resetFeatherlessCredentialState());
+
+  const env = {
+    FEATHERLESS_API_KEY: "primary-secret",
+    FEATHERLESS_API_KEY_1: "second-secret",
+    FEATHERLESS_API_KEY_2: "third-secret",
+    FEATHERLESS_API_KEY_3: "second-secret",
+  } as NodeJS.ProcessEnv;
+
+  it("deduplicates credentials and rotates bounded identifiers", () => {
+    expect(featherlessCredentials(env).map((credential) => credential.id)).toEqual(["primary", "key_1", "key_2"]);
+    expect(Array.from({ length: 3 }, () => selectFeatherlessCredential(env).id)).toEqual(["primary", "key_1", "key_2"]);
+  });
+
+  it("backs a rate-limited key off without exposing key material", () => {
+    const first = selectFeatherlessCredential(env);
+    recordFeatherlessCredentialFailure(first.id, new Error("request failed (429)"), 1_000);
+    expect(selectFeatherlessCredential(env, 1_001).id).not.toBe(first.id);
+    const health = featherlessCredentialHealth(env, 1_001);
+    expect(health.find((entry) => entry.id === first.id)?.status).toBe("backing_off");
+    expect(JSON.stringify(health)).not.toContain("secret");
+  });
+
+  it("refuses to create a retry storm while every key is backing off", () => {
+    for (const credential of featherlessCredentials(env)) recordFeatherlessCredentialFailure(credential.id, new Error("request failed (429)"), 1_000);
+    expect(() => selectFeatherlessCredential(env, 1_001)).toThrow(/backing off/i);
   });
 });

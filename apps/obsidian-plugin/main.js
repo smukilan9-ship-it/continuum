@@ -127,21 +127,33 @@ var ContinuumPlugin = class extends import_obsidian.Plugin {
       const documents = response.json.documents ?? [];
       const root = (0, import_obsidian.normalizePath)(this.settings.pullFolder);
       await this.ensureFolder(root);
+      let updated = 0;
+      let unchanged = 0;
+      let protectedFiles = 0;
       for (const document of documents) {
-        const name = document.path.split("/").at(-1);
-        const path = (0, import_obsidian.normalizePath)(`${root}/${name}`);
+        const relative = (0, import_obsidian.normalizePath)(document.path).replace(/^Continuum\/?/, "");
+        const path = (0, import_obsidian.normalizePath)(`${root}/${relative}`);
+        await this.ensureFolder(path.split("/").slice(0, -1).join("/"));
         const existing = this.app.vault.getFileByPath(path);
-        if (!existing) await this.app.vault.create(path, document.content);
-        else {
+        if (!existing) {
+          await this.app.vault.create(path, document.content);
+          updated += 1;
+        } else {
           const current = await this.app.vault.cachedRead(existing);
           if (!current.includes("continuum_generated: true")) {
+            protectedFiles += 1;
             new import_obsidian.Notice(`Continuum did not overwrite ${path}; it is not marked as generated.`);
             continue;
           }
+          if (current === document.content) {
+            unchanged += 1;
+            continue;
+          }
           await this.app.vault.process(existing, () => document.content);
+          updated += 1;
         }
       }
-      new import_obsidian.Notice(`Continuum: updated ${documents.length} generated context document${documents.length === 1 ? "" : "s"}.`);
+      new import_obsidian.Notice(`Continuum: ${updated} generated notes updated, ${unchanged} unchanged${protectedFiles ? `, ${protectedFiles} ordinary notes protected` : ""}.`);
     } catch (error) {
       new import_obsidian.Notice(`Continuum: ${error instanceof Error ? error.message : "pull failed"}`);
     }

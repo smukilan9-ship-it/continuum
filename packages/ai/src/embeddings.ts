@@ -1,4 +1,11 @@
 import { embed, embedMany } from "ai";
+import {
+  featherlessCredentials,
+  recordFeatherlessCredentialFailure,
+  recordFeatherlessCredentialSuccess,
+  selectFeatherlessCredential,
+  withFeatherlessExecution,
+} from "./featherless";
 
 export type EmbeddingProvider = "gemini" | "featherless" | "ai_gateway" | "ollama";
 
@@ -21,7 +28,7 @@ export function geminiApiKeys(env: NodeJS.ProcessEnv = process.env) {
 function configuredProviders(env: NodeJS.ProcessEnv) {
   const providers: EmbeddingProvider[] = [];
   if (geminiApiKeys(env).length && env.GEMINI_DATA_USE_ACKNOWLEDGED === "true") providers.push("gemini");
-  if (env.FEATHERLESS_API_KEY) providers.push("featherless");
+  if (featherlessCredentials(env).length) providers.push("featherless");
   if (env.AI_GATEWAY_ENABLED === "true" && (env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN)) providers.push("ai_gateway");
   if (env.OLLAMA_BASE_URL && env.OLLAMA_EMBEDDING_MODEL) providers.push("ollama");
   return providers;
@@ -98,20 +105,38 @@ async function geminiEmbedding(value: string, taskType: "RETRIEVAL_DOCUMENT" | "
 }
 
 async function featherlessEmbeddings(values: string[], configuration: EmbeddingConfiguration, env: NodeJS.ProcessEnv) {
-  const response = await fetch("https://api.featherless.ai/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${env.FEATHERLESS_API_KEY}`,
-      "HTTP-Referer": env.APP_BASE_URL ?? "https://continuum.app",
-      "X-Title": "Continuum",
-    },
-    body: JSON.stringify({ model: configuration.model, input: values, encoding_format: "float", dimensions: configuration.dimensions }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok) throw new Error(`Featherless embedding request failed (${response.status})`);
-  const payload = await response.json() as { data?: Array<{ index: number; embedding: number[] }> };
-  return (payload.data ?? []).sort((left, right) => left.index - right.index).map((item) => item.embedding);
+  const credentials = featherlessCredentials(env);
+  if (!credentials.length) throw new Error("Featherless embeddings are not configured");
+  let lastError: unknown;
+  for (let attempt = 0; attempt < Math.min(credentials.length, 3); attempt += 1) {
+    const credential = selectFeatherlessCredential(env);
+    try {
+      const output = await withFeatherlessExecution(credential.id, 1, async () => {
+        const response = await fetch("https://api.featherless.ai/v1/embeddings", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${credential.apiKey}`,
+            "HTTP-Referer": env.APP_BASE_URL ?? "https://continuum.app",
+            "X-Title": "Continuum",
+          },
+          body: JSON.stringify({ model: configuration.model, input: values, encoding_format: "float", dimensions: configuration.dimensions }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!response.ok) throw new Error(`Featherless embedding request failed (${response.status})`);
+        const payload = await response.json() as { data?: Array<{ index: number; embedding: number[] }> };
+        const vectors = (payload.data ?? []).sort((left, right) => left.index - right.index).map((item) => item.embedding);
+        if (vectors.length !== values.length) throw new Error("Featherless returned an incomplete embedding batch");
+        return vectors;
+      }, env);
+      recordFeatherlessCredentialSuccess(credential.id);
+      return output;
+    } catch (error) {
+      lastError = error;
+      recordFeatherlessCredentialFailure(credential.id, error);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Every healthy Featherless embedding key failed");
 }
 
 async function ollamaEmbeddings(values: string[], configuration: EmbeddingConfiguration, env: NodeJS.ProcessEnv) {
@@ -183,5 +208,6 @@ export function embeddingProviderStatus(env: NodeJS.ProcessEnv = process.env) {
     dimensions: config?.dimensions,
     fallbacks: config?.fallbackProviders ?? [],
     geminiKeyCount: geminiApiKeys(env).length,
+    featherlessKeyCount: featherlessCredentials(env).length,
   };
 }

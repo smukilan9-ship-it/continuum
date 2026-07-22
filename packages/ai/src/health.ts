@@ -1,5 +1,6 @@
 import type { RouteDecision } from "@continuum/schemas";
 import { geminiApiKeys } from "./embeddings";
+import { featherlessCredentialHealth, featherlessCredentials, recordFeatherlessCredentialFailure, recordFeatherlessCredentialSuccess, resetFeatherlessCredentialState } from "./featherless";
 
 /**
  * Provider capability & health registry.
@@ -93,6 +94,7 @@ export function breakerSnapshot(key: string): BreakerState | undefined {
 /** Test/operator hook: clear all breaker state and cached discovery/health. */
 export function resetBreakers() {
   breakers.clear();
+  resetFeatherlessCredentialState();
   geminiModelCache = undefined;
   healthCache = undefined;
 }
@@ -211,6 +213,14 @@ export interface ProviderHealthReport {
   detail?: string;
   checkedAt: string;
   capabilities?: Partial<ModelCapabilities>;
+  credentialHealth?: Array<{
+    id: string;
+    status: "available" | "degraded" | "backing_off";
+    inFlight: number;
+    failures: number;
+    lastStatus?: number;
+    retryAfter?: string;
+  }>;
 }
 
 let healthCache: CacheEntry<ProviderHealthReport[]> | undefined;
@@ -262,17 +272,35 @@ async function probeGroq(env: NodeJS.ProcessEnv): Promise<ProviderHealthReport> 
 
 async function probeFeatherless(env: NodeJS.ProcessEnv): Promise<ProviderHealthReport> {
   const base: ProviderHealthReport = { provider: "featherless", configured: false, status: "not_configured", checkedAt: new Date().toISOString() };
-  if (!env.FEATHERLESS_API_KEY) return base;
+  const credentials = featherlessCredentials(env);
+  if (!credentials.length) return base;
   const startedAt = Date.now();
-  try {
-    const response = await fetch("https://api.featherless.ai/v1/plan", { headers: { authorization: `Bearer ${env.FEATHERLESS_API_KEY}`, accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
-    const latencyMs = Date.now() - startedAt;
-    if (!response.ok) return { ...base, configured: true, status: "unavailable", latencyMs, detail: `plan lookup returned ${response.status}`, checkedAt: new Date().toISOString() };
-    const plan = (await response.json()) as { name?: string; concurrency?: number };
-    return { ...base, configured: true, status: "healthy", latencyMs, detail: `plan ${plan.name ?? "unknown"} · ${plan.concurrency ?? "?"} concurrency`, checkedAt: new Date().toISOString(), capabilities: { text: true, streaming: true, structured: false, vision: false, embeddings: true, priceClass: "medium", local: false, privacy: "cloud" } };
-  } catch (error) {
-    return { ...base, configured: true, status: "unavailable", detail: error instanceof Error ? error.message : "probe failed", checkedAt: new Date().toISOString() };
-  }
+  const checks = await Promise.all(credentials.map(async (credential) => {
+    try {
+      const response = await fetch("https://api.featherless.ai/v1/plan", { headers: { authorization: `Bearer ${credential.apiKey}`, accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
+      if (!response.ok) throw new Error(`Featherless plan lookup failed (${response.status})`);
+      const plan = (await response.json()) as { name?: string; concurrency?: number };
+      recordFeatherlessCredentialSuccess(credential.id);
+      return { ok: true as const, plan };
+    } catch (error) {
+      recordFeatherlessCredentialFailure(credential.id, error);
+      return { ok: false as const };
+    }
+  }));
+  const healthy = checks.filter((check) => check.ok);
+  const latencyMs = Date.now() - startedAt;
+  const status = healthy.length === credentials.length ? "healthy" : healthy.length ? "degraded" : "unavailable";
+  const first = healthy[0]?.plan;
+  return {
+    ...base,
+    configured: true,
+    status,
+    latencyMs,
+    detail: `${healthy.length}/${credentials.length} credential slots healthy${first ? ` · plan ${first.name ?? "unknown"} · ${first.concurrency ?? "?"} concurrency` : ""}`,
+    checkedAt: new Date().toISOString(),
+    credentialHealth: featherlessCredentialHealth(env),
+    capabilities: { text: true, streaming: true, structured: true, vision: false, embeddings: true, priceClass: "medium", local: false, privacy: "cloud" },
+  };
 }
 
 /**

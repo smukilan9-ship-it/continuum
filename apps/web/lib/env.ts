@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { featherlessCredentials } from "@continuum/ai";
 
 const productionSchema = z.object({
   DATABASE_URL: z.string().url().refine((value) => ["postgres:", "postgresql:"].includes(new URL(value).protocol), "DATABASE_URL must use the PostgreSQL protocol"),
@@ -47,8 +48,9 @@ export function environmentStatus(env: NodeJS.ProcessEnv = process.env) {
     const gemini = env.GEMINI_DATA_USE_ACKNOWLEDGED === "true" && Boolean(env.GEMINI_API_KEY || env.GEMINI_API_KEYS || env.GEMINI_API_KEY_1);
     const gateway = env.AI_GATEWAY_ENABLED === "true" && Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN);
     const ollama = Boolean(env.OLLAMA_BASE_URL);
-    if (!env.FEATHERLESS_API_KEY && !env.GROQ_API_KEY && !gateway && !ollama && !gemini) errors.push("At least one model provider must be configured");
-    if (!(env.FEATHERLESS_API_KEY && env.FEATHERLESS_EMBEDDING_MODEL) && !gateway && !(env.OLLAMA_BASE_URL && env.OLLAMA_EMBEDDING_MODEL) && !gemini) errors.push("At least one configured 1536-dimensional embedding provider must be configured");
+    const featherless = featherlessCredentials(env).length > 0;
+    if (!featherless && !env.GROQ_API_KEY && !gateway && !ollama && !gemini) errors.push("At least one model provider must be configured");
+    if (!(featherless && env.FEATHERLESS_EMBEDDING_MODEL) && !gateway && !(env.OLLAMA_BASE_URL && env.OLLAMA_EMBEDDING_MODEL) && !gemini) errors.push("At least one configured 1536-dimensional embedding provider must be configured");
     if (env.MCP_JWT_SIGNING_SECRET && env.SESSION_PRIVACY_SALT && env.MCP_JWT_SIGNING_SECRET === env.SESSION_PRIVACY_SALT) errors.push("MCP_JWT_SIGNING_SECRET and SESSION_PRIVACY_SALT must be distinct");
     const integrationKey = env.INTEGRATION_CREDENTIAL_ENCRYPTION_KEY ?? "";
     let integrationKeyBytes = 0;
@@ -63,7 +65,8 @@ export function environmentStatus(env: NodeJS.ProcessEnv = process.env) {
       database: Boolean(env.DATABASE_URL),
       privateBlob: Boolean(env.BLOB_READ_WRITE_TOKEN || (env.BLOB_STORE_ID && env.VERCEL_OIDC_TOKEN)),
       mcpOAuth: Boolean(env.MCP_JWT_SIGNING_SECRET),
-      featherless: Boolean(env.FEATHERLESS_API_KEY),
+      featherless: featherlessCredentials(env).length > 0,
+      featherlessKeyCount: featherlessCredentials(env).length,
       groq: Boolean(env.GROQ_API_KEY),
       geminiKeys: Boolean(env.GEMINI_API_KEY || env.GEMINI_API_KEYS || env.GEMINI_API_KEY_1),
       geminiDataUseAcknowledged: env.GEMINI_DATA_USE_ACKNOWLEDGED === "true",

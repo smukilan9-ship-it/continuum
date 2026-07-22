@@ -116,18 +116,24 @@ export default class ContinuumPlugin extends Plugin {
       const documents = (response.json as { documents?: Array<{ path: string; content: string }> }).documents ?? [];
       const root = normalizePath(this.settings.pullFolder);
       await this.ensureFolder(root);
+      let updated = 0;
+      let unchanged = 0;
+      let protectedFiles = 0;
       for (const document of documents) {
-        const name = document.path.split("/").at(-1)!;
-        const path = normalizePath(`${root}/${name}`);
+        const relative = normalizePath(document.path).replace(/^Continuum\/?/, "");
+        const path = normalizePath(`${root}/${relative}`);
+        await this.ensureFolder(path.split("/").slice(0, -1).join("/"));
         const existing = this.app.vault.getFileByPath(path);
-        if (!existing) await this.app.vault.create(path, document.content);
+        if (!existing) { await this.app.vault.create(path, document.content); updated += 1; }
         else {
           const current = await this.app.vault.cachedRead(existing);
-          if (!current.includes("continuum_generated: true")) { new Notice(`Continuum did not overwrite ${path}; it is not marked as generated.`); continue; }
+          if (!current.includes("continuum_generated: true")) { protectedFiles += 1; new Notice(`Continuum did not overwrite ${path}; it is not marked as generated.`); continue; }
+          if (current === document.content) { unchanged += 1; continue; }
           await this.app.vault.process(existing, () => document.content);
+          updated += 1;
         }
       }
-      new Notice(`Continuum: updated ${documents.length} generated context document${documents.length === 1 ? "" : "s"}.`);
+      new Notice(`Continuum: ${updated} generated notes updated, ${unchanged} unchanged${protectedFiles ? `, ${protectedFiles} ordinary notes protected` : ""}.`);
     } catch (error) { new Notice(`Continuum: ${error instanceof Error ? error.message : "pull failed"}`); }
   }
 }

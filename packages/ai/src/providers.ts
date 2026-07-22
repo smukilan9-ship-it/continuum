@@ -4,7 +4,16 @@ import { generateText, gateway, Output, streamText, type LanguageModel } from "a
 import { z } from "zod";
 import type { RouteDecision } from "@continuum/schemas";
 import { geminiApiKeys } from "./embeddings";
-import { acquireFeatherlessConcurrency, selectFeatherlessModel, withFeatherlessConcurrency } from "./featherless";
+import {
+  acquireFeatherlessConcurrency,
+  acquireFeatherlessCredentialLease,
+  featherlessCredentials,
+  recordFeatherlessCredentialFailure,
+  recordFeatherlessCredentialSuccess,
+  selectFeatherlessCredential,
+  selectFeatherlessModel,
+  withFeatherlessExecution,
+} from "./featherless";
 import { selectGroqModel } from "./groq";
 import { isTripped, recordFailure, recordSuccess, selectGeminiModel } from "./health";
 
@@ -17,6 +26,9 @@ export interface ProviderEnvironment {
   AI_GATEWAY_MULTIMODAL_MODEL?: string;
   AI_GATEWAY_FALLBACK_MODELS?: string;
   FEATHERLESS_API_KEY?: string;
+  FEATHERLESS_API_KEY_1?: string;
+  FEATHERLESS_API_KEY_2?: string;
+  FEATHERLESS_API_KEY_3?: string;
   FEATHERLESS_MODEL?: string;
   FEATHERLESS_FAST_MODEL?: string;
   FEATHERLESS_REASONING_MODEL?: string;
@@ -68,6 +80,9 @@ export function providerEnvironmentFromProcess(): ProviderEnvironment {
     AI_GATEWAY_MULTIMODAL_MODEL: process.env.AI_GATEWAY_MULTIMODAL_MODEL,
     AI_GATEWAY_FALLBACK_MODELS: process.env.AI_GATEWAY_FALLBACK_MODELS,
     FEATHERLESS_API_KEY: process.env.FEATHERLESS_API_KEY,
+    FEATHERLESS_API_KEY_1: process.env.FEATHERLESS_API_KEY_1,
+    FEATHERLESS_API_KEY_2: process.env.FEATHERLESS_API_KEY_2,
+    FEATHERLESS_API_KEY_3: process.env.FEATHERLESS_API_KEY_3,
     FEATHERLESS_MODEL: process.env.FEATHERLESS_MODEL,
     FEATHERLESS_FAST_MODEL: process.env.FEATHERLESS_FAST_MODEL,
     FEATHERLESS_REASONING_MODEL: process.env.FEATHERLESS_REASONING_MODEL,
@@ -96,6 +111,7 @@ type GenerationTarget = {
   modelId: string;
   provider: RouteDecision["route"];
   concurrencyCost?: number;
+  credentialId?: string;
   providerOptions?: {
     gateway?: { models: string[]; user: string; tags: string[] };
     google?: { thinkingConfig: { thinkingLevel: "minimal"; includeThoughts: false } };
@@ -118,9 +134,9 @@ async function modelForDecision(decision: RouteDecision, env: ProviderEnvironmen
     return { model: createOpenAICompatible({ name: "groq", apiKey: env.GROQ_API_KEY, baseURL: "https://api.groq.com/openai/v1" }).languageModel(id), modelId: id, provider: "groq" };
   }
   if (decision.route === "featherless") {
-    if (!env.FEATHERLESS_API_KEY) throw new Error("Featherless is not configured");
-    const selected = await selectFeatherlessModel(decision.taskClass, env as NodeJS.ProcessEnv);
-    return { model: createOpenAICompatible({ name: "featherless", apiKey: env.FEATHERLESS_API_KEY, baseURL: "https://api.featherless.ai/v1", headers: { "HTTP-Referer": env.APP_BASE_URL ?? "https://continuum.app", "X-Title": "Continuum" } }).languageModel(selected.id), modelId: selected.id, provider: "featherless", concurrencyCost: selected.concurrencyCost };
+    const credential = selectFeatherlessCredential(env as NodeJS.ProcessEnv);
+    const selected = await selectFeatherlessModel(decision.taskClass, env as NodeJS.ProcessEnv, credential);
+    return { model: createOpenAICompatible({ name: "featherless", apiKey: credential.apiKey, baseURL: "https://api.featherless.ai/v1", headers: { "HTTP-Referer": env.APP_BASE_URL ?? "https://continuum.app", "X-Title": "Continuum" } }).languageModel(selected.id), modelId: selected.id, provider: "featherless", concurrencyCost: selected.concurrencyCost, credentialId: credential.id };
   }
   if (decision.route === "gemini") {
     if (env.GEMINI_DATA_USE_ACKNOWLEDGED !== "true") throw new Error("Gemini data use has not been acknowledged by the operator");
@@ -151,7 +167,7 @@ async function modelForDecision(decision: RouteDecision, env: ProviderEnvironmen
 
 function routeConfigured(route: RouteDecision["route"], env: ProviderEnvironment) {
   if (route === "groq") return Boolean(env.GROQ_API_KEY);
-  if (route === "featherless") return Boolean(env.FEATHERLESS_API_KEY);
+  if (route === "featherless") return featherlessCredentials(env as NodeJS.ProcessEnv).length > 0;
   if (route === "gemini") return env.GEMINI_DATA_USE_ACKNOWLEDGED === "true" && geminiApiKeys(env as NodeJS.ProcessEnv).length > 0;
   if (route === "ai_gateway") return env.AI_GATEWAY_ENABLED === "true" && Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN);
   return route === "deterministic";
@@ -199,7 +215,7 @@ export function structuredRouteOrder(decision: RouteDecision, env: ProviderEnvir
 const clamp = (value: number, min: number, max: number, fallback: number) =>
   Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
 
-type OpenAICompatibleTarget = { baseURL: string; apiKey: string; headers: Record<string, string>; modelId: string; concurrencyCost?: number };
+type OpenAICompatibleTarget = { baseURL: string; apiKey: string; headers: Record<string, string>; modelId: string; concurrencyCost?: number; credentialId?: string };
 type StructuredUsage = { inputTokens?: number; outputTokens?: number; totalTokens?: number };
 
 async function openAICompatibleTarget(decision: RouteDecision, env: ProviderEnvironment): Promise<OpenAICompatibleTarget> {
@@ -208,14 +224,15 @@ async function openAICompatibleTarget(decision: RouteDecision, env: ProviderEnvi
     const modelId = await selectGroqModel(decision.taskClass, env as NodeJS.ProcessEnv, { structured: true });
     return { baseURL: "https://api.groq.com/openai/v1", apiKey: env.GROQ_API_KEY, headers: {}, modelId };
   }
-  if (!env.FEATHERLESS_API_KEY) throw new Error("Featherless is not configured");
-  const selected = await selectFeatherlessModel(decision.taskClass, env as NodeJS.ProcessEnv);
+  const credential = selectFeatherlessCredential(env as NodeJS.ProcessEnv);
+  const selected = await selectFeatherlessModel(decision.taskClass, env as NodeJS.ProcessEnv, credential);
   return {
     baseURL: "https://api.featherless.ai/v1",
-    apiKey: env.FEATHERLESS_API_KEY,
+    apiKey: credential.apiKey,
     headers: { "HTTP-Referer": env.APP_BASE_URL ?? "https://continuum.app", "X-Title": "Continuum" },
     modelId: selected.id,
     concurrencyCost: selected.concurrencyCost,
+    credentialId: credential.id,
   };
 }
 
@@ -281,20 +298,27 @@ export async function generateStructured<T>(request: StructuredGenerationRequest
     // Gemini rotates through a couple of keys; every other provider gets a single
     // attempt so a hanging or non-conforming route cannot consume the whole budget
     // before the next provider is tried.
-    const routeAttempts = decision.route === "gemini" ? Math.min(2, Math.max(1, geminiApiKeys(env as NodeJS.ProcessEnv).length)) : 1;
+    const routeAttempts = decision.route === "gemini"
+      ? Math.min(2, Math.max(1, geminiApiKeys(env as NodeJS.ProcessEnv).length))
+      : decision.route === "featherless"
+        ? Math.min(3, Math.max(1, featherlessCredentials(env as NodeJS.ProcessEnv).length))
+        : 1;
     for (let routeAttempt = 0; routeAttempt < routeAttempts; routeAttempt += 1) {
       const budget = remaining();
       if (budget < 3_000) { lastError ??= new Error("Structured generation deadline exceeded"); break; }
       totalAttempts += 1;
       const attemptTimeout = Math.min(perAttemptMs, budget);
       const structuredSystem = [request.system, "Return valid JSON matching the requested schema. Do not add prose outside the JSON value."].filter(Boolean).join("\n\n");
+      let attemptedCredentialId: string | undefined;
       try {
         if (decision.route === "groq" || decision.route === "featherless") {
           const target = await openAICompatibleTarget(decision, env);
+          attemptedCredentialId = target.credentialId;
           const run = () => openAICompatibleStructured(target, { schema: request.schema, system: structuredSystem, prompt: request.prompt, maxOutputTokens: request.maxOutputTokens, signal: AbortSignal.timeout(attemptTimeout) });
           const result = decision.route === "featherless"
-            ? await withFeatherlessConcurrency(target.concurrencyCost ?? 1, run, env as NodeJS.ProcessEnv)
+            ? await withFeatherlessExecution(target.credentialId!, target.concurrencyCost ?? 1, run, env as NodeJS.ProcessEnv)
             : await run();
+          if (target.credentialId) recordFeatherlessCredentialSuccess(target.credentialId);
           recordSuccess(`route:${decision.route}`);
           return {
             output: result.output,
@@ -322,6 +346,11 @@ export async function generateStructured<T>(request: StructuredGenerationRequest
         };
       } catch (error) {
         lastError = error;
+        if (decision.route === "featherless") {
+          // `openAICompatibleTarget` rotates on each bounded retry, while the
+          // credential breaker keeps rate-limited or invalid keys out of later calls.
+          if (attemptedCredentialId) recordFeatherlessCredentialFailure(attemptedCredentialId, error);
+        }
         recordFailure(`route:${decision.route}`, error);
         if (process.env.AI_DEBUG_ROUTES === "true") console.error(`[generateStructured] ${decision.route} attempt failed:`, error instanceof Error ? error.message : error);
         if (routeAttempt + 1 < routeAttempts && remaining() > 3_000) await new Promise((resolve) => setTimeout(resolve, 250 * (routeAttempt + 1)));
@@ -334,12 +363,15 @@ export async function generateStructured<T>(request: StructuredGenerationRequest
 
 export async function streamGeneration(request: StreamingGenerationRequest, env: ProviderEnvironment = providerEnvironmentFromProcess()) {
   const target = await modelForDecision(request.decision, env, request.userId);
-  const release = target.provider === "featherless" ? await acquireFeatherlessConcurrency(target.concurrencyCost ?? 1, env as NodeJS.ProcessEnv) : undefined;
+  const [releaseConcurrency, releaseCredential] = target.provider === "featherless"
+    ? await Promise.all([acquireFeatherlessConcurrency(target.concurrencyCost ?? 1, env as NodeJS.ProcessEnv), acquireFeatherlessCredentialLease(target.credentialId!)])
+    : [undefined, undefined];
   let finished = false;
   const releaseOnce = () => {
     if (finished) return;
     finished = true;
-    release?.();
+    releaseCredential?.();
+    releaseConcurrency?.();
   };
   try {
     const result = streamText({
@@ -349,13 +381,14 @@ export async function streamGeneration(request: StreamingGenerationRequest, env:
       prompt: request.prompt,
       ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}),
       abortSignal: request.abortSignal,
-      onFinish: () => { recordSuccess(`route:${request.decision.route}`); releaseOnce(); },
+      onFinish: () => { recordSuccess(`route:${request.decision.route}`); if (target.credentialId) recordFeatherlessCredentialSuccess(target.credentialId); releaseOnce(); },
       onAbort: releaseOnce,
-      onError: (event) => { recordFailure(`route:${request.decision.route}`, (event as { error?: unknown })?.error ?? event); releaseOnce(); },
+      onError: (event) => { const error = (event as { error?: unknown })?.error ?? event; recordFailure(`route:${request.decision.route}`, error); if (target.credentialId) recordFeatherlessCredentialFailure(target.credentialId, error); releaseOnce(); },
     });
     return { result, decision: { ...request.decision, model: target.modelId } };
   } catch (error) {
     recordFailure(`route:${request.decision.route}`, error);
+    if (target.credentialId) recordFeatherlessCredentialFailure(target.credentialId, error);
     releaseOnce();
     throw error;
   }
@@ -364,7 +397,8 @@ export async function streamGeneration(request: StreamingGenerationRequest, env:
 export function configuredProviders(env: ProviderEnvironment = providerEnvironmentFromProcess()) {
   return {
     aiGateway: env.AI_GATEWAY_ENABLED === "true" && Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN),
-    featherless: Boolean(env.FEATHERLESS_API_KEY),
+    featherless: featherlessCredentials(env as NodeJS.ProcessEnv).length > 0,
+    featherlessKeyCount: featherlessCredentials(env as NodeJS.ProcessEnv).length,
     groq: Boolean(env.GROQ_API_KEY),
     gemini: env.GEMINI_DATA_USE_ACKNOWLEDGED === "true" && geminiApiKeys(env as NodeJS.ProcessEnv).length > 0,
     geminiKeyCount: geminiApiKeys(env as NodeJS.ProcessEnv).length,

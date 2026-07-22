@@ -16,7 +16,8 @@ function line(row: unknown, key: string, fallback = "Untitled") {
 export async function GET(request: Request) {
   const user = await getRequestUser(request);
   if (!user) return new Response("Unauthorized", { status: 401 });
-  const [research, memory] = await Promise.all([getStore(user.id).workspace("research"), getStore(user.id).workspace("memory")]);
+  const store = getStore(user.id);
+  const [research, memory, currentWeek] = await Promise.all([store.workspace("research"), store.workspace("memory"), store.read("get_context_pack", { packId: "current_week", maxTokens: 1200 }, "notebooklm-handoff")]);
   const projects = (research.projects as unknown[] | undefined) ?? [];
   const decisions = (research.projectDecisions as unknown[] | undefined) ?? [];
   const sources = (research.sources as unknown[] | undefined) ?? [];
@@ -38,6 +39,13 @@ export async function GET(request: Request) {
     "",
     "## Recent verified outcomes",
     ...receipts.slice(0, 20).flatMap((receipt) => [`### ${line(receipt, "summary")}`, ...((value(receipt, "completed") as string[] | undefined) ?? []).map((item) => `- Completed: ${item}`), ...((value(receipt, "unresolvedQuestions") as string[] | undefined) ?? []).map((item) => `- Unresolved: ${item}`), ""]),
+    "## Current-week context pack",
+    "",
+    "> Compact private state selected by Continuum. Full history and credentials are omitted.",
+    "",
+    "```json",
+    JSON.stringify(currentWeek, null, 2),
+    "```",
   ].join("\n");
   return new Response(output, { headers: { "content-type": "text/markdown; charset=utf-8", "content-disposition": `attachment; filename="continuum-notebooklm-${new Date().toISOString().slice(0, 10)}.md"`, "cache-control": "private, no-store", "x-content-type-options": "nosniff" } });
 }

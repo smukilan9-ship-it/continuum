@@ -22,6 +22,7 @@ import {
 } from "@continuum/schemas";
 import { embedDocuments, embedQuery, embeddingConfiguration } from "@continuum/ai";
 import { demoStore, readDemoState, writeDemoState, type DemoEvent } from "@/lib/demo-store";
+import { buildContextPacks, getContextPack } from "@/lib/context-packs";
 
 export type AppEventInput = {
   type: string;
@@ -152,7 +153,7 @@ class MemoryStore implements Store {
       goals: ["goals", "tasks", "schedule"],
       learn: ["goals", "tasks", "learningState", "resourceActivities", "receipts"],
       research: ["goals", "tasks", "projects", "decisions", "claims", "notes", "sources", "papers"],
-      memory: ["learningState", "memoryChunks", "receipts", "events", "sources"],
+      memory: ["goals", "tasks", "projects", "decisions", "claims", "notes", "sources", "papers", "learningState", "memoryChunks", "receipts", "events", "schedule"],
       activity: ["proposals", "events"],
       code: ["goals", "tasks", "projects", "learningState", "receipts"],
       integrations: [],
@@ -161,6 +162,12 @@ class MemoryStore implements Store {
   }
 
   async read(name: string, args: Record<string, unknown>) {
+    if (name === "list_context_packs") return buildContextPacks(await this.workspace("memory")).map((pack) => pack.metadata);
+    if (name === "get_context_pack") return getContextPack(await this.workspace("memory"), String(args.packId), Number(args.maxTokens ?? 1800));
+    if (name === "get_context_changes_since") {
+      const since = Date.parse(String(args.since));
+      return compactToBudget(demoStore.events.filter((event) => Date.parse(event.occurredAt) > since).slice(0, Number(args.limit ?? 50)), Number(args.maxTokens ?? 1200));
+    }
     if (name === "list_projects" || name === "load_project" || name === "list_goals" || name === "load_goal" || name === "load_outcome_receipt") return compactToBudget(readDemoState(name, args), Number(args.maxTokens ?? 1400));
     if (name === "search_memory" || name === "search_academic_memory") return compactToBudget(await this.searchMemory({ query: String(args.query), types: Array.isArray(args.types) ? args.types.map(String) : undefined, goalId: args.goalId ? String(args.goalId) : undefined, projectId: args.projectId ? String(args.projectId) : undefined, limit: Number(args.limit ?? 8) }), Number(args.maxTokens ?? 1200));
     if (name === "load_context") {
@@ -173,6 +180,12 @@ class MemoryStore implements Store {
   }
 
   async write(name: string, args: Record<string, unknown>, now: string, surface: "mcp" | "standalone_app" = "mcp", clientId?: string) {
+    if (name === "record_approved_update") {
+      const approval = args.approval as { approvedAt?: unknown; approvedBy?: unknown };
+      assertRecentConfirmation(approval?.approvedAt, now);
+      const event = await this.appendEvent({ type: `approved.${String(args.kind)}`, summary: String(args.summary), entityIds: [String(args.entityId)], payload: { detail: args.detail, provenance: args.provenance, approvedBy: approval.approvedBy, clientId }, source: { surface }, goalId: args.goalId ? String(args.goalId) : undefined, projectId: args.projectId ? String(args.projectId) : undefined, importance: 0.72 }, now);
+      return { data: event, entityIds: [String(args.entityId)], summary: "Recorded the explicitly approved update with provenance." };
+    }
     if (name === "sync_session") {
       const sync = sessionSyncSchema.parse(args);
       const event = await this.appendEvent({ type: "session.checkpoint.saved", summary: sync.summary, entityIds: [opaqueId("checkpoint")], payload: sync, goalId: sync.goalId, projectId: sync.projectId, source: { surface, sessionId: sync.sessionId }, importance: 0.8 }, now);
@@ -370,6 +383,18 @@ class NeonStore implements Store {
   async workspace(view: string) { return this.repo.getWorkspaceSnapshot(this.userId, view); }
 
   async read(name: string, args: Record<string, unknown>, clientId?: string) {
+    if (name === "list_context_packs") return buildContextPacks(await this.repo.getWorkspaceSnapshot(this.userId, "memory")).map((pack) => pack.metadata);
+    if (name === "get_context_pack") {
+      const pack = getContextPack(await this.repo.getWorkspaceSnapshot(this.userId, "memory"), String(args.packId), Number(args.maxTokens ?? 1800));
+      await this.repo.logContextAccess({ id: opaqueId("context"), userId: this.userId, clientId, tool: name, focus: pack.metadata.id, selectedRecordIds: pack.metadata.provenance, tokenEstimate: pack.metadata.estimatedTokens, occurredAt: new Date().toISOString() });
+      return pack;
+    }
+    if (name === "get_context_changes_since") {
+      const since = Date.parse(String(args.since));
+      const snapshot = await this.repo.getWorkspaceSnapshot(this.userId, "memory");
+      const events = (snapshot.events as Array<Record<string, unknown>>).filter((event) => Date.parse(String(event.occurredAt)) > since).slice(0, Number(args.limit ?? 50));
+      return compactToBudget({ since: args.since, changes: events, newestAt: events[0]?.occurredAt ?? args.since }, Number(args.maxTokens ?? 1200));
+    }
     if (name === "list_projects") return (await this.repo.listProjects(this.userId)).map((project) => ({ id: project.id, title: project.title, phase: project.phase, purpose: project.purpose, updatedAt: project.updatedAt.toISOString() }));
     if (name === "load_project") {
       const project = await this.repo.getProject(String(args.projectId), this.userId);
@@ -408,7 +433,7 @@ class NeonStore implements Store {
       return chunk;
     }
     if (name === "load_context" || name === "get_current_context") {
-      const snapshot = await this.repo.getWorkspaceSnapshot(this.userId, "code");
+      const snapshot = await this.repo.getWorkspaceSnapshot(this.userId, "memory");
       const focus = String(args.focus ?? "active academic work");
       const relevant = await this.searchMemory({ query: focus, goalId: args.goalId ? String(args.goalId) : undefined, projectId: args.projectId ? String(args.projectId) : undefined, limit: 8 });
       const goals = (snapshot.goals as unknown[]).slice(0, 6);
@@ -433,6 +458,12 @@ class NeonStore implements Store {
   }
 
   async write(name: string, args: Record<string, unknown>, now: string, surface: "mcp" | "standalone_app" = "mcp", clientId?: string) {
+    if (name === "record_approved_update") {
+      const approval = args.approval as { approvedAt?: unknown; approvedBy?: unknown };
+      assertRecentConfirmation(approval?.approvedAt, now);
+      const event = await this.appendEvent({ type: `approved.${String(args.kind)}`, summary: String(args.summary), entityIds: [String(args.entityId)], payload: { detail: args.detail, provenance: args.provenance, approvedBy: approval.approvedBy, clientId }, source: { surface }, goalId: args.goalId ? String(args.goalId) : undefined, projectId: args.projectId ? String(args.projectId) : undefined, importance: 0.72 }, now);
+      return { data: event, entityIds: [String(args.entityId)], summary: "Recorded the explicitly approved update with provenance." };
+    }
     if (name === "sync_session") {
       const sync = sessionSyncSchema.parse(args);
       const checkpointId = opaqueId("checkpoint");

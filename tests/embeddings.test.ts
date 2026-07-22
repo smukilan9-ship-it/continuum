@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { embeddingConfiguration, embeddingProviderStatus, geminiApiKeys } from "../packages/ai/src";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { embedDocuments, embeddingConfiguration, embeddingProviderStatus, geminiApiKeys, resetFeatherlessCredentialState } from "../packages/ai/src";
 
 describe("embedding provider configuration", () => {
+  afterEach(() => vi.unstubAllGlobals());
   it("deduplicates and caps Gemini keys without exposing their values in status", () => {
     const env = { GEMINI_API_KEY: "primary-secret", GEMINI_API_KEY_1: "primary-secret", GEMINI_API_KEYS: Array.from({ length: 14 }, (_, index) => `secret-${index}`).join(","), GEMINI_DATA_USE_ACKNOWLEDGED: "true" } as NodeJS.ProcessEnv;
     expect(geminiApiKeys(env)).toHaveLength(10);
@@ -31,5 +32,21 @@ describe("embedding provider configuration", () => {
   it("uses the verified Featherless embedding model when only Featherless is configured", () => {
     const env = { FEATHERLESS_API_KEY: "featherless-secret", EMBEDDING_DIMENSIONS: "1536" } as NodeJS.ProcessEnv;
     expect(embeddingConfiguration(env)).toEqual({ provider: "featherless", model: "Qwen/Qwen3-Embedding-8B", dimensions: 1536, fallbackProviders: [] });
+  });
+
+  it("fails over once to another healthy Featherless key", async () => {
+    resetFeatherlessCredentialState();
+    const authorizations: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const authorization = new Headers(init?.headers).get("authorization") ?? "";
+      authorizations.push(authorization);
+      if (authorization.endsWith("primary-key")) return new Response("rate limited", { status: 429 });
+      return new Response(JSON.stringify({ data: [{ index: 0, embedding: [0.25, 0.75] }] }), { status: 200 });
+    }));
+    const env = { FEATHERLESS_API_KEY: "primary-key", FEATHERLESS_API_KEY_1: "backup-key" } as NodeJS.ProcessEnv;
+    const vectors = await embedDocuments(["bounded context"], { provider: "featherless", model: "test/embed", dimensions: 2, fallbackProviders: [] }, env);
+    expect(vectors).toEqual([[0.25, 0.75]]);
+    expect(authorizations).toHaveLength(2);
+    expect(authorizations[0]).not.toBe(authorizations[1]);
   });
 });
