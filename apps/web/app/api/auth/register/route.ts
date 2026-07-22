@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAppSession, enforceRateLimit, registerUser, sameOriginWrite, sessionCookie } from "@/lib/auth";
 import { publicRegistrationEnabled } from "@/lib/env";
+import { passwordSchema } from "@/lib/password-policy";
 
 const schema = z.object({
   email: z.string().email().max(254).transform((value) => value.toLowerCase()),
-  password: z.string().min(12).max(200),
+  password: passwordSchema,
   displayName: z.string().trim().min(2).max(80),
   timezone: z.string().min(1).max(80).refine((value) => {
     try { new Intl.DateTimeFormat("en-US", { timeZone: value }).format(); return true; } catch { return false; }

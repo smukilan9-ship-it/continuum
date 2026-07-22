@@ -1,4 +1,4 @@
-import { and, asc, cosineDistance, desc, eq, gt, ilike, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
+import { and, asc, cosineDistance, desc, eq, gt, ilike, inArray, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import type { MasteryState, MemoryEvent, OutcomeReceipt, ResourceActivity, ResourceRegistryEntry } from "@continuum/schemas";
 import { getDatabase } from "./client";
 import {
@@ -21,10 +21,13 @@ import {
   memoryEvents,
   memoryProposals,
   memoryRecords,
+  milestones,
   modelRoutes,
   modelUsage,
   oauthGrants,
+  papers,
   profiles,
+  taskDependencies,
   projectDecisions,
   projects,
   rateLimitBuckets,
@@ -43,6 +46,20 @@ import {
 } from "./schema";
 
 export const DEMO_USER_ID = "user_maya";
+
+/**
+ * Whether the built-in "Maya" acceptance fixture should be auto-seeded on the
+ * first repository call. It is enabled in development (so the local MCP demo
+ * token and seeded workspace work) and disabled in production by default, so a
+ * real deployment is never polluted with demo goals and a demo user, and real
+ * requests never pay for 13 sequential fixture inserts on a cold start.
+ * `CONTINUUM_SEED_DEMO=true|false` overrides the default in either direction.
+ */
+function demoSeedEnabled(env: NodeJS.ProcessEnv = process.env) {
+  if (env.CONTINUUM_SEED_DEMO === "true") return true;
+  if (env.CONTINUUM_SEED_DEMO === "false") return false;
+  return env.NODE_ENV !== "production";
+}
 
 function publicSourceMetadata(source: typeof sources.$inferSelect) {
   const { storagePath, ...metadata } = source;
@@ -70,6 +87,16 @@ export type SourceWrite = {
   sourceVersion: number;
   parserVersion: string;
   chunks: SourceChunkWrite[];
+};
+
+export type PaperWrite = {
+  id: string;
+  userId: string;
+  projectId: string;
+  title: string;
+  authors: string[];
+  doi?: string;
+  year?: number;
 };
 
 export type StoredSourceChunk = {
@@ -106,6 +133,13 @@ export class NeonRepository {
   private seedPromise?: Promise<void>;
 
   ensureDemoSeed() {
+    if (!demoSeedEnabled()) return (this.seedPromise ??= Promise.resolve());
+    this.seedPromise ??= this.seedDemoData();
+    return this.seedPromise;
+  }
+
+  /** Explicit, environment-independent demo seed used by `pnpm db:seed`. */
+  runDemoSeed() {
     this.seedPromise ??= this.seedDemoData();
     return this.seedPromise;
   }
@@ -237,14 +271,16 @@ export class NeonRepository {
 
   async getStateSnapshot(userId = DEMO_USER_ID) {
     await this.ensureDemoSeed();
-    const [eventRows, goalRows, taskRows, projectRows, decisionRows, noteRows, sourceRows, masteryRows, currentMemory, receiptRows, activityRows, proposalRows, scheduleRows, routeRows] = await Promise.all([
+    const [eventRows, goalRows, taskRows, projectRows, decisionRows, claimRows, noteRows, sourceRows, paperRows, masteryRows, currentMemory, receiptRows, activityRows, proposalRows, scheduleRows, routeRows] = await Promise.all([
       this.db.select().from(memoryEvents).where(eq(memoryEvents.userId, userId)).orderBy(desc(memoryEvents.occurredAt)).limit(100),
       this.db.select().from(goals).where(and(eq(goals.userId, userId), eq(goals.deleted, false))).orderBy(desc(goals.createdAt)),
       this.db.select({ task: tasks }).from(tasks).innerJoin(goals, eq(tasks.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(tasks.deleted, false))).orderBy(desc(tasks.createdAt)),
       this.db.select().from(projects).where(and(eq(projects.userId, userId), eq(projects.deleted, false))).orderBy(desc(projects.updatedAt)),
       this.db.select({ decision: projectDecisions }).from(projectDecisions).innerJoin(projects, eq(projectDecisions.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(projectDecisions.deleted, false))).orderBy(desc(projectDecisions.createdAt)),
+      this.db.select({ claim: researchClaims }).from(researchClaims).innerJoin(projects, eq(researchClaims.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(researchClaims.deleted, false))).orderBy(desc(researchClaims.createdAt)),
       this.db.select({ note: researchNotes }).from(researchNotes).innerJoin(projects, eq(researchNotes.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(researchNotes.deleted, false))).orderBy(desc(researchNotes.createdAt)),
       this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).orderBy(desc(sources.createdAt)),
+      this.db.select({ paper: papers }).from(papers).innerJoin(projects, eq(papers.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(papers.deleted, false))).orderBy(desc(papers.updatedAt)),
       this.db.select().from(learningStates).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false))),
       this.db.select().from(memoryRecords).where(and(eq(memoryRecords.userId, userId), eq(memoryRecords.deleted, false), eq(memoryRecords.superseded, false))).orderBy(desc(memoryRecords.updatedAt)),
       this.db.select().from(sessionReceipts).where(eq(sessionReceipts.userId, userId)).orderBy(desc(sessionReceipts.createdAt)).limit(20),
@@ -265,8 +301,10 @@ export class NeonRepository {
       tasks: taskRows.map((row) => row.task),
       projects: projectRows,
       decisions: decisionRows.map((row) => row.decision),
+      claims: claimRows.map((row) => row.claim),
       notes: noteRows.map((row) => row.note),
       sources: sourceRows.map(publicSourceMetadata),
+      papers: paperRows.map((row) => row.paper),
       learningStates: masteryRows,
       memoryRecords: currentMemory,
       receipts: receiptRows,
@@ -280,10 +318,11 @@ export class NeonRepository {
   async getWorkspaceSnapshot(userId: string, view: string) {
     await this.ensureDemoSeed();
     const empty = {
-      events: [], goals: [], tasks: [], projects: [], decisions: [], notes: [], sources: [],
+      events: [], goals: [], tasks: [], milestones: [], projects: [], decisions: [], claims: [], notes: [], sources: [], papers: [],
       learningStates: [], memoryRecords: [], receipts: [], resourceActivities: [], proposals: [],
       schedule: [], calendarConstraints: [], modelRoutes: [],
     };
+    const userMilestones = () => this.db.select({ milestone: milestones }).from(milestones).innerJoin(goals, eq(milestones.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(goals.deleted, false), eq(milestones.deleted, false))).orderBy(asc(milestones.order));
     const userGoals = () => this.db.select().from(goals).where(and(eq(goals.userId, userId), eq(goals.deleted, false))).orderBy(desc(goals.createdAt));
     const userTasks = () => this.db.select({ task: tasks }).from(tasks).innerJoin(goals, eq(tasks.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(goals.deleted, false), eq(tasks.deleted, false))).orderBy(desc(tasks.createdAt));
     const userProjects = () => this.db.select().from(projects).where(and(eq(projects.userId, userId), eq(projects.deleted, false))).orderBy(desc(projects.updatedAt));
@@ -299,20 +338,20 @@ export class NeonRepository {
 
     if (view === "integrations") return empty;
     if (view === "today") {
-      const [goalRows, taskRows, projectRows, receiptRows, activityRows, scheduleRows, constraintRows] = await Promise.all([
-        userGoals(), userTasks(), userProjects(), userReceipts(4),
+      const [goalRows, taskRows, milestoneRows, projectRows, receiptRows, activityRows, scheduleRows, constraintRows] = await Promise.all([
+        userGoals(), userTasks(), userMilestones(), userProjects(), userReceipts(4),
         this.db.select().from(resourceActivities).where(eq(resourceActivities.userId, userId)).orderBy(desc(resourceActivities.startedAt)).limit(8),
         this.listSchedule(userId),
         this.db.select().from(calendarConstraints).where(and(eq(calendarConstraints.userId, userId), eq(calendarConstraints.deleted, false), gt(calendarConstraints.endsAt, new Date(Date.now() - 24 * 3600_000)))).orderBy(asc(calendarConstraints.startsAt)).limit(100),
       ]);
-      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), projects: projectRows, receipts: receiptRows, resourceActivities: activityRows, schedule: scheduleRows, calendarConstraints: constraintRows };
+      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), milestones: milestoneRows.map(({ milestone }) => milestone), projects: projectRows, receipts: receiptRows, resourceActivities: activityRows, schedule: scheduleRows, calendarConstraints: constraintRows };
     }
     if (view === "goals") {
-      const [goalRows, taskRows, scheduleRows, constraintRows] = await Promise.all([
-        userGoals(), userTasks(), this.listSchedule(userId),
+      const [goalRows, taskRows, milestoneRows, scheduleRows, constraintRows] = await Promise.all([
+        userGoals(), userTasks(), userMilestones(), this.listSchedule(userId),
         this.db.select().from(calendarConstraints).where(and(eq(calendarConstraints.userId, userId), eq(calendarConstraints.deleted, false), gt(calendarConstraints.endsAt, new Date(Date.now() - 24 * 3600_000)))).orderBy(asc(calendarConstraints.startsAt)).limit(100),
       ]);
-      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), schedule: scheduleRows, calendarConstraints: constraintRows };
+      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), milestones: milestoneRows.map(({ milestone }) => milestone), schedule: scheduleRows, calendarConstraints: constraintRows };
     }
     if (view === "learn") {
       const [goalRows, taskRows, masteryRows, activityRows, receiptRows] = await Promise.all([
@@ -324,22 +363,30 @@ export class NeonRepository {
       return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), learningStates: masteryRows, resourceActivities: activityRows, receipts: receiptRows };
     }
     if (view === "research") {
-      const [goalRows, projectRows, decisionRows, noteRows, sourceRows] = await Promise.all([
-        userGoals(), userProjects(),
+      const [goalRows, taskRows, projectRows, decisionRows, claimRows, noteRows, sourceRows, paperRows] = await Promise.all([
+        userGoals(), userTasks(), userProjects(),
         this.db.select({ decision: projectDecisions }).from(projectDecisions).innerJoin(projects, eq(projectDecisions.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(projectDecisions.deleted, false))).orderBy(desc(projectDecisions.createdAt)),
+        this.db.select({ claim: researchClaims }).from(researchClaims).innerJoin(projects, eq(researchClaims.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(researchClaims.deleted, false))).orderBy(desc(researchClaims.createdAt)),
         this.db.select({ note: researchNotes }).from(researchNotes).innerJoin(projects, eq(researchNotes.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(researchNotes.deleted, false))).orderBy(desc(researchNotes.createdAt)),
         this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).orderBy(desc(sources.createdAt)),
+        this.db.select({ paper: papers }).from(papers).innerJoin(projects, eq(papers.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(papers.deleted, false))).orderBy(desc(papers.updatedAt)),
       ]);
-      return { ...empty, goals: goalRows, projects: projectRows, decisions: decisionRows.map(({ decision }) => decision), notes: noteRows.map(({ note }) => note), sources: sourceRows.map(publicSourceMetadata) };
+      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), projects: projectRows, decisions: decisionRows.map(({ decision }) => decision), claims: claimRows.map(({ claim }) => claim), notes: noteRows.map(({ note }) => note), sources: sourceRows.map(publicSourceMetadata), papers: paperRows.map(({ paper }) => paper) };
     }
     if (view === "memory") {
-      const [masteryRows, memoryRows, receiptRows, eventRows, sourceRows] = await Promise.all([
+      const [goalRows, taskRows, projectRows, decisionRows, claimRows, noteRows, masteryRows, memoryRows, receiptRows, eventRows, sourceRows, paperRows, scheduleRows] = await Promise.all([
+        userGoals(), userTasks(), userProjects(),
+        this.db.select({ decision: projectDecisions }).from(projectDecisions).innerJoin(projects, eq(projectDecisions.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(projectDecisions.deleted, false))).orderBy(desc(projectDecisions.createdAt)),
+        this.db.select({ claim: researchClaims }).from(researchClaims).innerJoin(projects, eq(researchClaims.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(researchClaims.deleted, false))).orderBy(desc(researchClaims.createdAt)),
+        this.db.select({ note: researchNotes }).from(researchNotes).innerJoin(projects, eq(researchNotes.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(researchNotes.deleted, false))).orderBy(desc(researchNotes.createdAt)),
         this.db.select().from(learningStates).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false))),
         this.db.select().from(memoryRecords).where(and(eq(memoryRecords.userId, userId), eq(memoryRecords.deleted, false), eq(memoryRecords.superseded, false))).orderBy(desc(memoryRecords.updatedAt)).limit(100),
         userReceipts(20), userEvents(30),
-        this.db.select({ id: sources.id }).from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).limit(100),
+        this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).orderBy(desc(sources.createdAt)).limit(100),
+        this.db.select({ paper: papers }).from(papers).innerJoin(projects, eq(papers.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(papers.deleted, false))).orderBy(desc(papers.updatedAt)),
+        this.listSchedule(userId),
       ]);
-      return { ...empty, learningStates: masteryRows, memoryRecords: memoryRows, receipts: receiptRows, events: eventView(eventRows), sources: sourceRows };
+      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), projects: projectRows, decisions: decisionRows.map(({ decision }) => decision), claims: claimRows.map(({ claim }) => claim), notes: noteRows.map(({ note }) => note), learningStates: masteryRows, memoryRecords: memoryRows, receipts: receiptRows, events: eventView(eventRows), sources: sourceRows.map(publicSourceMetadata), papers: paperRows.map(({ paper }) => paper), schedule: scheduleRows };
     }
     if (view === "activity") {
       const [proposalRows, routeRows, eventRows] = await Promise.all([
@@ -406,6 +453,8 @@ export class NeonRepository {
     if (!Number.isInteger(priority) || priority < 1 || priority > 5) throw new Error("Priority must be an integer between 1 and 5");
     const deadline = input.deadline ? new Date(String(input.deadline)) : undefined;
     if (deadline && Number.isNaN(deadline.valueOf())) throw new Error("Task deadline is invalid");
+    const energyRequired = ["low", "medium", "high"].includes(String(input.energyRequired)) ? String(input.energyRequired) : "medium";
+    const dependsOn = Array.isArray(input.dependsOn) ? input.dependsOn.map(String).filter(Boolean) : [];
     await this.db.insert(tasks).values({
       id,
       goalId: String(input.goalId),
@@ -415,13 +464,51 @@ export class NeonRepository {
       estimatedMinutes,
       deadline,
       priority,
-      energyRequired: "medium",
+      energyRequired,
       completionEvidence: input.completionEvidence ? String(input.completionEvidence) : undefined,
-      generatedBy: "mcp",
+      generatedBy: input.generatedBy ? String(input.generatedBy) : "mcp",
       promptVersion: "mcp-v1",
       createdAt: new Date(now),
       updatedAt: new Date(now),
     });
+    if (dependsOn.length) {
+      // Only persist dependencies on tasks that belong to the same owned goal.
+      const owned = await this.db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.goalId, String(input.goalId)), inArray(tasks.id, dependsOn)));
+      const validIds = new Set(owned.map((row) => row.id));
+      const rows = dependsOn.filter((dependencyId) => validIds.has(dependencyId)).map((dependencyId) => ({ id: `dep_${id.replace(/^task_/, "")}_${dependencyId.replace(/^task_/, "").slice(0, 8)}`, taskId: id, dependsOnTaskId: dependencyId, createdAt: new Date(now), updatedAt: new Date(now) }));
+      if (rows.length) await this.db.insert(taskDependencies).values(rows);
+    }
+  }
+
+  async createMilestone(input: { id: string; goalId: string; title: string; order: number; dueAt?: string }, now: string, userId = DEMO_USER_ID) {
+    const [ownedGoal] = await this.db.select({ id: goals.id }).from(goals).where(and(eq(goals.id, input.goalId), eq(goals.userId, userId), eq(goals.deleted, false))).limit(1);
+    if (!ownedGoal) throw new Error("Goal not found for this user");
+    await this.db.insert(milestones).values({
+      id: input.id,
+      goalId: input.goalId,
+      title: input.title,
+      order: input.order,
+      status: "upcoming",
+      dueAt: input.dueAt ? new Date(input.dueAt) : undefined,
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
+    });
+  }
+
+  async listMilestones(userId: string, goalId?: string) {
+    const conditions = [eq(goals.userId, userId), eq(milestones.deleted, false), eq(goals.deleted, false)];
+    if (goalId) conditions.push(eq(milestones.goalId, goalId));
+    return this.db.select({ milestone: milestones }).from(milestones).innerJoin(goals, eq(milestones.goalId, goals.id)).where(and(...conditions)).orderBy(asc(milestones.order)).then((rows) => rows.map(({ milestone }) => milestone));
+  }
+
+  async listTaskDependencies(userId: string) {
+    return this.db.select({ taskId: taskDependencies.taskId, dependsOnTaskId: taskDependencies.dependsOnTaskId }).from(taskDependencies).innerJoin(tasks, eq(taskDependencies.taskId, tasks.id)).innerJoin(goals, eq(tasks.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(taskDependencies.deleted, false)));
+  }
+
+  async saveOnboardingIntake(userId: string, educationLevel: string, intake: Record<string, unknown>, now: string) {
+    const [profile] = await this.db.select({ id: profiles.id, preferences: profiles.preferences }).from(profiles).where(and(eq(profiles.userId, userId), eq(profiles.deleted, false))).limit(1);
+    if (!profile) throw new Error("Profile not found for this user");
+    await this.db.update(profiles).set({ educationLevel, preferences: { ...(profile.preferences ?? {}), onboarding: intake }, updatedAt: new Date(now) }).where(eq(profiles.id, profile.id));
   }
 
   async createGoal(input: Record<string, unknown>, id: string, now: string, userId = DEMO_USER_ID) {
@@ -1085,6 +1172,23 @@ export class NeonRepository {
       updatedAt: new Date(),
     };
     await this.db.insert(resourceActivities).values(values).onConflictDoUpdate({ target: resourceActivities.id, set: values });
+  }
+
+  async savePaper(input: PaperWrite) {
+    const [ownedProject] = await this.db.select({ id: projects.id }).from(projects).where(and(eq(projects.id, input.projectId), eq(projects.userId, input.userId), eq(projects.deleted, false))).limit(1);
+    if (!ownedProject) throw new Error("Project not found or not accessible");
+    const normalizedDoi = input.doi?.trim().toLowerCase().replace(/^https?:\/\/(?:dx\.)?doi\.org\//, "");
+    const existing = normalizedDoi
+      ? await this.db.select().from(papers).where(and(eq(papers.projectId, input.projectId), eq(papers.doi, normalizedDoi), eq(papers.deleted, false))).limit(1)
+      : await this.db.select().from(papers).where(and(eq(papers.projectId, input.projectId), ilike(papers.title, input.title.trim()), eq(papers.deleted, false))).limit(1);
+    if (existing[0]) return { paper: existing[0], duplicate: true };
+    const [paper] = await this.db.insert(papers).values({ id: input.id, projectId: input.projectId, title: input.title.trim(), authors: input.authors, doi: normalizedDoi, year: input.year }).returning();
+    if (!paper) throw new Error("Paper could not be saved");
+    return { paper, duplicate: false };
+  }
+
+  async listPapers(userId: string, projectId?: string) {
+    return this.db.select({ paper: papers }).from(papers).innerJoin(projects, eq(papers.projectId, projects.id)).where(and(eq(projects.userId, userId), projectId ? eq(projects.id, projectId) : undefined, eq(projects.deleted, false), eq(papers.deleted, false))).orderBy(desc(papers.updatedAt)).then((rows) => rows.map((row) => row.paper));
   }
 
   async getResourceActivity(activityId: string, userId = DEMO_USER_ID) {

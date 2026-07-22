@@ -26,15 +26,129 @@ export interface FeatherlessModel {
 }
 
 type CacheEntry<T> = { value: T; expiresAt: number };
-let planCache: CacheEntry<FeatherlessPlan> | undefined;
-let modelCache: CacheEntry<FeatherlessModel[]> | undefined;
-let modelErrorCache: CacheEntry<string> | undefined;
+const planCache = new Map<string, CacheEntry<FeatherlessPlan>>();
+const modelCache = new Map<string, CacheEntry<FeatherlessModel[]>>();
+const modelErrorCache = new Map<string, CacheEntry<string>>();
 
+export interface FeatherlessCredential {
+  /** Stable, non-secret identifier that is safe for status responses. */
+  id: "primary" | `key_${number}`;
+  apiKey: string;
+}
+
+interface CredentialState {
+  failures: number;
+  inFlight: number;
+  openUntil?: number;
+  lastFailureAt?: number;
+  lastSuccessAt?: number;
+  lastStatus?: number;
+}
+
+const credentialStates = new Map<string, CredentialState>();
+let credentialCursor = 0;
+
+function credentialState(id: string) {
+  let state = credentialStates.get(id);
+  if (!state) {
+    state = { failures: 0, inFlight: 0 };
+    credentialStates.set(id, state);
+  }
+  return state;
+}
+
+/** Returns configured credentials without ever exposing their values to callers or status payloads. */
+export function featherlessCredentials(env: NodeJS.ProcessEnv = process.env): FeatherlessCredential[] {
+  const candidates: FeatherlessCredential[] = [];
+  const primary = env.FEATHERLESS_API_KEY?.trim();
+  if (primary) candidates.push({ id: "primary", apiKey: primary });
+  for (let index = 1; index <= 3; index += 1) {
+    const apiKey = env[`FEATHERLESS_API_KEY_${index}`]?.trim();
+    if (apiKey) candidates.push({ id: `key_${index}`, apiKey });
+  }
+  const seen = new Set<string>();
+  return candidates.filter((credential) => {
+    if (seen.has(credential.apiKey)) return false;
+    seen.add(credential.apiKey);
+    return true;
+  });
+}
+
+export function featherlessApiKeys(env: NodeJS.ProcessEnv = process.env) {
+  return featherlessCredentials(env).map((credential) => credential.apiKey);
+}
+
+/** Pick a healthy key with the least local work, rotating ties deterministically. */
+export function selectFeatherlessCredential(env: NodeJS.ProcessEnv = process.env, now = Date.now()) {
+  const credentials = featherlessCredentials(env);
+  if (!credentials.length) throw new Error("Featherless is not configured");
+  const healthy = credentials.filter((credential) => (credentialState(credential.id).openUntil ?? 0) <= now);
+  if (!healthy.length) throw new Error("Every configured Featherless credential slot is temporarily backing off");
+  const pool = healthy;
+  const minimumInFlight = Math.min(...pool.map((credential) => credentialState(credential.id).inFlight));
+  const leastBusy = pool.filter((credential) => credentialState(credential.id).inFlight === minimumInFlight);
+  const selected = leastBusy[credentialCursor % leastBusy.length]!;
+  credentialCursor = (credentialCursor + 1) % Math.max(credentials.length, 1);
+  return selected;
+}
+
+export function recordFeatherlessCredentialSuccess(id: string, now = Date.now()) {
+  const state = credentialState(id);
+  state.failures = 0;
+  state.openUntil = undefined;
+  state.lastStatus = undefined;
+  state.lastSuccessAt = now;
+}
+
+export function recordFeatherlessCredentialFailure(id: string, error: unknown, now = Date.now()) {
+  const state = credentialState(id);
+  const message = error instanceof Error ? error.message : String(error);
+  const status = Number(message.match(/\((\d{3})\)/)?.[1] ?? 0) || undefined;
+  state.failures += 1;
+  state.lastFailureAt = now;
+  state.lastStatus = status;
+  // Rate limits back off immediately. Invalid credentials stay out longer. Other
+  // transient failures require two consecutive errors before opening the key.
+  if (status === 429) state.openUntil = now + 30_000;
+  else if (status === 401 || status === 403) state.openUntil = now + 5 * 60_000;
+  else if (state.failures >= 2) state.openUntil = now + Math.min(4, state.failures - 1) * 60_000;
+}
+
+export function featherlessCredentialHealth(env: NodeJS.ProcessEnv = process.env, now = Date.now()) {
+  return featherlessCredentials(env).map((credential) => {
+    const state = credentialState(credential.id);
+    return {
+      id: credential.id,
+      status: (state.openUntil ?? 0) > now ? "backing_off" as const : state.failures ? "degraded" as const : "available" as const,
+      inFlight: state.inFlight,
+      failures: state.failures,
+      lastStatus: state.lastStatus,
+      lastFailureAt: state.lastFailureAt ? new Date(state.lastFailureAt).toISOString() : undefined,
+      lastSuccessAt: state.lastSuccessAt ? new Date(state.lastSuccessAt).toISOString() : undefined,
+      retryAfter: (state.openUntil ?? 0) > now ? new Date(state.openUntil!).toISOString() : undefined,
+    };
+  });
+}
+
+export function resetFeatherlessCredentialState() {
+  credentialStates.clear();
+  credentialCursor = 0;
+  planCache.clear();
+  modelCache.clear();
+  modelErrorCache.clear();
+}
+
+// Featherless removed its public `/v1/models` catalogue endpoint (it now returns
+// 410/404 "Gone"), so live discovery is no longer available on this plan and the
+// selector relies on these curated IDs. Every ID below has been verified to
+// return real, non-empty completions on the configured Feather Chat plan
+// (Qwen2.5 family). The previously shipped Qwen3.x IDs were forward-dated and
+// silently returned empty 200s.
 const curatedModels: Record<string, { id: string; concurrencyCost: number }> = {
-  fast: { id: "Qwen/Qwen3.5-9B", concurrencyCost: 1 },
-  reasoning: { id: "Qwen/Qwen3.6-27B", concurrencyCost: 2 },
-  code: { id: "Qwen/Qwen3-Coder-Next", concurrencyCost: 4 },
-  verifier: { id: "openai/gpt-oss-20b", concurrencyCost: 2 },
+  fast: { id: "Qwen/Qwen2.5-7B-Instruct", concurrencyCost: 1 },
+  reasoning: { id: "Qwen/Qwen2.5-72B-Instruct", concurrencyCost: 2 },
+  code: { id: "Qwen/Qwen2.5-Coder-32B-Instruct", concurrencyCost: 2 },
+  verifier: { id: "Qwen/Qwen2.5-72B-Instruct", concurrencyCost: 2 },
 };
 
 function headers(apiKey: string, env: NodeJS.ProcessEnv) {
@@ -46,20 +160,23 @@ function headers(apiKey: string, env: NodeJS.ProcessEnv) {
   };
 }
 
-export async function getFeatherlessPlan(apiKey = process.env.FEATHERLESS_API_KEY, env: NodeJS.ProcessEnv = process.env) {
+export async function getFeatherlessPlan(apiKey = selectFeatherlessCredential().apiKey, env: NodeJS.ProcessEnv = process.env, cacheKey = "default") {
   if (!apiKey) throw new Error("Featherless is not configured");
-  if (planCache && planCache.expiresAt > Date.now()) return planCache.value;
+  const cached = planCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
   const response = await fetch("https://api.featherless.ai/v1/plan", { headers: headers(apiKey, env), signal: AbortSignal.timeout(8_000) });
   if (!response.ok) throw new Error(`Featherless plan lookup failed (${response.status})`);
   const value = await response.json() as FeatherlessPlan;
-  planCache = { value, expiresAt: Date.now() + 5 * 60_000 };
+  planCache.set(cacheKey, { value, expiresAt: Date.now() + 5 * 60_000 });
   return value;
 }
 
-export async function listFeatherlessModels(apiKey = process.env.FEATHERLESS_API_KEY, env: NodeJS.ProcessEnv = process.env) {
+export async function listFeatherlessModels(apiKey = selectFeatherlessCredential().apiKey, env: NodeJS.ProcessEnv = process.env, cacheKey = "default") {
   if (!apiKey) throw new Error("Featherless is not configured");
-  if (modelCache && modelCache.expiresAt > Date.now()) return modelCache.value;
-  if (modelErrorCache && modelErrorCache.expiresAt > Date.now()) throw new Error(modelErrorCache.value);
+  const cached = modelCache.get(cacheKey);
+  const cachedError = modelErrorCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  if (cachedError && cachedError.expiresAt > Date.now()) throw new Error(cachedError.value);
   const url = new URL("https://api.featherless.ai/v1/models");
   url.searchParams.set("available_on_current_plan", "true");
   url.searchParams.set("status", "active");
@@ -69,13 +186,13 @@ export async function listFeatherlessModels(apiKey = process.env.FEATHERLESS_API
   const response = await fetch(url, { headers: headers(apiKey, env), signal: AbortSignal.timeout(12_000) });
   if (!response.ok) {
     const message = `Featherless model catalog lookup failed (${response.status})`;
-    modelErrorCache = { value: message, expiresAt: Date.now() + 60_000 };
+    modelErrorCache.set(cacheKey, { value: message, expiresAt: Date.now() + 60_000 });
     throw new Error(message);
   }
   const payload = await response.json() as { data?: FeatherlessModel[] };
   const value = (payload.data ?? []).filter((model) => model.available_on_current_plan !== false && model.status !== "not_deployed");
-  modelCache = { value, expiresAt: Date.now() + 5 * 60_000 };
-  modelErrorCache = undefined;
+  modelCache.set(cacheKey, { value, expiresAt: Date.now() + 5 * 60_000 });
+  modelErrorCache.delete(cacheKey);
   return value;
 }
 
@@ -130,11 +247,11 @@ function candidateScore(model: FeatherlessModel, taskClass: RouteDecision["taskC
   return score;
 }
 
-export async function selectFeatherlessModel(taskClass: RouteDecision["taskClass"], env: NodeJS.ProcessEnv = process.env) {
+export async function selectFeatherlessModel(taskClass: RouteDecision["taskClass"], env: NodeJS.ProcessEnv = process.env, credential = selectFeatherlessCredential(env)) {
   const override = modelOverride(taskClass, env);
   if (override) return { id: override, concurrencyCost: concurrencyCostForModel(override, env), selectedBy: "configured_policy" as const };
   try {
-    const [plan, models] = await Promise.all([getFeatherlessPlan(env.FEATHERLESS_API_KEY, env), listFeatherlessModels(env.FEATHERLESS_API_KEY, env)]);
+    const [plan, models] = await Promise.all([getFeatherlessPlan(credential.apiKey, env, credential.id), listFeatherlessModels(credential.apiKey, env, credential.id)]);
     const selected = models.map((model) => ({ model, score: candidateScore(model, taskClass, plan, env) })).filter((entry) => Number.isFinite(entry.score)).sort((left, right) => right.score - left.score || left.model.id.localeCompare(right.model.id))[0];
     if (!selected) throw new Error("No evaluated Featherless model matches this task and plan");
     return { id: selected.model.id, concurrencyCost: selected.model.concurrency_cost ?? 1, selectedBy: "live_catalog_policy" as const, planConcurrency: plan.concurrency };
@@ -205,14 +322,39 @@ export async function withFeatherlessConcurrency<T>(concurrencyCost: number, run
   finally { release(); }
 }
 
+export async function acquireFeatherlessCredentialLease(id: string) {
+  const state = credentialState(id);
+  state.inFlight += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    state.inFlight = Math.max(0, state.inFlight - 1);
+  };
+}
+
+export async function withFeatherlessExecution<T>(credentialId: string, concurrencyCost: number, run: () => Promise<T>, env: NodeJS.ProcessEnv = process.env) {
+  const [releaseConcurrency, releaseCredential] = await Promise.all([
+    acquireFeatherlessConcurrency(concurrencyCost, env),
+    acquireFeatherlessCredentialLease(credentialId),
+  ]);
+  try { return await run(); }
+  finally { releaseCredential(); releaseConcurrency(); }
+}
+
 export async function featherlessStatus(env: NodeJS.ProcessEnv = process.env) {
-  if (!env.FEATHERLESS_API_KEY) return { configured: false as const };
+  const credentials = featherlessCredentials(env);
+  if (!credentials.length) return { configured: false as const, keyCount: 0, keys: [] };
+  let credential: FeatherlessCredential | undefined;
   try {
-    const plan = await getFeatherlessPlan(env.FEATHERLESS_API_KEY, env);
+    credential = selectFeatherlessCredential(env);
+    const plan = await getFeatherlessPlan(credential.apiKey, env, credential.id);
     let catalog: { reachable: boolean; eligibleModels?: number; mode: "live_catalog" | "curated_verified" } = { reachable: false, mode: "curated_verified" };
-    try { const models = await listFeatherlessModels(env.FEATHERLESS_API_KEY, env); catalog = { reachable: true, eligibleModels: models.length, mode: "live_catalog" }; } catch { /* Curated, live-probed task models remain available. */ }
-    return { configured: true as const, reachable: true, plan: { id: plan.id, name: plan.name, concurrencyUnits: plan.concurrency, maxContextLength: plan.max_context_length, maxModelSize: plan.max_model_size }, catalog };
+    try { const models = await listFeatherlessModels(credential.apiKey, env, credential.id); catalog = { reachable: true, eligibleModels: models.length, mode: "live_catalog" }; } catch { /* Curated, live-probed task models remain available. */ }
+    recordFeatherlessCredentialSuccess(credential.id);
+    return { configured: true as const, reachable: true, keyCount: credentials.length, keys: featherlessCredentialHealth(env), plan: { id: plan.id, name: plan.name, concurrencyUnits: plan.concurrency, maxContextLength: plan.max_context_length, maxModelSize: plan.max_model_size }, catalog };
   } catch (error) {
-    return { configured: true as const, reachable: false, error: error instanceof Error ? error.message : "Featherless status check failed" };
+    if (credential) recordFeatherlessCredentialFailure(credential.id, error);
+    return { configured: true as const, reachable: false, keyCount: credentials.length, keys: featherlessCredentialHealth(env), error: error instanceof Error ? error.message : "Featherless status check failed" };
   }
 }

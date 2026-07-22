@@ -1,10 +1,11 @@
 "use client";
 
 import { ArrowRight, CalendarClock, Check, Clock3, FileCheck2, Link2, Play, Target } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { Badge, Button, Card } from "@/components/ui";
+import { OnboardingFlow } from "./onboarding-flow";
 import { PageIntro } from "./page-intro";
-import { formatDate, list, postState, text, type Row, type WorkspaceState } from "./types";
+import { formatDate, list, text, type Row, type WorkspaceState } from "./types";
 import type { WorkspaceView } from "@/lib/workspace-routes";
 
 type PlanPreview = { proposalId?: string; items: Row[]; assumptions: string[] };
@@ -45,7 +46,7 @@ export function TodayScreen({ state, userName, onNavigate, onRefresh }: { state:
     } catch (error) { setPlanError(error instanceof Error ? error.message : "The plan could not be committed"); setPlanBusy(false); }
   }
 
-  if (!state.goals.length) return <OnboardingScreen userName={userName} onRefresh={onRefresh} />;
+  if (!state.goals.length) return <OnboardingFlow userName={userName} onRefresh={onRefresh} />;
 
   return (
     <div className="screen">
@@ -78,33 +79,6 @@ export function TodayScreen({ state, userName, onNavigate, onRefresh }: { state:
           {recentExternal ? <><p>You started an external resource and have not completed its return check.</p><Button className="button-secondary" onClick={() => onNavigate("learn")}>Resume handoff<ArrowRight size={15} /></Button></> : latestReceipt ? <><p>{text(latestReceipt, "summary")}</p>{list(latestReceipt, "nextActions").length ? <ul>{list(latestReceipt, "nextActions").slice(0, 3).map((action) => <li key={action}>{action}</li>)}</ul> : null}<span className="subtle-meta">Saved {formatDate(latestReceipt.createdAt)}</span></> : <p>Completing a session in Continuum or through MCP creates a compact receipt with decisions, evidence, unresolved questions, and next actions.</p>}
         </Card>
       </section>
-    </div>
-  );
-}
-
-function OnboardingScreen({ userName, onRefresh }: { userName: string; onRefresh: () => Promise<void> }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    const form = new FormData(event.currentTarget);
-    try {
-      await postState("goal.created", "Created the first academic goal during onboarding.", { title: String(form.get("title")), outcome: String(form.get("outcome")), date: String(form.get("date")) });
-      setBusy(false);
-      await onRefresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "The goal could not be saved"); setBusy(false); }
-  }
-
-  return (
-    <div className="screen onboarding-screen">
-      <PageIntro eyebrow="GET STARTED" title={`Create the first real goal, ${userName}.`} description="This becomes shared, user-owned context for the app and every assistant you authorize." />
-      <Card className="onboarding-card">
-        <div><Badge tone="blue">Step 1 of 3</Badge><h2>What outcome are you working toward?</h2><p>Next, add a task and connect Claude if you want the same memory in another assistant. High-impact assistant changes stay pending until you approve them.</p></div>
-        <form onSubmit={submit} className="workspace-form"><label>Goal title<input name="title" minLength={3} maxLength={120} required placeholder="Prepare for a physics assessment" /></label><label>Successful outcome<textarea name="outcome" minLength={3} maxLength={500} required placeholder="Score 85% or higher and explain the hard concepts independently" /></label><label>Target date<input name="date" type="date" required min={new Date().toISOString().slice(0, 10)} /></label>{error ? <p className="form-error" role="alert">{error}</p> : null}<Button className="button-primary button-large" disabled={busy}>{busy ? "Creating…" : "Create workspace"}<ArrowRight size={16} /></Button></form>
-      </Card>
     </div>
   );
 }

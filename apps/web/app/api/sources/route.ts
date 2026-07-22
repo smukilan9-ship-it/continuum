@@ -81,15 +81,36 @@ export async function POST(request: Request) {
   const chunks = chunkDocument({ id, title, text: sanitized, version: 1, deleted: false });
 
   let storagePath: string | undefined;
+  let storageStatus: "stored" | "not_configured" | "unavailable" = "not_configured";
   const blobConfigured = Boolean(process.env.BLOB_READ_WRITE_TOKEN || (process.env.BLOB_STORE_ID && process.env.VERCEL_OIDC_TOKEN));
   if (blobConfigured) {
     const safeName = title.replace(/[^a-zA-Z0-9._-]+/g, "-");
-    const blob = await put(`sources/${user.id}/${hash.slice(0, 16)}-${safeName}`, Buffer.from(bytes), {
-      access: "private",
-      contentType: isPdf ? "application/pdf" : file.type || "text/plain",
-      addRandomSuffix: false,
-    });
-    storagePath = blob.url;
+    // Storing the original binary is best-effort and must never block or hang
+    // ingestion — the searchable index (chunks + embeddings) does not depend on
+    // it. Bound the upload and degrade gracefully if the blob store is slow or
+    // unreachable.
+    const blobTimeoutMs = Number(process.env.BLOB_UPLOAD_TIMEOUT_MS ?? 15_000);
+    const controller = new AbortController();
+    const timeout = new Promise<"timeout">((resolve) => setTimeout(() => { controller.abort(); resolve("timeout"); }, blobTimeoutMs));
+    try {
+      // Race against a hard timeout: some environments (notably `next dev`'s
+      // patched fetch) can leave the upload's socket hung past its own abort, so
+      // a dangling put must not stall the request. A slow store degrades to
+      // "unavailable" and ingestion proceeds without the original binary.
+      const result = await Promise.race([
+        put(`sources/${user.id}/${hash.slice(0, 16)}-${safeName}`, Buffer.from(bytes), {
+          access: "private",
+          contentType: isPdf ? "application/pdf" : file.type || "text/plain",
+          addRandomSuffix: false,
+          abortSignal: controller.signal,
+        }),
+        timeout,
+      ]);
+      if (result === "timeout") storageStatus = "unavailable";
+      else { storagePath = result.url; storageStatus = "stored"; }
+    } catch {
+      storageStatus = "unavailable";
+    }
   }
 
   let embeddings: number[][] | undefined;
@@ -136,7 +157,7 @@ export async function POST(request: Request) {
     payload: { contentHash: hash, parserVersion: "unpdf-1.6.2", injectionDetected, embeddingStatus, blobStored: Boolean(storagePath) },
   });
   return NextResponse.json({
-    source: { id, title, contentHash: hash, version: 1, parserVersion: "unpdf-1.6.2", injectionDetected, storage: storagePath ? "vercel_blob_private" : "not_configured", embeddingStatus },
+    source: { id, title, contentHash: hash, version: 1, parserVersion: "unpdf-1.6.2", injectionDetected, storage: storageStatus === "stored" ? "vercel_blob_private" : storageStatus, embeddingStatus },
     chunks,
     duplicate: false,
     duplicateKey: hash,

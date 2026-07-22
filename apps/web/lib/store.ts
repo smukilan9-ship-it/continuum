@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   DEMO_USER_ID,
   NeonRepository,
+  type PaperWrite,
   type SourceWrite,
   type StoredMemoryChunk,
   type StoredSourceChunk,
@@ -21,6 +22,7 @@ import {
 } from "@continuum/schemas";
 import { embedDocuments, embedQuery, embeddingConfiguration } from "@continuum/ai";
 import { demoStore, readDemoState, writeDemoState, type DemoEvent } from "@/lib/demo-store";
+import { buildContextPacks, getContextPack } from "@/lib/context-packs";
 
 export type AppEventInput = {
   type: string;
@@ -54,12 +56,17 @@ export interface Store {
   findSourceByHash(hash: string): Promise<{ id: string; title: string } | undefined>;
   saveSource(source: SourceWrite): Promise<void>;
   listSources(): Promise<unknown[]>;
+  savePaper(paper: PaperWrite): Promise<{ paper: unknown; duplicate: boolean }>;
+  listPapers(projectId?: string): Promise<unknown[]>;
   listSourceChunks(): Promise<StoredSourceChunk[]>;
   deleteSource(sourceId: string): Promise<{ id: string; title: string; storagePath?: string } | undefined>;
   vectorSearch(embedding: number[], limit: number): Promise<StoredSourceChunk[]>;
   searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }): Promise<StoredMemoryChunk[]>;
   saveReceipt(receipt: OutcomeReceipt, clientId?: string): Promise<void>;
   listReceipts(limit?: number): Promise<unknown[]>;
+  createMilestone(input: { id: string; goalId: string; title: string; order: number; dueAt?: string }, now: string): Promise<void>;
+  listMilestones(goalId?: string): Promise<unknown[]>;
+  saveOnboardingIntake(educationLevel: string, intake: Record<string, unknown>, now: string): Promise<void>;
   seedResources(): Promise<void>;
   recommendResource(args: Record<string, unknown>): Promise<ResourceRecommendation>;
   saveResourceActivity(activity: ResourceActivity, metadata?: Record<string, unknown>): Promise<void>;
@@ -145,8 +152,8 @@ class MemoryStore implements Store {
       today: ["goals", "tasks", "projects", "receipts", "resourceActivities", "schedule"],
       goals: ["goals", "tasks", "schedule"],
       learn: ["goals", "tasks", "learningState", "resourceActivities", "receipts"],
-      research: ["goals", "projects", "decisions", "notes", "sources"],
-      memory: ["learningState", "memoryChunks", "receipts", "events", "sources"],
+      research: ["goals", "tasks", "projects", "decisions", "claims", "notes", "sources", "papers"],
+      memory: ["goals", "tasks", "projects", "decisions", "claims", "notes", "sources", "papers", "learningState", "memoryChunks", "receipts", "events", "schedule"],
       activity: ["proposals", "events"],
       code: ["goals", "tasks", "projects", "learningState", "receipts"],
       integrations: [],
@@ -155,6 +162,12 @@ class MemoryStore implements Store {
   }
 
   async read(name: string, args: Record<string, unknown>) {
+    if (name === "list_context_packs") return buildContextPacks(await this.workspace("memory")).map((pack) => pack.metadata);
+    if (name === "get_context_pack") return getContextPack(await this.workspace("memory"), String(args.packId), Number(args.maxTokens ?? 1800));
+    if (name === "get_context_changes_since") {
+      const since = Date.parse(String(args.since));
+      return compactToBudget(demoStore.events.filter((event) => Date.parse(event.occurredAt) > since).slice(0, Number(args.limit ?? 50)), Number(args.maxTokens ?? 1200));
+    }
     if (name === "list_projects" || name === "load_project" || name === "list_goals" || name === "load_goal" || name === "load_outcome_receipt") return compactToBudget(readDemoState(name, args), Number(args.maxTokens ?? 1400));
     if (name === "search_memory" || name === "search_academic_memory") return compactToBudget(await this.searchMemory({ query: String(args.query), types: Array.isArray(args.types) ? args.types.map(String) : undefined, goalId: args.goalId ? String(args.goalId) : undefined, projectId: args.projectId ? String(args.projectId) : undefined, limit: Number(args.limit ?? 8) }), Number(args.maxTokens ?? 1200));
     if (name === "load_context") {
@@ -167,6 +180,12 @@ class MemoryStore implements Store {
   }
 
   async write(name: string, args: Record<string, unknown>, now: string, surface: "mcp" | "standalone_app" = "mcp", clientId?: string) {
+    if (name === "record_approved_update") {
+      const approval = args.approval as { approvedAt?: unknown; approvedBy?: unknown };
+      assertRecentConfirmation(approval?.approvedAt, now);
+      const event = await this.appendEvent({ type: `approved.${String(args.kind)}`, summary: String(args.summary), entityIds: [String(args.entityId)], payload: { detail: args.detail, provenance: args.provenance, approvedBy: approval.approvedBy, clientId }, source: { surface }, goalId: args.goalId ? String(args.goalId) : undefined, projectId: args.projectId ? String(args.projectId) : undefined, importance: 0.72 }, now);
+      return { data: event, entityIds: [String(args.entityId)], summary: "Recorded the explicitly approved update with provenance." };
+    }
     if (name === "sync_session") {
       const sync = sessionSyncSchema.parse(args);
       const event = await this.appendEvent({ type: "session.checkpoint.saved", summary: sync.summary, entityIds: [opaqueId("checkpoint")], payload: sync, goalId: sync.goalId, projectId: sync.projectId, source: { surface, sessionId: sync.sessionId }, importance: 0.8 }, now);
@@ -315,6 +334,14 @@ class MemoryStore implements Store {
       return metadata;
     });
   }
+  async savePaper(paper: PaperWrite) {
+    const existing = demoStore.papers.find((item) => item.projectId === paper.projectId && ((paper.doi && String(item.doi ?? "").toLowerCase() === paper.doi.toLowerCase()) || String(item.title ?? "").toLowerCase() === paper.title.toLowerCase()));
+    if (existing) return { paper: existing, duplicate: true };
+    const saved = { ...paper, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), deleted: false, version: 1 };
+    demoStore.papers.unshift(saved);
+    return { paper: saved, duplicate: false };
+  }
+  async listPapers(projectId?: string) { return demoStore.papers.filter((paper) => !projectId || paper.projectId === projectId); }
   async listSourceChunks() { return demoStore.chunks; }
   async deleteSource(sourceId: string) { const source = demoStore.sources.find((item) => item.id === sourceId); if (!source) return undefined; demoStore.sources = demoStore.sources.filter((item) => item.id !== sourceId); demoStore.chunks = demoStore.chunks.filter((chunk) => chunk.sourceId !== sourceId); return { id: source.id, title: source.title, ...(source.storagePath ? { storagePath: source.storagePath } : {}) }; }
   async vectorSearch() { return []; }
@@ -324,6 +351,10 @@ class MemoryStore implements Store {
   }
   async saveReceipt(receipt: OutcomeReceipt) { demoStore.receipts.unshift(receipt as unknown as Record<string, unknown>); }
   async listReceipts(limit = 10) { return demoStore.receipts.slice(0, limit); }
+  private memoryMilestones: Array<Record<string, unknown>> = [];
+  async createMilestone(input: { id: string; goalId: string; title: string; order: number; dueAt?: string }) { this.memoryMilestones.push({ ...input, status: "upcoming" }); }
+  async listMilestones(goalId?: string) { return this.memoryMilestones.filter((milestone) => !goalId || milestone.goalId === goalId).sort((left, right) => Number(left.order) - Number(right.order)); }
+  async saveOnboardingIntake() { /* Local development identity does not persist a profile. */ }
   async seedResources() { /* Curated registry is already in the application bundle. */ }
   async recommendResource(args: Record<string, unknown>) { return recommendBestResource({ id: opaqueId("recommendation"), topic: String(args.topic ?? "electric potential"), goalId: args.goalId ? String(args.goalId) : undefined, conceptId: args.conceptId ? String(args.conceptId) : undefined, goalType: (args.goalType as "school" | "exam" | "university" | "research" | "coding" | undefined) ?? "school", need: (args.need as ResourceNeed | undefined) ?? "conceptual_intuition", level: args.level ? String(args.level) : undefined, minutesAvailable: args.minutesAvailable ? Number(args.minutesAvailable) : undefined, costPreference: (args.costPreference as "free_only" | "free_preferred" | "any" | undefined) ?? "free_only", preferredFormats: Array.isArray(args.preferredFormats) ? args.preferredFormats.map(String) : undefined }); }
   async saveResourceActivity(activity: ResourceActivity, metadata: Record<string, unknown> = {}) { const index = demoStore.resourceActivities.findIndex((item) => item.id === activity.id); const value = { ...activity, metadata }; if (index >= 0) demoStore.resourceActivities[index] = value; else demoStore.resourceActivities.unshift(value); }
@@ -352,6 +383,18 @@ class NeonStore implements Store {
   async workspace(view: string) { return this.repo.getWorkspaceSnapshot(this.userId, view); }
 
   async read(name: string, args: Record<string, unknown>, clientId?: string) {
+    if (name === "list_context_packs") return buildContextPacks(await this.repo.getWorkspaceSnapshot(this.userId, "memory")).map((pack) => pack.metadata);
+    if (name === "get_context_pack") {
+      const pack = getContextPack(await this.repo.getWorkspaceSnapshot(this.userId, "memory"), String(args.packId), Number(args.maxTokens ?? 1800));
+      await this.repo.logContextAccess({ id: opaqueId("context"), userId: this.userId, clientId, tool: name, focus: pack.metadata.id, selectedRecordIds: pack.metadata.provenance, tokenEstimate: pack.metadata.estimatedTokens, occurredAt: new Date().toISOString() });
+      return pack;
+    }
+    if (name === "get_context_changes_since") {
+      const since = Date.parse(String(args.since));
+      const snapshot = await this.repo.getWorkspaceSnapshot(this.userId, "memory");
+      const events = (snapshot.events as Array<Record<string, unknown>>).filter((event) => Date.parse(String(event.occurredAt)) > since).slice(0, Number(args.limit ?? 50));
+      return compactToBudget({ since: args.since, changes: events, newestAt: events[0]?.occurredAt ?? args.since }, Number(args.maxTokens ?? 1200));
+    }
     if (name === "list_projects") return (await this.repo.listProjects(this.userId)).map((project) => ({ id: project.id, title: project.title, phase: project.phase, purpose: project.purpose, updatedAt: project.updatedAt.toISOString() }));
     if (name === "load_project") {
       const project = await this.repo.getProject(String(args.projectId), this.userId);
@@ -390,7 +433,7 @@ class NeonStore implements Store {
       return chunk;
     }
     if (name === "load_context" || name === "get_current_context") {
-      const snapshot = await this.repo.getWorkspaceSnapshot(this.userId, "code");
+      const snapshot = await this.repo.getWorkspaceSnapshot(this.userId, "memory");
       const focus = String(args.focus ?? "active academic work");
       const relevant = await this.searchMemory({ query: focus, goalId: args.goalId ? String(args.goalId) : undefined, projectId: args.projectId ? String(args.projectId) : undefined, limit: 8 });
       const goals = (snapshot.goals as unknown[]).slice(0, 6);
@@ -415,6 +458,12 @@ class NeonStore implements Store {
   }
 
   async write(name: string, args: Record<string, unknown>, now: string, surface: "mcp" | "standalone_app" = "mcp", clientId?: string) {
+    if (name === "record_approved_update") {
+      const approval = args.approval as { approvedAt?: unknown; approvedBy?: unknown };
+      assertRecentConfirmation(approval?.approvedAt, now);
+      const event = await this.appendEvent({ type: `approved.${String(args.kind)}`, summary: String(args.summary), entityIds: [String(args.entityId)], payload: { detail: args.detail, provenance: args.provenance, approvedBy: approval.approvedBy, clientId }, source: { surface }, goalId: args.goalId ? String(args.goalId) : undefined, projectId: args.projectId ? String(args.projectId) : undefined, importance: 0.72 }, now);
+      return { data: event, entityIds: [String(args.entityId)], summary: "Recorded the explicitly approved update with provenance." };
+    }
     if (name === "sync_session") {
       const sync = sessionSyncSchema.parse(args);
       const checkpointId = opaqueId("checkpoint");
@@ -514,6 +563,8 @@ class NeonStore implements Store {
   async findSourceByHash(hash: string) { const source = await this.repo.findSourceByHash(hash, this.userId); return source ? { id: source.id, title: source.title } : undefined; }
   async saveSource(source: SourceWrite) { await this.repo.saveSource({ ...source, userId: this.userId }); }
   async listSources() { return this.repo.listSources(this.userId); }
+  async savePaper(paper: PaperWrite) { return this.repo.savePaper({ ...paper, userId: this.userId }); }
+  async listPapers(projectId?: string) { return this.repo.listPapers(this.userId, projectId); }
   async listSourceChunks() { return this.repo.listSourceChunks(this.userId); }
   async deleteSource(sourceId: string) { const source = await this.repo.softDeleteSource(sourceId, this.userId); return source ? { id: source.id, title: source.title, ...(source.storagePath ? { storagePath: source.storagePath } : {}) } : undefined; }
   async vectorSearch(embedding: number[], limit: number) { return this.repo.vectorSearch(embedding, limit, this.userId); }
@@ -524,6 +575,9 @@ class NeonStore implements Store {
   }
   async saveReceipt(receipt: OutcomeReceipt, clientId?: string) { await this.repo.saveSessionReceipt(receipt, clientId); }
   async listReceipts(limit = 10) { return this.repo.listSessionReceipts(this.userId, limit); }
+  async createMilestone(input: { id: string; goalId: string; title: string; order: number; dueAt?: string }, now: string) { await this.repo.createMilestone(input, now, this.userId); }
+  async listMilestones(goalId?: string) { return this.repo.listMilestones(this.userId, goalId); }
+  async saveOnboardingIntake(educationLevel: string, intake: Record<string, unknown>, now: string) { await this.repo.saveOnboardingIntake(this.userId, educationLevel, intake, now); }
   async seedResources() { this.resourceSeed ??= this.repo.seedResources(curatedResourceRegistry); await this.resourceSeed; }
   async recommendResource(args: Record<string, unknown>) { await this.seedResources(); const registry = await this.repo.listResources(); return recommendBestResource({ id: opaqueId("recommendation"), topic: String(args.topic ?? "electric potential"), goalId: args.goalId ? String(args.goalId) : undefined, conceptId: args.conceptId ? String(args.conceptId) : undefined, goalType: (args.goalType as "school" | "exam" | "university" | "research" | "coding" | undefined) ?? "school", need: (args.need as ResourceNeed | undefined) ?? "conceptual_intuition", level: args.level ? String(args.level) : undefined, minutesAvailable: args.minutesAvailable ? Number(args.minutesAvailable) : undefined, costPreference: (args.costPreference as "free_only" | "free_preferred" | "any" | undefined) ?? "free_only", preferredFormats: Array.isArray(args.preferredFormats) ? args.preferredFormats.map(String) : undefined }, registry.length ? registry : curatedResourceRegistry); }
   async saveResourceActivity(activity: ResourceActivity, metadata?: Record<string, unknown>) { await this.seedResources(); await this.repo.saveResourceActivity(activity, metadata); }

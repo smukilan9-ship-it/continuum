@@ -17,13 +17,12 @@ The connector is optional. Continuum does not need Obsidian to provide persisten
 
 Readable Markdown, text, code, JSON, CSV, YAML, TeX, and PDF content can be sanitized, chunked, and indexed. If private Blob storage is configured, original files are also retained there. Without Blob, readable text is still indexed; non-text originals produce a warning instead of a false storage claim.
 
-Continuum can pull three generated notes into the vault:
+Continuum pulls stable generated context packs into
+`Continuum/Context Packs/<stable-id>.md`: current week, current misconceptions, and
+owned goal/project packs. Pull is incremental, skips unchanged content, and refuses
+to overwrite a file that is not marked `continuum_generated: true`.
 
-- current academic context;
-- project summary/list;
-- outcome receipts.
-
-These are export views. Postgres remains canonical for transactional state, ownership, audit, MCP access, and retrieval.
+These are export views. Postgres remains canonical for transactional state, ownership, audit, MCP access, and retrieval. See `obsidian-sync.md` for the current mirror contract.
 
 ## Build and install
 

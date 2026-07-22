@@ -19,10 +19,14 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { normalizeWorkspaceState, WorkspaceScreens, type WorkspaceState } from "@/components/workspace-screens";
-import { workspaceMeta, workspacePath, type WorkspaceView } from "@/lib/workspace-routes";
+import { workspaceMeta, workspacePath, workspaceViews, type WorkspaceView } from "@/lib/workspace-routes";
+
+const pathToView = new Map<string, WorkspaceView>(workspaceViews.map((value) => [workspacePath[value] as string, value]));
+function viewFromPath(pathname: string): WorkspaceView {
+  return pathToView.get(pathname) ?? "today";
+}
 
 export type View = WorkspaceView;
 
@@ -66,21 +70,54 @@ function initials(name: string) {
 }
 
 export function ContinuumApp({ user, initialState, view }: { user: AuthUser; initialState: Record<string, unknown>; view: WorkspaceView }) {
-  const router = useRouter();
   const [mobileNav, setMobileNav] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
-  const [state, setState] = useState<WorkspaceState>(() => normalizeWorkspaceState(initialState));
-  const meta = workspaceMeta[view];
+  const [currentView, setCurrentView] = useState<WorkspaceView>(view);
 
-  useEffect(() => setState(normalizeWorkspaceState(initialState)), [initialState, view]);
+  // Per-view cache seeded with the server-rendered snapshot. Navigation switches
+  // the visible view instantly from cache and refreshes it in the background, so a
+  // click never waits on a full-page server round-trip to the remote database.
+  const cacheRef = useRef<Map<WorkspaceView, WorkspaceState>>(new Map([[view, normalizeWorkspaceState(initialState)]]));
+  const inflight = useRef<Set<WorkspaceView>>(new Set());
+  const [, bumpCache] = useReducer((count: number) => count + 1, 0);
+  const meta = workspaceMeta[currentView];
+  const state = cacheRef.current.get(currentView);
 
-  const refreshState = useCallback(async () => {
-    const response = await fetch(`/api/state?view=${encodeURIComponent(view)}`, { cache: "no-store" });
-    const payload = await response.json() as { data?: Record<string, unknown>; error?: string };
-    if (!response.ok || !payload.data) throw new Error(payload.error ?? "Workspace refresh failed");
-    setState(normalizeWorkspaceState(payload.data));
-  }, [view]);
+  const refreshView = useCallback(async (target: WorkspaceView) => {
+    if (target === "integrations" || inflight.current.has(target)) return;
+    inflight.current.add(target);
+    try {
+      const response = await fetch(`/api/state?view=${encodeURIComponent(target)}`, { cache: "no-store" });
+      const payload = await response.json() as { data?: Record<string, unknown> };
+      if (response.ok && payload.data) { cacheRef.current.set(target, normalizeWorkspaceState(payload.data)); bumpCache(); }
+    } catch { /* Keep the last good cached view rather than blanking the screen. */ } finally {
+      inflight.current.delete(target);
+    }
+  }, []);
+
+  const navigate = useCallback((next: WorkspaceView) => {
+    setMobileNav(false);
+    setCommandOpen(false);
+    setCurrentView(next);
+    if (typeof window !== "undefined" && window.location.pathname !== (workspacePath[next] as string)) {
+      window.history.pushState({ view: next }, "", workspacePath[next]);
+    }
+    void refreshView(next);
+  }, [refreshView]);
+
+  const refreshCurrent = useCallback(() => refreshView(currentView), [refreshView, currentView]);
+
+  // Keep browser back/forward working with the client-side view switch.
+  useEffect(() => {
+    const onPopState = () => {
+      const next = viewFromPath(window.location.pathname);
+      setCurrentView(next);
+      if (!cacheRef.current.has(next)) void refreshView(next);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [refreshView]);
 
   useEffect(() => {
     if (!toast) return;
@@ -99,11 +136,13 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
-  function navigate(next: WorkspaceView) {
-    setMobileNav(false);
-    setCommandOpen(false);
-    router.push(workspacePath[next]);
-  }
+  // Intercept in-app link clicks so navigation is instant, while preserving
+  // new-tab and modifier-click behavior against the real server routes.
+  const linkHandler = (next: WorkspaceView) => (event: React.MouseEvent) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    navigate(next);
+  };
 
   async function signOut() {
     const response = await fetch("/api/auth/logout", { method: "POST" });
@@ -115,7 +154,7 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
     <div className="app-shell">
       <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`} aria-label="Workspace navigation">
         <div className="sidebar-head">
-          <Link className="brand" href="/" prefetch={false} onClick={() => setMobileNav(false)} aria-label="Continuum home">
+          <Link className="brand" href="/" onClick={linkHandler("today")} aria-label="Continuum home">
             <span className="brand-symbol">C</span>
             <span>Continuum</span>
           </Link>
@@ -128,9 +167,9 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
               <p>{group.label}</p>
               {group.items.map((item) => {
                 const Icon = item.icon;
-                const count = item.id === "activity" ? state.proposals.filter((proposal) => proposal.status === "pending").length : undefined;
+                const count = item.id === "activity" ? (state?.proposals.filter((proposal) => proposal.status === "pending").length ?? 0) : undefined;
                 return (
-                  <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={view === item.id ? "nav-item active" : "nav-item"} aria-current={view === item.id ? "page" : undefined} onClick={() => setMobileNav(false)}>
+                  <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={currentView === item.id ? "nav-item active" : "nav-item"} aria-current={currentView === item.id ? "page" : undefined} onClick={linkHandler(item.id)} onMouseEnter={() => void refreshView(item.id)} onFocus={() => void refreshView(item.id)}>
                     <Icon size={18} strokeWidth={1.8} />
                     <span>{item.label}</span>
                     {typeof count === "number" && count > 0 ? <small>{count}</small> : null}
@@ -161,18 +200,20 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
         </header>
 
         <div className="content-wrap">
-          {view === "integrations"
+          {currentView === "integrations"
             ? <IntegrationsScreen showToast={setToast} />
-            : <WorkspaceScreens view={view} state={state} user={user} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} onNavigate={navigate} onRefresh={refreshState} showToast={setToast} />}
+            : state
+              ? <WorkspaceScreens view={currentView} state={state} user={user} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} onNavigate={navigate} onRefresh={refreshCurrent} showToast={setToast} />
+              : <ScreenLoading />}
         </div>
       </main>
 
       <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
         {mobileItems.map((item) => {
           const Icon = item.icon;
-          return <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={view === item.id ? "active" : ""} aria-current={view === item.id ? "page" : undefined}><Icon size={19} /><span>{item.label}</span></Link>;
+          return <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={currentView === item.id ? "active" : ""} aria-current={currentView === item.id ? "page" : undefined} onClick={linkHandler(item.id)}><Icon size={19} /><span>{item.label}</span></Link>;
         })}
-        <button className={["research", "memory", "integrations", "activity"].includes(view) ? "active" : ""} onClick={() => setMobileNav(true)}><Menu size={19} /><span>More</span></button>
+        <button className={["research", "memory", "integrations", "activity"].includes(currentView) ? "active" : ""} onClick={() => setMobileNav(true)}><Menu size={19} /><span>More</span></button>
       </nav>
 
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} state={state} onNavigate={navigate} />
@@ -187,8 +228,9 @@ function rowString(row: Record<string, unknown>, key: string) {
   return typeof row[key] === "string" ? row[key] : undefined;
 }
 
-function workspaceActions(state: WorkspaceState): SearchAction[] {
+function workspaceActions(state: WorkspaceState | undefined): SearchAction[] {
   const destinations = navGroups.flatMap((group) => group.items.map((item) => ({ id: `view-${item.id}`, label: item.label, hint: workspaceMeta[item.id].description, view: item.id })));
+  if (!state) return destinations;
   const goals = state.goals.map((goal) => ({ id: `goal-${rowString(goal, "id")}`, label: rowString(goal, "title") ?? "Untitled goal", hint: "Goal", view: "goals" as const }));
   const tasks = state.tasks.map((task) => ({ id: `task-${rowString(task, "id")}`, label: rowString(task, "title") ?? "Untitled task", hint: "Task", view: "goals" as const }));
   const projects = state.projects.map((project) => ({ id: `project-${rowString(project, "id")}`, label: rowString(project, "title") ?? "Untitled project", hint: "Research project", view: "research" as const }));
@@ -196,7 +238,7 @@ function workspaceActions(state: WorkspaceState): SearchAction[] {
   return [...destinations, ...goals, ...tasks, ...projects, ...receipts];
 }
 
-function CommandPalette({ open, onOpenChange, state, onNavigate }: { open: boolean; onOpenChange: (open: boolean) => void; state: WorkspaceState; onNavigate: (view: WorkspaceView) => void }) {
+function CommandPalette({ open, onOpenChange, state, onNavigate }: { open: boolean; onOpenChange: (open: boolean) => void; state: WorkspaceState | undefined; onNavigate: (view: WorkspaceView) => void }) {
   const [query, setQuery] = useState("");
   const actions = useMemo(() => {
     const needle = query.trim().toLowerCase();

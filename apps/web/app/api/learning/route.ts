@@ -44,6 +44,13 @@ async function tryLiveAi(request: Request, body: Record<string, unknown>) {
   }
 }
 
+async function potentialGoalId(store: ReturnType<typeof getStore>) {
+  const snapshot = await store.workspace("learn");
+  const goals = Array.isArray(snapshot.goals) ? snapshot.goals as Array<Record<string, unknown>> : [];
+  const matching = goals.find((goal) => /electrostatic|electric potential|physics/i.test(String(goal.title ?? "")));
+  return typeof matching?.id === "string" ? matching.id : undefined;
+}
+
 export async function POST(request: Request) {
   if (!sameOriginWrite(request)) return NextResponse.json({ error: "Cross-origin learning writes are not allowed" }, { status: 403 });
   const user = await getRequestUser(request);
@@ -98,7 +105,7 @@ export async function POST(request: Request) {
       summary: diagnosis.detected ? "Diagnostic confirmed the potential-versus-energy misconception." : "Diagnostic completed without a misconception signal.",
       entityIds: [attemptId, ...(result.misconception ? [result.misconception.id] : [])],
       payload: { score: result.score, result, mastery },
-      goalId: "goal_physics",
+      goalId: await potentialGoalId(store),
     }, now);
 
     const live = data.liveAi ? await tryLiveAi(request, {
@@ -140,7 +147,7 @@ export async function POST(request: Request) {
     const evidenceId = `evidence_lesson_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
     const mastery = updateMastery(await store.getLearningState(), { id: evidenceId, kind: "lesson_read", occurredAt: now });
     await store.saveLearningState(mastery);
-    await store.appendEvent({ type: "learning.lesson.read", summary: "Targeted lesson read; transfer mastery was deliberately unchanged.", entityIds: [evidenceId], payload: { mastery }, goalId: "goal_physics" }, now);
+    await store.appendEvent({ type: "learning.lesson.read", summary: "Targeted lesson read; transfer mastery was deliberately unchanged.", entityIds: [evidenceId], payload: { mastery }, goalId: await potentialGoalId(store) }, now);
     return NextResponse.json({ mastery, transferChanged: false });
   }
 
@@ -155,7 +162,7 @@ export async function POST(request: Request) {
     summary: correct ? "Correct unseen checkpoint raised transfer mastery." : "Unseen checkpoint kept the misconception active.",
     entityIds: [attemptId, "concept_potential"],
     payload: { correct, answer: numericAnswer, expected, unseen: true, mastery },
-    goalId: "goal_physics",
+    goalId: await potentialGoalId(store),
   }, now);
   return NextResponse.json({ correct, attemptId, mastery, explanation: mastery.explanation });
 }

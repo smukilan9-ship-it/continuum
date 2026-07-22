@@ -8,6 +8,7 @@ import { extractText } from "unpdf";
 import { z } from "zod";
 import { getStore } from "@/lib/store";
 import { enforceRateLimit } from "@/lib/auth";
+import { contextPackMarkdown, type ContextPack, type ContextPackMetadata } from "@/lib/context-packs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,16 +57,20 @@ export async function GET(request: Request) {
   const rate = await enforceRateLimit(request, "obsidian-sync", Number(process.env.OBSIDIAN_SYNC_REQUESTS_PER_MINUTE ?? 120), 60_000, token.userId);
   if (!rate.allowed) return NextResponse.json({ error: "Obsidian sync rate limit exceeded", resetAt: rate.resetAt }, { status: 429, headers: { ...cors(request), "retry-after": "60" } });
   const store = getStore(token.userId);
-  const [context, projects, receipts] = await Promise.all([
+  const [context, projects, receipts, packCatalog] = await Promise.all([
     store.read("load_context", { focus: "resume my most important current academic work", maxTokens: 1800 }, "obsidian"),
     store.read("list_projects", { limit: 30 }, "obsidian"),
     store.listReceipts(20),
+    store.read("list_context_packs", {}, "obsidian") as Promise<ContextPackMetadata[]>,
   ]);
+  const packs = await Promise.all(packCatalog.slice(0, 24).map((metadata) => store.read("get_context_pack", { packId: metadata.id, maxTokens: 1400 }, "obsidian") as Promise<ContextPack>));
   const generatedAt = new Date().toISOString();
+  const packDocuments = packs.map((pack) => ({ path: `Continuum/Context Packs/${pack.metadata.id.replace(/[^a-zA-Z0-9._-]+/g, "-")}.md`, content: contextPackMarkdown(pack) }));
   const documents = [
     { path: "Continuum/Current context.md", content: `---\ncontinuum_generated: true\ngenerated_at: ${generatedAt}\n---\n\n# Current academic context\n\n\`\`\`json\n${JSON.stringify(context, null, 2)}\n\`\`\`\n` },
     { path: "Continuum/Projects.md", content: `---\ncontinuum_generated: true\ngenerated_at: ${generatedAt}\n---\n\n# Projects\n\n\`\`\`json\n${JSON.stringify(projects, null, 2)}\n\`\`\`\n` },
     { path: "Continuum/Outcome receipts.md", content: `---\ncontinuum_generated: true\ngenerated_at: ${generatedAt}\n---\n\n# Outcome receipts\n\n${receipts.map((receipt) => `## ${(receipt as { summary?: string }).summary ?? "Session"}\n\n\`\`\`json\n${JSON.stringify(receipt, null, 2)}\n\`\`\``).join("\n\n")}\n` },
+    ...packDocuments,
   ];
   return NextResponse.json({ generatedAt, documents }, { headers: { ...cors(request), "cache-control": "private, no-store" } });
 }

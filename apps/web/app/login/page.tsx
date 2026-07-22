@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { getServerUser } from "@/lib/auth";
 import { LoginForm } from "@/components/login-form";
-import { publicRegistrationEnabled } from "@/lib/env";
+import { demoLoginEnabled, publicRegistrationEnabled } from "@/lib/env";
 import { googleSignInConfigured } from "@/lib/google-auth";
 
 const authErrors: Record<string, string> = {
@@ -18,5 +18,5 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const user = await getServerUser();
   const params = await searchParams;
   if (user) redirect((params.returnTo?.startsWith("/") ? params.returnTo : "/") as Route);
-  return <LoginForm returnTo={params.returnTo} demoMode={!process.env.DATABASE_URL && process.env.NODE_ENV !== "production"} registrationEnabled={publicRegistrationEnabled()} googleSignInEnabled={googleSignInConfigured()} authError={params.auth_error ? authErrors[params.auth_error] ?? "Sign-in could not be completed." : undefined} />;
+  return <LoginForm returnTo={params.returnTo} demoMode={!process.env.DATABASE_URL && process.env.NODE_ENV !== "production"} registrationEnabled={publicRegistrationEnabled()} googleSignInEnabled={googleSignInConfigured()} demoAvailable={Boolean(process.env.DATABASE_URL) && demoLoginEnabled()} authError={params.auth_error ? authErrors[params.auth_error] ?? "Sign-in could not be completed." : undefined} />;
 }

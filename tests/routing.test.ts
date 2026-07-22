@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fallbackRoute, independentVerifier, routeTask } from "../packages/ai/src/policy";
 import { enforceDailyTokenCap, runWithValidation } from "../packages/ai/src/validation";
-import { configuredProviders, generationRouteOrder } from "../packages/ai/src/providers";
+import { configuredProviders, generationRouteOrder, structuredRouteOrder } from "../packages/ai/src/providers";
 import { z } from "zod";
 
 describe("model routing", () => {
@@ -49,6 +49,21 @@ describe("model routing", () => {
     expect(providers.gatewayModels.fallbacks).toEqual(["openai/gpt-5.4", "anthropic/claude-sonnet-4.6"]);
     expect(JSON.stringify(providers)).not.toContain("secret");
     expect(providers.groqModels?.fast).toBe("llama-3.1-8b-instant");
+  });
+
+  it("leads structured generation with Groq and never leaves a JSON-capable provider out", () => {
+    const decision = routeTask({ id: "route_structured", taskClass: "research_synthesis", availableProviders: ["featherless", "gemini", "groq", "ai_gateway"] });
+    const env = { FEATHERLESS_API_KEY: "configured", GROQ_API_KEY: "configured", GEMINI_API_KEY: "configured", GEMINI_DATA_USE_ACKNOWLEDGED: "true", AI_GATEWAY_API_KEY: "configured", AI_GATEWAY_ENABLED: "true" };
+    const order = structuredRouteOrder(decision, env);
+    expect(order[0]).toBe("groq");
+    expect(new Set(order)).toEqual(new Set(["groq", "featherless", "gemini", "ai_gateway"]));
+  });
+
+  it("falls back to the routed provider for structured generation when Groq is absent", () => {
+    const decision = routeTask({ id: "route_structured_nogroq", taskClass: "citation_entailment", highStakes: true, availableProviders: ["featherless", "gemini"] });
+    const order = structuredRouteOrder(decision, { FEATHERLESS_API_KEY: "configured", GEMINI_API_KEY: "configured", GEMINI_DATA_USE_ACKNOWLEDGED: "true" });
+    expect(order[0]).toBe("featherless");
+    expect(order).not.toContain("groq");
   });
 
   it("keeps every configured provider in the generation fallback path", () => {

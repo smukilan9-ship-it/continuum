@@ -9,9 +9,11 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "generate": "drizzle-kit generate",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "seed:demo": "tsx src/seed-demo.ts"
   },
   "dependencies": {
+    "@continuum/ai": "workspace:*",
     "@continuum/schemas": "workspace:*",
     "@neondatabase/serverless": "^1.0.2",
     "@vercel/functions": "^3.3.3",
