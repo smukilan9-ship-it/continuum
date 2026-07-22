@@ -65,8 +65,9 @@ Official reference: [NotebookLM help](https://support.google.com/notebooklm/answ
 ## Featherless
 
 1. Create a key in the [official Featherless API Keys page](https://featherless.ai/account/api-keys); see the [official quickstart](https://featherless.ai/docs/quickstart-guide).
-2. Local: set `FEATHERLESS_API_KEY` in `.env.local`.
-3. Production: add `FEATHERLESS_API_KEY` as a Sensitive Vercel Production variable and redeploy.
+2. Local: set `FEATHERLESS_API_KEY` and optionally `_1`, `_2`, `_3` in `.env.local`.
+3. Production: add each used key as a Sensitive Vercel variable and redeploy. Status
+   surfaces expose only stable non-secret identifiers and health/backoff state.
 4. Run the operator health and provider smoke tests; provider status is not exposed in the consumer Connections screen.
 
 The router normally evaluates the account plan and live catalog by task. If catalog discovery is unavailable it uses the reviewed Qwen3.5 9B fast, Qwen3.6 27B reasoning, Qwen3 Coder Next, and GPT-OSS 20B verifier routes. Featherless embeddings use `Qwen/Qwen3-Embedding-8B` with 1,536 output dimensions. The model-specific `FEATHERLESS_FAST_MODEL`, `FEATHERLESS_REASONING_MODEL`, `FEATHERLESS_CODE_MODEL`, and `FEATHERLESS_VERIFIER_MODEL` variables are optional reviewed overrides.

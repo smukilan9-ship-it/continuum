@@ -32,7 +32,12 @@ Password registration is closed by default in production. Enable `PUBLIC_REGISTR
 
 ## Featherless
 
-Set `FEATHERLESS_API_KEY`. The router uses the live plan and eligible model catalog, then ranks models by task, context, hot availability, likely concurrency-unit cost, model specialization, and operator allowlist. Optional task-class overrides are:
+Set `FEATHERLESS_API_KEY` and optionally `FEATHERLESS_API_KEY_1` through `_3`.
+The router identifies them only as `primary`, `key_1`, `key_2`, and `key_3`, chooses
+the least-busy healthy credential, and uses bounded failover/backoff. It never returns
+or logs the values. The router ranks models by task, context, hot availability,
+likely concurrency-unit cost, model specialization, and operator allowlist. Optional
+task-class overrides are:
 
 - `FEATHERLESS_FAST_MODEL`
 - `FEATHERLESS_REASONING_MODEL`

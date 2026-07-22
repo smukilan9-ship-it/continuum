@@ -13,14 +13,14 @@ Its two product rules are:
 - User-scoped goals, tasks, projects, learning states, research notes and decisions, source passages, claims, schedule blocks, resource activities, audit events, and compact outcome receipts.
 - Token-efficient context assembly: structured current state plus hybrid semantic/lexical retrieval, ranking, a caller-selected token budget, provenance, and an access log. Raw transcripts are not copied into memory chunks.
 - A remote Streamable HTTP MCP server with OAuth authorization code + PKCE, dynamic client registration, per-tool scopes, durable grants, token rotation, and immediate revocation checks.
-- Twenty-nine canonical actions for context, projects, goals, learning, research evidence, schedule, resources, safe proposals, session synchronization, artifacts, and specialist routing. Twenty-seven are remotely available; approval and accepted-decision writes stay app-only.
+- Thirty-three canonical actions for context, projects, goals, learning, research evidence, schedule, resources, safe proposals, session synchronization, artifacts, and specialist routing. Thirty-one are remotely available; approval and accepted-decision writes stay app-only.
 - A reviewed resource registry and deterministic native-versus-external ranking policy. Recommendations include exact location, authority, access, time, focus, completion, alternatives, and a return-verification contract.
 - A real external-resource lifecycle: save handoff, leave, record return, verify or hold for review, update mastery only from valid evidence, save an outcome receipt, and schedule a spaced follow-up.
 - Deterministic plan generation and repair. Generated schedules become expiring proposals; explicit confirmation and commit are separate writes.
 - Evidence-linked research retrieval over real user sources. Claims saved by assistants remain `unverified`; they may link only to exact user-owned passages.
 - Private PDF/text ingestion with sanitization, stable chunks, content hashes, duplicate detection, optional private Blob originals, pgvector embeddings, lexical fallback, and source deletion from retrieval.
-- A syllabus-aware Code workspace with streaming coaching, safe Markdown/math rendering, server-selected Featherless/Groq routes, abort support, per-user limits, optional browser-to-loopback Ollama, and memory checkpoints.
-- Featherless task-aware routing from the live plan/catalog with reviewed task fallbacks, Groq low-latency and reasoning routes, direct Gemini generation/embeddings with up to ten server-side keys, AI Gateway fallback, Featherless embeddings, and optional local Ollama.
+- A syllabus-aware Code Lab with disposable browser workers for real JavaScript, TypeScript, Python (Pyodide), and SQLite execution; stdout/stderr/exit/timeout/test reporting; persisted local sessions; and visibly separate streaming AI coaching. Java, C/C++, and Rust remain honestly editor-only.
+- Featherless task-aware routing from the live plan/catalog with up to four server-side Featherless keys, health/backoff-aware least-busy selection, reviewed task fallbacks, Groq low-latency and reasoning routes, direct Gemini generation/embeddings with up to ten server-side keys, AI Gateway fallback, Featherless embeddings, and optional local Ollama.
 - Real user connection flows for Claude remote MCP, Google Calendar OAuth and explicit two-way schedule sync, encrypted paginated Zotero library indexing, NotebookLM source-pack handoff, Obsidian, and Ollama. Personal NotebookLM is correctly labeled as a handoff because it exposes no general account API.
 - An optional Obsidian plugin. The user chooses one folder or explicitly opts into the whole vault; secrets use Obsidian SecretStorage, generated Continuum notes cannot overwrite ordinary notes, and original binaries require private Blob storage.
 
@@ -43,7 +43,7 @@ tests                    Domain and contract acceptance tests
 docs                     Operator, security, memory, MCP, and integration guides
 ```
 
-See [architecture](docs/architecture.md), [memory and retrieval](docs/memory-retrieval.md), [MCP tools](docs/mcp-tools.md), [resource broker](docs/resource-broker.md), and [security](docs/security.md).
+See [architecture](docs/architecture.md), [code execution](docs/code-execution.md), [Learn](docs/learn-workspace.md), [Research](docs/research-workspace.md), [memory](docs/memory-architecture.md), [MCP context](docs/mcp-context.md), [resource broker](docs/resource-broker.md), and [security](docs/security.md).
 
 ## Local development
 
@@ -89,7 +89,7 @@ Full details, the reset guarantees, and a 2–4 minute walkthrough are in [docs/
 
 ## Provider configuration
 
-- Featherless: set `FEATHERLESS_API_KEY`. Model overrides are optional; the router inspects `/v1/plan` and `/v1/models` when available. The reviewed task fallbacks are Qwen3.5 9B for fast work, Qwen3.6 27B for reasoning, Qwen3 Coder Next for code, and GPT-OSS 20B for verification. The default embedding model is `Qwen/Qwen3-Embedding-8B` at 1,536 dimensions. Set concurrency-cost overrides accurately when pinning models.
+- Featherless: set `FEATHERLESS_API_KEY` and optionally `_1`, `_2`, `_3`. Values stay server-only; status exposes stable IDs (`primary`, `key_1`…) and health, never keys. Least-busy round-robin, per-key/global weighted concurrency, bounded three-key failover, and 429/auth/transient backoff prevent retry storms. Model overrides are optional; the router uses reviewed fallbacks when discovery is unavailable. The default embedding model is `Qwen/Qwen3-Embedding-8B` at 1,536 dimensions.
 - Groq: set `GROQ_API_KEY`. The default policy uses Llama 3.1 8B Instant for bounded work, Qwen3.6 27B for reasoning, GPT-OSS 120B for code, and GPT-OSS 20B for verification, subject to the live models enabled for the Groq project.
 - Gemini: set `GEMINI_API_KEY_1` through `GEMINI_API_KEY_10` or `GEMINI_API_KEYS`, then explicitly set `GEMINI_DATA_USE_ACKNOWLEDGED=true`. Keys are server-only and responses never expose them. Multiple keys in one Google Cloud project do not multiply project quota.
 - Embeddings: keep `EMBEDDING_DIMENSIONS=1536`. Provider order may include Gemini, Featherless, AI Gateway, or Ollama. Lexical retrieval remains available if every embedding provider fails.
@@ -127,6 +127,7 @@ See [Obsidian integration](docs/obsidian.md).
 
 ```bash
 pnpm test
+pnpm test:e2e
 pnpm typecheck
 pnpm lint
 pnpm build
@@ -134,6 +135,8 @@ pnpm --filter @continuum/obsidian-plugin build
 ```
 
 Passing local checks does not configure external credentials, publish a production domain, or complete the final Claude account-side connector action. Those are deployment gates, not source-code claims.
+
+The stable Playwright suite covers demo login; native Learn and a YouTube-provider contract result; deterministic browser code output; separated AI-feedback rendering; navigation persistence; Plan proposals; OpenAlex discovery normalization/save through a contract fixture; Memory context packs; a real OAuth+PKCE MCP read-after-write; and mobile navigation. Live external-provider credentials are checked separately so CI never disguises a fixture as a live provider call.
 
 ## Cost boundary
 

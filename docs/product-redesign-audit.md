@@ -42,6 +42,24 @@ Key originals:
 - [Research desktop](./audit-screenshots/research-1440x900.png)
 - [Connections mobile](./audit-screenshots/integrations-390x844.png)
 
+## Resolution after redesign
+
+Status: **browser-tested** after implementation at the same 1440×900 and 390×844
+targets. Final evidence is catalogued in `visual-qa.md`.
+
+- Code is now a real three-pane workbench with deterministic execution, tests, and
+  AI output separated from runtime output.
+- Learn is a curriculum home plus focused lesson/checkpoint and guided-resource flow,
+  with official YouTube search or an honest unconfigured handoff.
+- Plan is a weekly board with Goals/Backlog views and a draft-versus-commit boundary.
+- Research is project-first with Overview/Discovery/Papers/Notes/Claims/Experiments/
+  Decisions/Drafts, normalized provider state, and explicit save.
+- Memory prioritizes meaningful current state and stable context packs; raw events
+  are secondary History.
+- Review and Today use flatter strips/ledgers instead of repeated box grids.
+- Shell mobile touch targets and safe-area spacing were corrected; rebuilt route
+  screenshots show no document-level horizontal overflow.
+
 ## Cross-product findings
 
 ### What already works

@@ -5,14 +5,15 @@ Method: live provider probing, end-to-end runs through the running app against
 the real Neon database and real provider keys, plus manual browser verification
 of the frontend on localhost.
 
-Latest verified checks (this session):
+Latest verified checks before the final release gate:
 
-- `pnpm test`: **125 passing** (125 / 125)
-- `pnpm typecheck`: **8 packages passing**
-- `pnpm build`: **green** (8 / 8 tasks)
+- `pnpm test`: **176 / 176 passing** across 28 files
+- `pnpm test:e2e`: **6 / 6 Playwright journeys passing**
+- `pnpm typecheck`: **8 packages passing** at the latest checkpoint
+- `pnpm build`: **green** (8 / 8 tasks) at the latest checkpoint
 
-(Earlier per-session sections below quote the suite size *at that time* — 98 after
-session 1, 106 after session 2. Those are historical; the current total is 125.)
+(Earlier per-session sections below quote the suite size *at that time*. Those
+numbers are historical; the release-gate section is authoritative.)
 
 This report is deliberately honest about what is **verified real**, what is
 **previously verified**, and what remains **experimental or pending**. It does
@@ -129,7 +130,7 @@ was implemented, no dependency was added, and no smoke test was run.** Full writ
 
 ---
 
-## 0.6 Deep frontend / interaction pass (2026-07-22, in progress)
+## 0.6 Deep frontend / interaction pass (2026-07-22, completed)
 
 A follow-up pass to make the linked features feel like one coherent product. Test
 totals updated: `pnpm test` **145 passing** (was 125), typecheck 8/8, build 8/8.
@@ -157,11 +158,44 @@ totals updated: `pnpm test` **145 passing** (was 125), typecheck 8/8, build 8/8.
   (restore any past attempt), a confirm-gated Reset session, and duplicate-submit
   guarding. See [docs/code-learning-ux.md](docs/code-learning-ux.md).
 
-**Not yet done (remaining scope of this pass):** Research information-architecture
-rebuild + research-tool positioning (OpenAlex/Zotero/Scholar/Claude/NotebookLM);
-Memory context-pack handoff; a centralized educational AI prompt-context builder;
-Review UX rebuild; a broader box/dropdown-reduction and full desktop+mobile visual-QA
-sweep; Playwright coverage of the key flows. These are scoped but not implemented.
+**Also completed:**
+
+- **Real disposable Code execution:** JavaScript/TypeScript run in a dedicated
+  Web Worker, Python uses Pyodide in a worker, and SQL uses an isolated SQLite-WASM
+  database. Runtime output, errors, duration, exit, timeout, and exact-output tests
+  are deterministic and visually separate from AI feedback. Java/C/C++/Rust are
+  labelled editor-only. Browser execution and navigation persistence are Playwright-tested.
+- **Learn:** a curriculum home, six-minute source-locked micro-lesson, unseen
+  numerical checkpoint, official YouTube Data API adapter with safe manual handoff,
+  and a guided resource return/verification flow. The first Playwright run found
+  and fixed a legacy hard-coded cross-account Physics goal reference; events now
+  link only to a matching goal owned by the signed-in user.
+- **Plan:** seven-day board, Goal and Backlog views, real calendar constraints,
+  deterministic draft generation, and a visibly separate explicit confirm/commit.
+- **Research:** project-first tabs, official OpenAlex and Crossref adapters,
+  normalized/deduplicated metadata, provider health states, saved provenance, and
+  a Google Scholar URL handoff with no scraping. OpenAlex's adapter is fixture-tested;
+  the browser flow uses a named contract fixture because this environment has no key.
+- **Memory + MCP:** meaningful current-state domains, stable token-bounded context
+  packs (`current_week`, `current_misconceptions`, `goal:*`, `project:*`), Markdown/
+  JSON exports, delta retrieval, and approval-gated updates. MCP now exposes 33 tools
+  (31 remote), including pack list/get, changes-since, and approved updates.
+- **Obsidian:** the local plugin incrementally mirrors generated context packs under
+  `Continuum/Context Packs/`, skips unchanged files, and refuses to overwrite ordinary
+  notes. Postgres remains canonical.
+- **AI routing:** centralized prompt envelopes separate policy, user request,
+  source content, runtime data, and output contract. Featherless supports four
+  server-only credentials with stable non-secret IDs, bounded failover, concurrency
+  accounting, and 429/auth/transient backoff.
+- **Visual QA:** every route was reviewed at 1440×900 and 390×844; rebuilt Code,
+  Learn, Plan, Research, Memory, Today, Review, and Connections screenshots are in
+  `docs/audit-screenshots/`. The rebuilt routes have no horizontal viewport overflow.
+- **Playwright:** 6/6 journeys pass and cover all 15 requested checkpoints, including
+  a real OAuth+PKCE MCP retrieval of a database checkpoint saved from Code Lab.
+
+The exact implementation/status boundary is documented under `docs/`; live,
+fixture-tested, browser-tested, experimental, unverified, and unavailable claims
+are deliberately kept separate.
 
 ---
 

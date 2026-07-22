@@ -1,5 +1,9 @@
 # Code-learning UX
 
+Status: execution and navigation **Playwright-tested**; persistence/runtime contracts
+**unit-tested**. See `code-execution.md` for the runtime and
+`security-code-execution.md` for the trust boundary.
+
 The **Code** workspace (`apps/web/components/workspace/code-screen.tsx`) is a
 syllabus-aware coding coach: it sends the code model your level, goals, unfinished
 work, and learning state, and coaches against that context.
@@ -69,9 +73,9 @@ attempt can be **restored into the editor** — comparing approaches never loses
 
 ## Layout
 
-A two-column workspace: the controls + editor on the left, a `Coach` / `History`
-tabbed panel on the right. Errors render as a structured, non-alarming block ("The
-coach could not respond… Your code and topic are safe") rather than a wall of red.
+A three-pane workbench: collapsible curriculum/lesson context, the real editor, and
+tabbed Output / Tests / AI feedback / History. Errors render as a structured,
+non-alarming block and preserve source plus deterministic output.
 
 ## Tests
 
@@ -79,3 +83,7 @@ coach could not respond… Your code and topic are safe") rather than a wall of 
   exact multiline/indented round-trip, attempt-history restore, corrupt-draft safety.
 - `tests/labels.test.ts` — the presentation layer that supplies language/status
   labels used here.
+- `tests/code-execution.test.ts` — limits, stdin, stdout/stderr, errors,
+  timeout/provider outcomes, exact tests, SQL tables, and restricted-runtime source checks.
+- `e2e/continuum.spec.ts` — real JavaScript output, AI separation, checkpoint save,
+  navigation persistence, and MCP-visible read-after-write.
