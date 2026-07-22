@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   DEMO_USER_ID,
   NeonRepository,
+  type PaperWrite,
   type SourceWrite,
   type StoredMemoryChunk,
   type StoredSourceChunk,
@@ -54,6 +55,8 @@ export interface Store {
   findSourceByHash(hash: string): Promise<{ id: string; title: string } | undefined>;
   saveSource(source: SourceWrite): Promise<void>;
   listSources(): Promise<unknown[]>;
+  savePaper(paper: PaperWrite): Promise<{ paper: unknown; duplicate: boolean }>;
+  listPapers(projectId?: string): Promise<unknown[]>;
   listSourceChunks(): Promise<StoredSourceChunk[]>;
   deleteSource(sourceId: string): Promise<{ id: string; title: string; storagePath?: string } | undefined>;
   vectorSearch(embedding: number[], limit: number): Promise<StoredSourceChunk[]>;
@@ -148,7 +151,7 @@ class MemoryStore implements Store {
       today: ["goals", "tasks", "projects", "receipts", "resourceActivities", "schedule"],
       goals: ["goals", "tasks", "schedule"],
       learn: ["goals", "tasks", "learningState", "resourceActivities", "receipts"],
-      research: ["goals", "projects", "decisions", "notes", "sources"],
+      research: ["goals", "tasks", "projects", "decisions", "claims", "notes", "sources", "papers"],
       memory: ["learningState", "memoryChunks", "receipts", "events", "sources"],
       activity: ["proposals", "events"],
       code: ["goals", "tasks", "projects", "learningState", "receipts"],
@@ -318,6 +321,14 @@ class MemoryStore implements Store {
       return metadata;
     });
   }
+  async savePaper(paper: PaperWrite) {
+    const existing = demoStore.papers.find((item) => item.projectId === paper.projectId && ((paper.doi && String(item.doi ?? "").toLowerCase() === paper.doi.toLowerCase()) || String(item.title ?? "").toLowerCase() === paper.title.toLowerCase()));
+    if (existing) return { paper: existing, duplicate: true };
+    const saved = { ...paper, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), deleted: false, version: 1 };
+    demoStore.papers.unshift(saved);
+    return { paper: saved, duplicate: false };
+  }
+  async listPapers(projectId?: string) { return demoStore.papers.filter((paper) => !projectId || paper.projectId === projectId); }
   async listSourceChunks() { return demoStore.chunks; }
   async deleteSource(sourceId: string) { const source = demoStore.sources.find((item) => item.id === sourceId); if (!source) return undefined; demoStore.sources = demoStore.sources.filter((item) => item.id !== sourceId); demoStore.chunks = demoStore.chunks.filter((chunk) => chunk.sourceId !== sourceId); return { id: source.id, title: source.title, ...(source.storagePath ? { storagePath: source.storagePath } : {}) }; }
   async vectorSearch() { return []; }
@@ -521,6 +532,8 @@ class NeonStore implements Store {
   async findSourceByHash(hash: string) { const source = await this.repo.findSourceByHash(hash, this.userId); return source ? { id: source.id, title: source.title } : undefined; }
   async saveSource(source: SourceWrite) { await this.repo.saveSource({ ...source, userId: this.userId }); }
   async listSources() { return this.repo.listSources(this.userId); }
+  async savePaper(paper: PaperWrite) { return this.repo.savePaper({ ...paper, userId: this.userId }); }
+  async listPapers(projectId?: string) { return this.repo.listPapers(this.userId, projectId); }
   async listSourceChunks() { return this.repo.listSourceChunks(this.userId); }
   async deleteSource(sourceId: string) { const source = await this.repo.softDeleteSource(sourceId, this.userId); return source ? { id: source.id, title: source.title, ...(source.storagePath ? { storagePath: source.storagePath } : {}) } : undefined; }
   async vectorSearch(embedding: number[], limit: number) { return this.repo.vectorSearch(embedding, limit, this.userId); }

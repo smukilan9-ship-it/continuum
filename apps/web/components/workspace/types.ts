@@ -5,8 +5,10 @@ export type WorkspaceState = {
   tasks: Row[];
   projects: Row[];
   decisions: Row[];
+  claims: Row[];
   notes: Row[];
   sources: Row[];
+  papers: Row[];
   learningStates: Row[];
   memoryRecords: Row[];
   receipts: Row[];
@@ -23,8 +25,10 @@ const keys: Array<keyof WorkspaceState> = [
   "tasks",
   "projects",
   "decisions",
+  "claims",
   "notes",
   "sources",
+  "papers",
   "learningStates",
   "memoryRecords",
   "receipts",

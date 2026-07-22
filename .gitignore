@@ -14,3 +14,4 @@ drizzle/meta
 skills-lock.json
 .env*
 !.env.example
+apps/web/public/runtime/

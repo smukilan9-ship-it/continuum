@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ExecutionResult, ExecutionTest } from "@/lib/code-execution";
 
 // The Code screen unmounts when the user navigates to another workspace view and
 // remounts on return, which previously wiped all local state (code, topic,
@@ -19,6 +20,14 @@ export type CodeAttempt = {
   answer: string;
 };
 
+export type RuntimeAttempt = {
+  id: string;
+  at: number;
+  source: string;
+  stdin: string;
+  result: ExecutionResult;
+};
+
 export type CodeSession = {
   goalId: string;
   topic: string;
@@ -27,6 +36,10 @@ export type CodeSession = {
   provider: string;
   prompt: string;
   code: string;
+  stdin: string;
+  tests: ExecutionTest[];
+  runtimeResult?: ExecutionResult;
+  runtimeHistory: RuntimeAttempt[];
   answer: string;
   hintsRevealed: number;
   attempts: CodeAttempt[];
@@ -45,6 +58,9 @@ export function makeDefaultSession(defaults: Partial<CodeSession>): CodeSession 
     provider: "auto",
     prompt: "",
     code: "",
+    stdin: "",
+    tests: [],
+    runtimeHistory: [],
     answer: "",
     hintsRevealed: 0,
     attempts: [],
@@ -58,7 +74,13 @@ export function mergeSavedSession(current: CodeSession, savedJson: string | null
   if (!savedJson) return current;
   try {
     const parsed = JSON.parse(savedJson) as Partial<CodeSession>;
-    return { ...current, ...parsed, attempts: Array.isArray(parsed.attempts) ? parsed.attempts : current.attempts };
+    return {
+      ...current,
+      ...parsed,
+      attempts: Array.isArray(parsed.attempts) ? parsed.attempts : current.attempts,
+      tests: Array.isArray(parsed.tests) ? parsed.tests : current.tests,
+      runtimeHistory: Array.isArray(parsed.runtimeHistory) ? parsed.runtimeHistory : current.runtimeHistory,
+    };
   } catch {
     return current; // corrupt draft → keep defaults
   }
@@ -105,6 +127,15 @@ export function useCodeSession(userId: string, defaults: Partial<CodeSession>) {
     }));
   }, []);
 
+  const pushRuntimeAttempt = useCallback((attempt: Omit<RuntimeAttempt, "id" | "at">) => {
+    setSession((current) => ({
+      ...current,
+      runtimeResult: attempt.result,
+      runtimeHistory: [{ ...attempt, id: `run_${Date.now()}`, at: Date.now() }, ...current.runtimeHistory].slice(0, 20),
+      updatedAt: Date.now(),
+    }));
+  }, []);
+
   const reset = useCallback(() => {
     const fresh = makeDefaultSession(defaultsRef.current);
     setSession(fresh);
@@ -115,5 +146,5 @@ export function useCodeSession(userId: string, defaults: Partial<CodeSession>) {
     }
   }, [key]);
 
-  return { session, update, pushAttempt, reset, restored };
+  return { session, update, pushAttempt, pushRuntimeAttempt, reset, restored };
 }

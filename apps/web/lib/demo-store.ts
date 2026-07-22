@@ -28,9 +28,11 @@ export interface DemoStore {
   tasks: Array<Record<string, unknown>>;
   notes: Array<Record<string, unknown>>;
   decisions: Array<Record<string, unknown>>;
+  claims: Array<Record<string, unknown>>;
   projects: Array<Record<string, unknown>>;
   goals: Array<Record<string, unknown>>;
   sources: DemoSource[];
+  papers: Array<Record<string, unknown>>;
   chunks: StoredSourceChunk[];
   memoryChunks: Array<{ id: string; kind: string; content: string; projectId?: string; goalId?: string; occurredAt: string; importance: number; tokenEstimate: number; sourceEventIds: string[]; score?: number; metadata: Record<string, unknown> }>;
   receipts: Array<Record<string, unknown>>;
@@ -51,9 +53,11 @@ export const demoStore: DemoStore = globalThis.__continuumDemoStore ?? {
   tasks: [],
   notes: [],
   decisions: [],
+  claims: [],
   projects: [],
   goals: [],
   sources: [],
+  papers: [],
   chunks: [],
   memoryChunks: [],
   receipts: [],
@@ -73,6 +77,10 @@ export const demoStore: DemoStore = globalThis.__continuumDemoStore ?? {
   },
   oauthGrants: {},
 };
+
+// Hot-reloaded development stores may predate newly added collections.
+demoStore.papers ??= [];
+demoStore.claims ??= [];
 
 if (process.env.NODE_ENV !== "production") globalThis.__continuumDemoStore = demoStore;
 
@@ -94,7 +102,7 @@ export function readDemoState(name: string, args: Record<string, unknown>) {
     return dynamic.slice(0, Number(args.limit ?? 6));
   }
   if (name === "list_projects") return demoStore.projects.slice(0, Number(args.limit ?? 30));
-  if (name === "load_project") return { project: demoStore.projects.find((project) => project.id === args.projectId) ?? null, decisions: demoStore.decisions.filter((decision) => decision.projectId === args.projectId), notes: demoStore.notes.filter((note) => note.projectId === args.projectId), sources: demoStore.sources.filter((source) => source.projectId === args.projectId), recentReceipts: demoStore.receipts.filter((receipt) => receipt.projectId === args.projectId) };
+  if (name === "load_project") return { project: demoStore.projects.find((project) => project.id === args.projectId) ?? null, decisions: demoStore.decisions.filter((decision) => decision.projectId === args.projectId), claims: demoStore.claims.filter((claim) => claim.projectId === args.projectId), notes: demoStore.notes.filter((note) => note.projectId === args.projectId), sources: demoStore.sources.filter((source) => source.projectId === args.projectId), papers: demoStore.papers.filter((paper) => paper.projectId === args.projectId), recentReceipts: demoStore.receipts.filter((receipt) => receipt.projectId === args.projectId) };
   if (name === "list_goals") return demoStore.goals.slice(0, Number(args.limit ?? 30));
   if (name === "get_goal_state" || name === "load_goal") return demoStore.goals.find((goal) => goal.id === args.goalId) ?? null;
   if (name === "get_learning_state" || name === "load_learning_state") return {
