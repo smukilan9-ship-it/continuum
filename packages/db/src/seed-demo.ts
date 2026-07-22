@@ -306,6 +306,7 @@ export function buildDemoData(now: Date) {
     { id: "concept_demo_sql_cursor", curriculumNodeId: "cnode_demo_sql", title: "Cursor fetch semantics", description: "A cursor holds a position in the result set; fetchone/fetchmany/fetchall advance it and return one, up to n, or all remaining rows.", prerequisiteIds: [] },
     { id: "concept_demo_sql_param", curriculumNodeId: "cnode_demo_sql", title: "Parameterized queries (%s)", description: "Passing values as parameters (cursor.execute(sql, params)) instead of string formatting prevents SQL injection and quoting bugs.", prerequisiteIds: [] },
     { id: "concept_demo_sat_geo", curriculumNodeId: null as string | null, title: "SAT advanced geometry — circles & parabolas", description: "Coordinate-plane circles (standard form, radius/centre) and parabolas (vertex, directrix), and the timed pattern-recognition they require.", prerequisiteIds: [] },
+    { id: "concept_potential", curriculumNodeId: null as string | null, title: "Electric potential vs potential energy", description: "Electric potential belongs to a location in the field, while potential energy U=qV also depends on the charge placed there.", prerequisiteIds: [] },
   ];
 
   const learningStateRows = [
@@ -313,6 +314,7 @@ export function buildDemoData(now: Date) {
     { id: "learning_demo_sql_cursor", userId: DEMO_ACCOUNT_USER_ID, conceptId: "concept_demo_sql_cursor", exposure: 0.85, understanding: 0.72, transfer: 0.6, retention: 0.63, confidence: 0.68, status: "practicing", evidenceIds: [], explanation: "Understands fetchone/fetchmany/fetchall advance the same cursor; still occasionally re-runs the query expecting a reset position.", lastPracticedAt: daysFromNow(-1) },
     { id: "learning_demo_sql_param", userId: DEMO_ACCOUNT_USER_ID, conceptId: "concept_demo_sql_param", exposure: 0.6, understanding: 0.55, transfer: 0.4, retention: 0.45, confidence: 0.5, status: "in_progress", evidenceIds: [], explanation: "Mid-conversion from .format() strings to %s parameters; grasps the injection risk, needs reps on tuple/param ordering.", lastPracticedAt: daysFromNow(0) },
     { id: "learning_demo_sat_geo", userId: DEMO_ACCOUNT_USER_ID, conceptId: "concept_demo_sat_geo", exposure: 0.8, understanding: 0.58, transfer: 0.5, retention: 0.52, confidence: 0.55, status: "misconception_detected", evidenceIds: ["attempt_demo_sat_geo"], explanation: "Diagnostic shows arc-length vs sector-area formulas being swapped under time pressure; accuracy drops on the last third of a timed set." },
+    { id: "learning_demo_potential", userId: DEMO_ACCOUNT_USER_ID, conceptId: "concept_potential", exposure: 0.88, understanding: 0.52, transfer: 0.28, retention: 0.46, confidence: 0.74, status: "misconception_detected", evidenceIds: ["attempt_diagnostic_seed"], explanation: "Diagnostic evidence indicates confusion between potential as a field property and the charge-dependent potential energy U=qV." },
   ];
 
   const assessmentRows = [
