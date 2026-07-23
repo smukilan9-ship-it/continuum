@@ -161,14 +161,22 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
       fetch("/api/integrations/credentials", { cache: "no-store" }),
     ]);
     if (connectionsResult.status === "fulfilled") {
-      const payload = await connectionsResult.value.json() as Status & { error?: string };
-      if (connectionsResult.value.ok) setStatus(payload);
-      else setError(payload.error ?? "Connections are unavailable");
+      try {
+        const payload = await connectionsResult.value.json() as Status & { error?: string };
+        if (connectionsResult.value.ok) setStatus(payload);
+        else setError(payload.error ?? "Connections are unavailable");
+      } catch {
+        setError("Connections are temporarily unavailable. Provider settings remain safe and usable.");
+      }
     } else setError("Connections are unavailable");
     if (credentialsResult.status === "fulfilled") {
-      const payload = await credentialsResult.value.json() as CredentialPayload & { error?: string };
-      if (credentialsResult.value.ok) setCredentials(payload);
-      else setCredentialError(payload.error ?? "Provider settings are unavailable");
+      try {
+        const payload = await credentialsResult.value.json() as CredentialPayload & { error?: string };
+        if (credentialsResult.value.ok) setCredentials(payload);
+        else setCredentialError(payload.error ?? "Provider settings are unavailable");
+      } catch {
+        setCredentialError("Provider settings returned an invalid response. Try again.");
+      }
     } else setCredentialError("Provider settings are unavailable");
   }, []);
 

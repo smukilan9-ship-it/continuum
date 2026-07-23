@@ -24,6 +24,12 @@ function appOrigin(request: Request) {
   return process.env.APP_BASE_URL?.replace(/\/$/, "") ?? new URL(request.url).origin;
 }
 
+function isoDate(value: Date | string | null | undefined) {
+  if (!value) return undefined;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
 export async function GET(request: Request) {
   const user = await getRequestUser(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -57,7 +63,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     mcp: {
       endpoint: `${origin}/mcp`,
-      connections: [...grouped.values()].map((connection) => ({ ...connection, scopes: [...connection.scopes], expiresAt: connection.expiresAt.toISOString(), connectedAt: connection.connectedAt.toISOString(), lastUsedAt: connection.lastUsedAt?.toISOString() })),
+      connections: [...grouped.values()].map((connection) => ({ ...connection, scopes: [...connection.scopes], expiresAt: isoDate(connection.expiresAt), connectedAt: isoDate(connection.connectedAt), lastUsedAt: isoDate(connection.lastUsedAt) })),
       claude: { supported: true, instructions: ["In Claude, open Customize → Connectors.", "Choose Add custom connector.", `Paste ${origin}/mcp as the remote MCP URL.`, "Sign in to Continuum, review the requested permissions, then enable the connector for your chat."] },
     },
     googleCalendar: { connected: Boolean(google), available: googleCalendarConfigured(), ...googleDetails, scopes: google?.scopes ?? [] },
@@ -65,7 +71,7 @@ export async function GET(request: Request) {
     notebooklm: { mode: "source_pack", accountConnectionAvailable: false },
     obsidian: {
       available: Boolean(process.env.DATABASE_URL),
-      tokens: integrationTokens.filter((token) => token.provider === "obsidian" && !token.revokedAt).map((token) => ({ ...token, lastUsedAt: token.lastUsedAt?.toISOString(), expiresAt: token.expiresAt?.toISOString(), createdAt: token.createdAt.toISOString() })),
+      tokens: integrationTokens.filter((token) => token.provider === "obsidian" && !token.revokedAt).map((token) => ({ ...token, lastUsedAt: isoDate(token.lastUsedAt), expiresAt: isoDate(token.expiresAt), createdAt: isoDate(token.createdAt) })),
     },
   }, { headers: { "cache-control": "private, no-store" } });
 }
