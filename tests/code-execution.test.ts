@@ -81,9 +81,10 @@ describe("browser code execution contract", () => {
 
   it("keeps network and process APIs blocked in the worker implementation", () => {
     const source = readFileSync(new URL("../apps/web/lib/code-execution.worker.ts", import.meta.url), "utf8");
-    for (const blocked of ["fetch", "XMLHttpRequest", "WebSocket", "EventSource", "WebTransport", "importScripts", "indexedDB", "caches"]) expect(source).toContain(blocked);
+    for (const blocked of ["fetch", "XMLHttpRequest", "WebSocket", "EventSource", "WebTransport", "importScripts", "Worker", "SharedWorker", "indexedDB", "caches"]) expect(source).toContain(blocked);
     for (const blockedImport of ["'socket'", "'urllib'", "'http'", "'subprocess'", "'micropip'"]) expect(source).toContain(blockedImport);
     expect(source).toContain("env: Object.freeze({})");
+    expect(source).not.toContain("AsyncFunction");
   });
 
   it("loads Python and SQLite WASM only from same-origin runtime paths", () => {

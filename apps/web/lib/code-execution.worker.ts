@@ -14,6 +14,7 @@ import {
 } from "./code-execution";
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
+const NativeWorker = Worker;
 type RunPiece = Omit<ExecutionResult, "id" | "language" | "durationMs" | "timedOut" | "tests">;
 type PythonGlobals = { destroy: () => void };
 type PyodideInterface = {
@@ -34,27 +35,15 @@ function safeText(value: unknown) {
   try { return JSON.stringify(value); } catch { return String(value); }
 }
 
-function outputConsole(stdout: string[], stderr: string[]) {
-  return {
-    log: (...values: unknown[]) => stdout.push(`${values.map(safeText).join(" ")}\n`),
-    info: (...values: unknown[]) => stdout.push(`${values.map(safeText).join(" ")}\n`),
-    debug: (...values: unknown[]) => stdout.push(`${values.map(safeText).join(" ")}\n`),
-    warn: (...values: unknown[]) => stderr.push(`${values.map(safeText).join(" ")}\n`),
-    error: (...values: unknown[]) => stderr.push(`${values.map(safeText).join(" ")}\n`),
-  };
-}
-
 function blockNetworkGlobals() {
   const blocked = () => { throw new Error("Network access is disabled in the Continuum browser sandbox."); };
   const blockedAsync = () => Promise.reject(new Error("Network access is disabled in the Continuum browser sandbox."));
-  for (const [name, value] of Object.entries({ fetch: blockedAsync, XMLHttpRequest: blocked, WebSocket: blocked, EventSource: blocked, WebTransport: blocked, importScripts: blocked, indexedDB: undefined, caches: undefined })) {
+  for (const [name, value] of Object.entries({ fetch: blockedAsync, XMLHttpRequest: blocked, WebSocket: blocked, EventSource: blocked, WebTransport: blocked, importScripts: blocked, Worker: blocked, SharedWorker: blocked, indexedDB: undefined, caches: undefined })) {
     try { Object.defineProperty(globalThis, name, { configurable: true, value }); } catch { /* absent or non-configurable in this browser */ }
   }
 }
 
 async function runJavaScript(source: string, stdin: string, language: RunnableLanguage): Promise<RunPiece> {
-  const stdout: string[] = [];
-  const stderr: string[] = [];
   let executable = source;
   if (language === "typescript") {
     const compiled = ts.transpileModule(source, {
@@ -73,26 +62,80 @@ async function runJavaScript(source: string, stdin: string, language: RunnableLa
     executable = compiled.outputText;
   }
 
-  blockNetworkGlobals();
-  const lines = stdin.replace(/\r\n/g, "\n").split("\n");
-  let line = 0;
-  const read = (prompt?: string) => {
-    if (prompt) stdout.push(prompt);
-    return lines[line++] ?? "";
-  };
-  const processShim = {
-    stdin: { read: () => read() },
-    stdout: { write: (value: unknown) => stdout.push(String(value)) },
-    stderr: { write: (value: unknown) => stderr.push(String(value)) },
-    env: Object.freeze({}),
-  };
+  const workerSource = `
+const __report = globalThis.postMessage.bind(globalThis);
+const __stdout = [];
+const __stderr = [];
+const __safeText = (value) => {
+  if (typeof value === "string") return value;
+  if (value instanceof Error) return value.stack || value.message;
+  try { return JSON.stringify(value); } catch { return String(value); }
+};
+const __blocked = () => { throw new Error("Network access is disabled in the Continuum browser sandbox."); };
+const __blockedAsync = () => Promise.reject(new Error("Network access is disabled in the Continuum browser sandbox."));
+for (const [name, value] of Object.entries({
+  fetch: __blockedAsync,
+  XMLHttpRequest: __blocked,
+  WebSocket: __blocked,
+  EventSource: __blocked,
+  WebTransport: __blocked,
+  importScripts: __blocked,
+  Worker: __blocked,
+  SharedWorker: __blocked,
+  indexedDB: undefined,
+  caches: undefined,
+})) {
+  try { Object.defineProperty(globalThis, name, { configurable: true, value }); } catch {}
+}
+const console = {
+  log: (...values) => __stdout.push(values.map(__safeText).join(" ") + "\\n"),
+  info: (...values) => __stdout.push(values.map(__safeText).join(" ") + "\\n"),
+  debug: (...values) => __stdout.push(values.map(__safeText).join(" ") + "\\n"),
+  warn: (...values) => __stderr.push(values.map(__safeText).join(" ") + "\\n"),
+  error: (...values) => __stderr.push(values.map(__safeText).join(" ") + "\\n"),
+};
+const __lines = ${JSON.stringify(stdin.replace(/\r\n/g, "\n").split("\n"))};
+let __line = 0;
+const readline = (prompt) => {
+  if (prompt) __stdout.push(String(prompt));
+  return __lines[__line++] ?? "";
+};
+const input = readline;
+const process = Object.freeze({
+  stdin: Object.freeze({ read: () => readline() }),
+  stdout: Object.freeze({ write: (value) => __stdout.push(String(value)) }),
+  stderr: Object.freeze({ write: (value) => __stderr.push(String(value)) }),
+  env: Object.freeze({}),
+});
+try {
+  await (async () => {
+    "use strict";
+${executable}
+  })();
+  __report({ outcome: "success", stdout: __stdout.join(""), stderr: __stderr.join(""), exitCode: 0 });
+} catch (error) {
+  __report({ outcome: "runtime_error", stdout: __stdout.join(""), stderr: __stderr.join("") + __safeText(error), exitCode: 1 });
+}
+`;
+  const objectUrl = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
   try {
-    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (...args: string[]) => (...values: unknown[]) => Promise<unknown>;
-    const execute = new AsyncFunction("console", "readline", "input", "process", `"use strict";\n${executable}`);
-    await execute(outputConsole(stdout, stderr), read, read, processShim);
-    return { outcome: "success", stdout: capExecutionOutput(stdout.join("")), stderr: capExecutionOutput(stderr.join("")), exitCode: 0 };
-  } catch (error) {
-    return { outcome: "runtime_error", stdout: capExecutionOutput(stdout.join("")), stderr: capExecutionOutput(`${stderr.join("")}${safeText(error)}`), exitCode: 1 };
+    return await new Promise<RunPiece>((resolve) => {
+      const runner = new NativeWorker(objectUrl, { type: "module", name: `continuum-${language}-run` });
+      runner.onmessage = (event: MessageEvent<RunPiece>) => {
+        runner.terminate();
+        resolve({
+          ...event.data,
+          stdout: capExecutionOutput(event.data.stdout),
+          stderr: capExecutionOutput(event.data.stderr),
+        });
+      };
+      runner.onerror = (event) => {
+        runner.terminate();
+        resolve({ outcome: "compiler_error", stdout: "", stderr: capExecutionOutput(event.message || "The JavaScript runtime could not parse this program."), exitCode: 1 });
+      };
+    });
+  } finally {
+    URL.revokeObjectURL(objectUrl);
   }
 }
 
