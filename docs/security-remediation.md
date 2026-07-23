@@ -14,7 +14,7 @@ Date: 2026-07-23
 | KEY-1 | High design requirement | Provider credentials previously lacked a common user-facing encrypted configuration flow | HTTPS/auth/rate-limited endpoint, live provider check, AES-256-GCM versioned envelope, masked-only status, password reauthentication for replace/delete, revoke/audit flow | provider credential tests plus browser invalid-key rejection |
 | DATA-1 | High operational | Preview and Production resolved to the same database and cryptographic variables | Create `continuum_preview_product_ready`; add branch-scoped DB URLs and independent encryption/session/MCP keys | hash-only environment comparison and direct database inspection |
 | UI-1 | Low | Dark system theme exposed light hard-coded auth/mobile surfaces | Semantic tokens and explicit dark surface overrides | light/dark browser screenshots |
-| CODE-1 | High execution boundary | The production CSP blocked `AsyncFunction`; nested workers also offered a potential network-control bypass | Replace string evaluation with a disposable blob module worker and disable network, storage, `Worker`, and `SharedWorker` globals inside learner execution | deployed Code Playwright journey and adversarial source-contract tests |
+| CODE-1 | High execution boundary | The production CSP blocked `AsyncFunction`; nested workers also offered a potential network-control bypass | Replace string evaluation with a disposable blob module worker; disable network, storage, `Worker`, and `SharedWorker` globals; allow only `wasm-unsafe-eval` for SQL.js/Pyodide compilation | deployed Code Playwright journey and adversarial source-contract tests |
 
 ## Accepted limitations
 
