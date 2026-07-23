@@ -1,4 +1,4 @@
-export type ScholarlyProviderId = "openalex" | "crossref";
+export type ScholarlyProviderId = "openalex" | "crossref" | "semantic-scholar";
 export type ScholarlySearchMode = "keywords" | "title" | "author" | "doi";
 
 export type NormalizedScholarlyWork = {
@@ -153,6 +153,36 @@ export function normalizeCrossrefWork(value: unknown, retrievedAt = new Date().t
   };
 }
 
+export function normalizeSemanticScholarWork(value: unknown, retrievedAt = new Date().toISOString()): NormalizedScholarlyWork | undefined {
+  const work = asRecord(value);
+  const title = stringValue(work.title);
+  const paperId = stringValue(work.paperId);
+  if (!title || !paperId) return undefined;
+  const externalIds = asRecord(work.externalIds);
+  const doi = normalizeDoi(externalIds.DOI);
+  const openAccessPdf = asRecord(work.openAccessPdf);
+  return {
+    providerId: paperId,
+    ...(doi ? { doi } : {}),
+    title,
+    authors: asArray(work.authors).map((author) => stringValue(asRecord(author).name)).filter((author): author is string => Boolean(author)),
+    ...(numberValue(work.year) ? { year: numberValue(work.year) } : {}),
+    ...(stringValue(work.venue) ? { venue: stringValue(work.venue) } : {}),
+    ...(stripMarkup(work.abstract) ? { abstract: stripMarkup(work.abstract) } : {}),
+    ...(numberValue(work.citationCount) !== undefined ? { citedByCount: numberValue(work.citationCount) } : {}),
+    openAccess: work.isOpenAccess === true || Boolean(safeUrl(openAccessPdf.url)),
+    ...(safeUrl(work.url) ? { landingPageUrl: safeUrl(work.url) } : {}),
+    ...(safeUrl(openAccessPdf.url) ? { fullTextUrl: safeUrl(openAccessPdf.url) } : {}),
+    topics: asArray(work.fieldsOfStudy).map(String).slice(0, 8),
+    institutions: [],
+    ...(stringValue(asArray(work.publicationTypes)[0]) ? { type: stringValue(asArray(work.publicationTypes)[0]) } : {}),
+    sourceProvider: "semantic-scholar",
+    retrievedAt,
+    relatedWorkIds: [],
+    referenceIds: [],
+  };
+}
+
 function wait(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -245,6 +275,33 @@ export class CrossrefProvider {
     const message = asRecord(asRecord(payload).message);
     const records = asArray(message.items).length ? asArray(message.items) : [message];
     return records.map((work) => normalizeCrossrefWork(work, retrievedAt)).filter((work): work is NormalizedScholarlyWork => Boolean(work));
+  }
+}
+
+export class SemanticScholarProvider {
+  readonly id = "semantic-scholar" as const;
+  constructor(private readonly apiKey: string | undefined, private readonly fetcher: ScholarlyFetch = fetch) {}
+
+  async search(input: ScholarlySearchInput) {
+    if (!this.apiKey?.trim()) throw new ScholarlyProviderError(this.id, "Semantic Scholar needs a user API key", "unconfigured");
+    const retrievedAt = new Date().toISOString();
+    const doi = normalizeDoi(input.query);
+    const exactPaper = input.mode === "doi" && doi;
+    const url = exactPaper
+      ? new URL(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}`)
+      : new URL(input.mode === "title"
+        ? "https://api.semanticscholar.org/graph/v1/paper/search/match"
+        : "https://api.semanticscholar.org/graph/v1/paper/search");
+    if (!exactPaper) {
+      url.searchParams.set("query", input.query.trim());
+      if (input.mode !== "title") url.searchParams.set("limit", String(Math.min(25, Math.max(1, input.limit ?? 12))));
+      if (input.openAccessOnly) url.searchParams.set("openAccessPdf", "");
+      if (input.fromYear || input.toYear) url.searchParams.set("publicationDateOrYear", `${input.fromYear ?? ""}:${input.toYear ?? ""}`);
+    }
+    url.searchParams.set("fields", "paperId,externalIds,title,authors,year,venue,abstract,citationCount,isOpenAccess,url,openAccessPdf,fieldsOfStudy,publicationTypes");
+    const payload = await fetchJson(this.id, url, this.fetcher, { "x-api-key": this.apiKey.trim() });
+    const records = asArray(asRecord(payload).data).length ? asArray(asRecord(payload).data) : [payload];
+    return records.map((work) => normalizeSemanticScholarWork(work, retrievedAt)).filter((work): work is NormalizedScholarlyWork => Boolean(work));
   }
 }
 

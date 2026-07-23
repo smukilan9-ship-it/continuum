@@ -4,7 +4,9 @@ import {
   deduplicateScholarlyWorks,
   normalizeCrossrefWork,
   normalizeOpenAlexWork,
+  normalizeSemanticScholarWork,
   OpenAlexProvider,
+  SemanticScholarProvider,
   scholarSearchUrl,
   ScholarlyProviderError,
   type NormalizedScholarlyWork,
@@ -73,6 +75,32 @@ describe("scholarly discovery adapters", () => {
     });
   });
 
+  it("normalizes Semantic Scholar metadata with verified provider provenance", () => {
+    const work = normalizeSemanticScholarWork({
+      paperId: "s2-paper-123",
+      externalIds: { DOI: "10.1000/CONTINUUM" },
+      title: "A Continuum Study",
+      authors: [{ name: "Ada Lovelace" }],
+      year: 2025,
+      venue: "Journal of Durable Systems",
+      abstract: "Durable context matters.",
+      citationCount: 21,
+      isOpenAccess: true,
+      url: "https://www.semanticscholar.org/paper/s2-paper-123",
+      openAccessPdf: { url: "https://example.edu/paper.pdf" },
+      fieldsOfStudy: ["Computer Science"],
+      publicationTypes: ["JournalArticle"],
+    }, retrievedAt);
+
+    expect(work).toMatchObject({
+      providerId: "s2-paper-123",
+      doi: "10.1000/continuum",
+      authors: ["Ada Lovelace"],
+      fullTextUrl: "https://example.edu/paper.pdf",
+      sourceProvider: "semantic-scholar",
+    });
+  });
+
   it("deduplicates provider results by DOI while preserving richer metadata", () => {
     const base: NormalizedScholarlyWork = {
       providerId: "W123", doi: "10.1000/continuum", title: "A Continuum Study", authors: ["Ada Lovelace"],
@@ -102,6 +130,15 @@ describe("scholarly discovery adapters", () => {
       return new Response(JSON.stringify({ message: { items: [] } }), { status: 200 });
     });
     await new CrossrefProvider("research@example.com", crossrefFetch).search({ query: "Ada Lovelace", mode: "author" });
+
+    const semanticScholarFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      expect(url.origin).toBe("https://api.semanticscholar.org");
+      expect(url.searchParams.get("query")).toBe("knowledge graph");
+      expect(new Headers(init?.headers).get("x-api-key")).toBe("fixture-key");
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    });
+    await new SemanticScholarProvider("fixture-key", semanticScholarFetch).search({ query: "knowledge graph", mode: "keywords", limit: 100 });
   });
 
   it("fails closed when OpenAlex is unconfigured and emits a search-only Scholar handoff", async () => {

@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:visual": "node scripts/visual-qa-premium.mjs",
     "e2e:flow": "node scripts/e2e-flow.mjs",
     "db:generate": "pnpm --filter @continuum/db generate",
     "db:migrate": "dotenv -e .env.local -- pnpm --filter @continuum/db exec drizzle-kit migrate",

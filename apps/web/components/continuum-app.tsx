@@ -20,6 +20,7 @@ import {
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { normalizeWorkspaceState, WorkspaceScreens, type WorkspaceState } from "@/components/workspace-screens";
 import { workspaceMeta, workspacePath, workspaceViews, type WorkspaceView } from "@/lib/workspace-routes";
 
@@ -196,7 +197,7 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
           <button className="icon-button mobile-only" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Menu size={20} /></button>
           <div className="location-label"><span>Continuum</span><strong>{meta.title}</strong></div>
           <button className="search-button" onClick={() => setCommandOpen(true)}><Search size={17} /><span>Search workspace</span><kbd>⌘K</kbd></button>
-          <div className="topbar-right"><span className="privacy-state"><i />Saved</span></div>
+          <div className="topbar-right"><ThemeToggle /><span className="privacy-state"><i />Saved</span></div>
         </header>
 
         <div className="content-wrap">

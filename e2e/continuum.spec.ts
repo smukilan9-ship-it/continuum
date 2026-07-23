@@ -5,7 +5,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000";
 
 async function demoLogin(page: Page) {
   await page.goto("/login");
-  await page.getByRole("button", { name: /Try the demo/ }).click();
+  await page.getByRole("button", { name: /Explore the demo/ }).click();
   await expect(page).toHaveURL(`${baseURL}/`);
   await expect(page.getByRole("heading", { name: /^Good (morning|afternoon|evening), .+\.$/i })).toBeVisible();
   await page.waitForFunction(() => {

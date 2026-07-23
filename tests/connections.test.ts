@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { openCredential, sealCredential } from "../apps/web/lib/credential-vault";
+import { credentialEncryptionVersion, openCredential, sealCredential } from "../apps/web/lib/credential-vault";
 import { googleAuthorizationUrl, googleCalendarScopes, googleRedirectUri } from "../apps/web/lib/google-calendar";
 import { googleSignInRedirectUri, googleSignInUrl } from "../apps/web/lib/google-auth";
 
@@ -21,6 +21,19 @@ describe("integration credential vault", () => {
     ciphertext[0] = ciphertext[0]! ^ 1;
     parts[3] = ciphertext.toString("base64url");
     expect(() => openCredential(parts.join("."))).toThrow();
+  });
+
+  it("keeps older envelopes readable while new writes use the configured key version", () => {
+    vi.stubEnv("INTEGRATION_CREDENTIAL_ENCRYPTION_KEY", "2".repeat(64));
+    const legacy = sealCredential({ apiKey: "legacy-provider-key" });
+    vi.stubEnv("INTEGRATION_CREDENTIAL_ENCRYPTION_VERSION", "2");
+    vi.stubEnv("INTEGRATION_CREDENTIAL_ENCRYPTION_KEY_V2", "3".repeat(64));
+    const rotated = sealCredential({ apiKey: "rotated-provider-key" });
+
+    expect(credentialEncryptionVersion(legacy)).toBe(1);
+    expect(credentialEncryptionVersion(rotated)).toBe(2);
+    expect(openCredential(legacy)).toEqual({ apiKey: "legacy-provider-key" });
+    expect(openCredential(rotated)).toEqual({ apiKey: "rotated-provider-key" });
   });
 });
 

@@ -18,9 +18,9 @@ function isLoopback(origin: string) {
 
 /**
  * Protect cookie-authenticated mutations from cross-site requests.
- * Production accepts only the configured public application origin. Local
- * development also accepts loopback-to-loopback requests because Next can
- * canonicalize request URLs to a different loopback host or port.
+ * Production accepts the request's exact origin and the configured canonical
+ * origin. Local development also accepts loopback-to-loopback requests because
+ * Next can canonicalize request URLs to a different loopback host or port.
  */
 export function sameOriginWrite(
   request: Request,
@@ -33,7 +33,12 @@ export function sameOriginWrite(
   const configuredOrigin = normalizedOrigin(env.APP_BASE_URL);
 
   if (env.NODE_ENV === "production") {
-    return Boolean(configuredOrigin && suppliedOrigin === configuredOrigin);
+    // A Vercel Preview has a unique host for every deployment. Cookie-authenticated
+    // browser writes remain CSRF-safe when their Origin exactly matches the URL that
+    // received the request; the host-only session cookie cannot be sent to another
+    // Preview or an attacker-controlled origin. APP_BASE_URL remains an additional
+    // accepted canonical origin for stable aliases and OAuth callbacks.
+    return suppliedOrigin === requestOrigin || suppliedOrigin === configuredOrigin;
   }
 
   if (suppliedOrigin === requestOrigin || suppliedOrigin === configuredOrigin) return true;

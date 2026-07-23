@@ -73,7 +73,7 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, googleSignI
         {demoAvailable ? (
           <button type="button" className="demo-cta" onClick={() => void tryDemo()} disabled={busy !== null}>
             <PlayCircle size={18} />
-            <span><strong>{busy === "demo" ? "Opening the demo…" : "Try the demo"}</strong><small>Explore a fully populated student workspace — no signup</small></span>
+            <span><strong>{busy === "demo" ? "Opening the demo…" : "Explore the demo"}</strong><small>Use the same non-admin workspace and integration settings as every student</small></span>
             <ArrowRight size={16} />
           </button>
         ) : null}

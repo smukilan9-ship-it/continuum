@@ -1,9 +1,10 @@
-import { configuredProviders, generateStructured, routeTask } from "@continuum/ai";
+import { configuredProviders, generateStructured, providerEnvironmentFromProcess, routeTask } from "@continuum/ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { checkDailyAiBudget, logModelUsage } from "@/lib/ai-budget";
 import { buildAcademicPrompt } from "@/lib/prompt-context";
+import { getUserProviderSecret } from "@/lib/provider-credentials";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -42,7 +43,10 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Invalid generation request", issues: parsed.error.issues }, { status: 400 });
   const rate = await enforceRateLimit(request, "ai", Number(process.env.AI_REQUESTS_PER_MINUTE ?? 30), 60_000, user.id);
   if (!rate.allowed) return NextResponse.json({ error: "AI request rate limit exceeded", resetAt: rate.resetAt }, { status: 429, headers: { "retry-after": "60" } });
-  const providers = configuredProviders();
+  const providerEnvironment = providerEnvironmentFromProcess();
+  const userFeatherless = await getUserProviderSecret(user.id, "featherless").catch(() => undefined);
+  if (userFeatherless) providerEnvironment.FEATHERLESS_API_KEY = userFeatherless.secret;
+  const providers = configuredProviders(providerEnvironment);
   const availableProviders = [
     ...(providers.groq ? ["groq" as const] : []),
     ...(providers.featherless ? ["featherless" as const] : []),
@@ -79,8 +83,8 @@ export async function POST(request: Request) {
       userId: user.id,
     };
     const result = parsed.data.taskClass === "misconception_diagnosis"
-      ? await generateStructured({ ...common, schema: diagnosisContentSchema })
-      : await generateStructured({ ...common, schema: lessonContentSchema });
+      ? await generateStructured({ ...common, schema: diagnosisContentSchema }, providerEnvironment)
+      : await generateStructured({ ...common, schema: lessonContentSchema }, providerEnvironment);
     await logModelUsage({ userId: user.id, decision: result.decision, usage: result.usage });
     return NextResponse.json({ output: result.output, assistance: { reason: result.decision.reason, verification: result.decision.verification, fallbackUsed: result.decision.fallbackUsed } });
   } catch {

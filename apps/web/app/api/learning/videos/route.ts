@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { enforceRateLimit, getRequestUser } from "@/lib/auth";
+import { getUserProviderSecret } from "@/lib/provider-credentials";
 import { searchLearningVideos, youtubeSearchHandoffUrl, YouTubeProviderError } from "@/lib/youtube";
 
 export const runtime = "nodejs";
@@ -16,9 +17,10 @@ export async function GET(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Enter a topic with at least two characters." }, { status: 400 });
   const handoffUrl = youtubeSearchHandoffUrl(parsed.data.q);
   try {
+    const userCredential = await getUserProviderSecret(user.id, "youtube").catch(() => undefined);
     const videos = await searchLearningVideos({
       query: parsed.data.q,
-      apiKey: process.env.YOUTUBE_API_KEY,
+      apiKey: userCredential?.secret ?? process.env.YOUTUBE_API_KEY,
       trustedChannelIds: (process.env.YOUTUBE_TRUSTED_CHANNEL_IDS ?? "").split(","),
     });
     return NextResponse.json({ videos, status: "live", handoffUrl, note: "YouTube provider results are not curriculum claims. Trusted-channel badges require an operator allowlist." });

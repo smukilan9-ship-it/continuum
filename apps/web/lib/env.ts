@@ -31,8 +31,9 @@ export function publicRegistrationEnabled(env: NodeJS.ProcessEnv = process.env) 
  * path using the seeded demo account.
  */
 export function demoLoginEnabled(env: NodeJS.ProcessEnv = process.env) {
-  if (env.DEMO_LOGIN_ENABLED === "false") return false;
-  return env.NODE_ENV !== "production" || env.DEMO_LOGIN_ENABLED === "true";
+  const configured = env.ENABLE_DEMO_LOGIN ?? env.DEMO_LOGIN_ENABLED;
+  if (configured === "false") return false;
+  return env.NODE_ENV !== "production" || configured === "true";
 }
 
 /** The demo account password used by the seed command and the demo-login route. */

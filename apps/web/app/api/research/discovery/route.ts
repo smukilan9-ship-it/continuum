@@ -7,9 +7,11 @@ import {
   deduplicateScholarlyWorks,
   OpenAlexProvider,
   scholarSearchUrl,
+  SemanticScholarProvider,
   ScholarlyProviderError,
   type NormalizedScholarlyWork,
 } from "@/lib/scholarly";
+import { getUserProviderSecret } from "@/lib/provider-credentials";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -18,7 +20,7 @@ export const maxDuration = 30;
 const querySchema = z.object({
   q: z.string().trim().min(2).max(500),
   mode: z.enum(["keywords", "title", "author", "doi"]).default("keywords"),
-  provider: z.enum(["all", "openalex", "crossref"]).default("all"),
+  provider: z.enum(["all", "openalex", "crossref", "semantic-scholar"]).default("all"),
   openAccess: z.enum(["true", "false"]).optional(),
   fromYear: z.coerce.number().int().min(1800).max(2200).optional(),
   toYear: z.coerce.number().int().min(1800).max(2200).optional(),
@@ -42,7 +44,7 @@ const saveSchema = z.object({
     topics: z.array(z.string().max(300)).max(20),
     institutions: z.array(z.string().max(500)).max(20),
     type: z.string().max(100).optional(),
-    sourceProvider: z.enum(["openalex", "crossref"]),
+    sourceProvider: z.enum(["openalex", "crossref", "semantic-scholar"]),
     retrievedAt: z.string().datetime({ offset: true }),
     relatedWorkIds: z.array(z.string()).max(200),
     referenceIds: z.array(z.string()).max(500),
@@ -60,16 +62,21 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const parsed = querySchema.safeParse(Object.fromEntries(url.searchParams));
   if (!parsed.success || (parsed.data?.fromYear && parsed.data?.toYear && parsed.data.fromYear > parsed.data.toYear)) return NextResponse.json({ error: "Check the search query and date range." }, { status: 400 });
-  const cacheKey = JSON.stringify(parsed.data);
+  // Provider configuration is per-user. Never let one student's provider
+  // result or connection status populate another student's in-memory cache.
+  const cacheKey = `${user.id}:${JSON.stringify(parsed.data)}`;
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return NextResponse.json(cached.payload, { headers: { "x-continuum-cache": "hit" } });
 
   const input = { query: parsed.data.q, mode: parsed.data.mode, openAccessOnly: parsed.data.openAccess === "true", fromYear: parsed.data.fromYear, toYear: parsed.data.toYear, limit: 12 };
+  const userOpenAlex = await getUserProviderSecret(user.id, "openalex").catch(() => undefined);
+  const userSemanticScholar = await getUserProviderSecret(user.id, "semantic-scholar").catch(() => undefined);
   const providers = {
-    openalex: new OpenAlexProvider(process.env.OPENALEX_API_KEY),
+    openalex: new OpenAlexProvider(userOpenAlex?.secret ?? process.env.OPENALEX_API_KEY),
     crossref: new CrossrefProvider(process.env.CROSSREF_MAILTO),
+    "semantic-scholar": new SemanticScholarProvider(userSemanticScholar?.secret),
   };
-  const requested = parsed.data.provider === "all" ? ["openalex", "crossref"] as const : [parsed.data.provider] as const;
+  const requested = parsed.data.provider === "all" ? ["openalex", "crossref", "semantic-scholar"] as const : [parsed.data.provider] as const;
   const settled = await Promise.all(requested.map(async (provider) => {
     try { return { provider, status: "live" as const, results: await providers[provider].search(input) }; }
     catch (error) {
@@ -79,7 +86,7 @@ export async function GET(request: Request) {
   }));
   const results = deduplicateScholarlyWorks(settled.flatMap((entry) => entry.results)).sort((left, right) => Number(Boolean(right.abstract)) - Number(Boolean(left.abstract)) || (right.citedByCount ?? 0) - (left.citedByCount ?? 0));
   const providerStatuses = settled.map((entry) => ({ provider: entry.provider, status: entry.status, ...("message" in entry ? { message: entry.message } : {}) }));
-  const payload = { results, providers: providerStatuses, scholarHandoffUrl: scholarSearchUrl(parsed.data.q), attribution: ["OpenAlex", "Crossref"] };
+  const payload = { results, providers: providerStatuses, scholarHandoffUrl: scholarSearchUrl(parsed.data.q), attribution: ["OpenAlex", "Crossref", "Semantic Scholar"] };
   if (cache.size > 100) cache.delete(cache.keys().next().value as string);
   cache.set(cacheKey, { expiresAt: Date.now() + 10 * 60_000, payload });
   return NextResponse.json(payload, { headers: { "cache-control": "private, max-age=0", "x-continuum-cache": "miss" } });

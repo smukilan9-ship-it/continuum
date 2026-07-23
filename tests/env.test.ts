@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applicationBaseUrl, environmentStatus, publicRegistrationEnabled } from "../apps/web/lib/env";
+import { applicationBaseUrl, demoLoginEnabled, environmentStatus, publicRegistrationEnabled } from "../apps/web/lib/env";
 
 const productionMinimum = {
   NODE_ENV: "production",
@@ -43,5 +43,11 @@ describe("production environment validation", () => {
     expect(publicRegistrationEnabled({ NODE_ENV: "production" })).toBe(false);
     expect(publicRegistrationEnabled({ NODE_ENV: "production", PUBLIC_REGISTRATION_ENABLED: "true" })).toBe(true);
     expect(publicRegistrationEnabled({ NODE_ENV: "development" })).toBe(true);
+  });
+
+  it("accepts the documented demo flag and keeps it disabled by default in production", () => {
+    expect(demoLoginEnabled({ NODE_ENV: "production" })).toBe(false);
+    expect(demoLoginEnabled({ NODE_ENV: "production", ENABLE_DEMO_LOGIN: "true" })).toBe(true);
+    expect(demoLoginEnabled({ NODE_ENV: "production", ENABLE_DEMO_LOGIN: "false", DEMO_LOGIN_ENABLED: "true" })).toBe(false);
   });
 });
