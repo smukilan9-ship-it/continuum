@@ -7,9 +7,14 @@ import { PageIntro } from "./page-intro";
 import { formatDate, list, text, type WorkspaceState } from "./types";
 import type { WorkspaceView } from "@/lib/workspace-routes";
 
-export function TodayScreen({ state, userName, onNavigate, onRefresh }: { state: WorkspaceState; userName: string; onNavigate: (view: WorkspaceView) => void; onRefresh: () => Promise<void> }) {
+function greetingAt(instant: string, timeZone: string) {
+  const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", hourCycle: "h23" }).format(new Date(instant)));
+  return hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
+}
+
+export function TodayScreen({ state, userName, timeZone, serverNow, onNavigate, onRefresh }: { state: WorkspaceState; userName: string; timeZone: string; serverNow: string; onNavigate: (view: WorkspaceView) => void; onRefresh: () => Promise<void> }) {
   const nextTask = state.tasks.find((task) => text(task, "status") !== "done");
-  const upcoming = state.schedule.filter((block) => new Date(text(block, "end", text(block, "endsAt", "0"))).valueOf() > Date.now());
+  const upcoming = state.schedule.filter((block) => new Date(text(block, "end", text(block, "endsAt", "0"))).valueOf() > Date.parse(serverNow));
   const nextBlock = upcoming[0];
   const latestReceipt = state.receipts[0];
   const recentExternal = state.resourceActivities.find((activity) => !["verified", "abandoned"].includes(text(activity, "status")));
@@ -17,7 +22,7 @@ export function TodayScreen({ state, userName, onNavigate, onRefresh }: { state:
 
   return (
     <div className="screen">
-      <PageIntro eyebrow="TODAY" title={`Good ${new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, ${userName}.`} description="Resume from verified state, not from a blank chat. Your plan and connected assistants use the same current context." />
+      <PageIntro eyebrow="TODAY" title={`Good ${greetingAt(serverNow, timeZone)}, ${userName}.`} description="Resume from verified state, not from a blank chat. Your plan and connected assistants use the same current context." />
 
       <section className="today-grid">
         <Card className="next-action-card">
@@ -35,13 +40,13 @@ export function TodayScreen({ state, userName, onNavigate, onRefresh }: { state:
 
         <Card className="schedule-card">
           <div className="card-heading-row"><div><p className="eyebrow">SCHEDULE</p><h2>{nextBlock ? "Next block" : "Plan your work"}</h2></div><CalendarClock size={20} /></div>
-          {nextBlock ? <div className="next-block"><strong>{text(nextBlock, "title")}</strong><span><Clock3 size={14} />{formatDate(nextBlock.start ?? nextBlock.startsAt)}</span><small>{text(nextBlock, "completionEvidence", "Completion evidence required")}</small></div> : <p>No block is saved yet. Tell Continuum when you are actually free, then edit the draft before saving it.</p>}
+          {nextBlock ? <div className="next-block"><strong>{text(nextBlock, "title")}</strong><span><Clock3 size={14} />{formatDate(nextBlock.start ?? nextBlock.startsAt, undefined, timeZone)}</span><small>{text(nextBlock, "completionEvidence", "Completion evidence required")}</small></div> : <p>No block is saved yet. Tell Continuum when you are actually free, then edit the draft before saving it.</p>}
           {!nextBlock ? <Button className="button-secondary" disabled={!nextTask} onClick={() => onNavigate("goals")}>Build my week<ArrowRight size={15} /></Button> : null}
         </Card>
 
         <Card className="resume-card">
           <div className="card-heading-row"><div><p className="eyebrow">RESUME WHERE YOU STOPPED</p><h2>{recentExternal ? "External work is waiting" : latestReceipt ? "Latest checkpoint" : "No checkpoint yet"}</h2></div><Link2 size={20} /></div>
-          {recentExternal ? <><p>You started an external resource and have not completed its return check.</p><Button className="button-secondary" onClick={() => onNavigate("learn")}>Resume handoff<ArrowRight size={15} /></Button></> : latestReceipt ? <><p>{text(latestReceipt, "summary")}</p>{list(latestReceipt, "nextActions").length ? <ul>{list(latestReceipt, "nextActions").slice(0, 3).map((action) => <li key={action}>{action}</li>)}</ul> : null}<span className="subtle-meta">Saved {formatDate(latestReceipt.createdAt)}</span></> : <p>Completing a session in Continuum or through MCP creates a compact receipt with decisions, evidence, unresolved questions, and next actions.</p>}
+          {recentExternal ? <><p>You started an external resource and have not completed its return check.</p><Button className="button-secondary" onClick={() => onNavigate("learn")}>Resume handoff<ArrowRight size={15} /></Button></> : latestReceipt ? <><p>{text(latestReceipt, "summary")}</p>{list(latestReceipt, "nextActions").length ? <ul>{list(latestReceipt, "nextActions").slice(0, 3).map((action) => <li key={action}>{action}</li>)}</ul> : null}<span className="subtle-meta">Saved {formatDate(latestReceipt.createdAt, undefined, timeZone)}</span></> : <p>Completing a session in Continuum or through MCP creates a compact receipt with decisions, evidence, unresolved questions, and next actions.</p>}
         </Card>
       </section>
     </div>

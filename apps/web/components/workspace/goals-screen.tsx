@@ -47,15 +47,18 @@ function isoValue(row: Row, key: string) {
   return value instanceof Date ? value.toISOString() : typeof value === "string" ? value : "";
 }
 
-function dayKey(value: string | Date) {
+function dayKey(value: string | Date, timeZone: string) {
   const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.valueOf()) ? "" : `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  if (Number.isNaN(date.valueOf())) return "";
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((candidate) => candidate.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-function dateRange() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  return Array.from({ length: 7 }, (_, index) => new Date(start.getTime() + index * 24 * 3600_000));
+function dateRange(instant: string, timeZone: string) {
+  const [year, month, day] = dayKey(instant, timeZone).split("-").map(Number);
+  const start = Date.UTC(year!, month! - 1, day!, 12);
+  return Array.from({ length: 7 }, (_, index) => new Date(start + index * 24 * 3600_000));
 }
 
 function localDateInput(value: string) {
@@ -86,7 +89,7 @@ function intakeCommitments(value: string, days: Date[]): IntakeCommitment[] {
   });
 }
 
-export function GoalsScreen({ state, showToast, onRefresh }: { state: WorkspaceState; showToast: Toast; onRefresh: () => Promise<void> }) {
+export function GoalsScreen({ state, timeZone, serverNow, showToast, onRefresh }: { state: WorkspaceState; timeZone: string; serverNow: string; showToast: Toast; onRefresh: () => Promise<void> }) {
   const [form, setForm] = useState<"goal" | "task">();
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<PlanView>("week");
@@ -102,7 +105,7 @@ export function GoalsScreen({ state, showToast, onRefresh }: { state: WorkspaceS
   const [undoStack, setUndoStack] = useState<ScheduleBlock[][]>([]);
   const [editingBlock, setEditingBlock] = useState<DraftEditor>();
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
-  const week = useMemo(dateRange, []);
+  const week = useMemo(() => dateRange(serverNow, timeZone), [serverNow, timeZone]);
   const fixedCommitments = useMemo(() => intakeCommitments(intake.fixedCommitments, week), [intake.fixedCommitments, week]);
   const selectedGoal = state.goals.find((goal) => text(goal, "id") === selectedGoalId) ?? state.goals[0];
   const activeTasks = state.tasks.filter((task) => text(task, "status") !== "done");
@@ -298,7 +301,7 @@ export function GoalsScreen({ state, showToast, onRefresh }: { state: WorkspaceS
   }
 
   function regenerateDay(day: Date) {
-    const ids = draftBlocks.filter((block) => dayKey(block.start) === dayKey(day)).map((block) => block.id);
+    const ids = draftBlocks.filter((block) => dayKey(block.start, timeZone) === dayKey(day, timeZone)).map((block) => block.id);
     if (!ids.length) return;
     let cursor = new Date(day);
     const freeTime = [0, 6].includes(day.getDay()) ? intake.weekendFree : intake.weekdayFree;
@@ -342,10 +345,10 @@ export function GoalsScreen({ state, showToast, onRefresh }: { state: WorkspaceS
         {overlapIds.size ? <ErrorState title="Some blocks overlap" body="Move or resize the highlighted blocks before saving." /> : draftMinutes > weeklyCapacity ? <ErrorState title="This draft exceeds your realistic workload" body="Reduce or move blocks, increase available time, or leave lower-priority tasks unscheduled." /> : null}
         <section className="draft-week-board" aria-label="Editable weekly schedule">
           {week.map((day) => {
-            const blocks = draftBlocks.filter((block) => dayKey(block.start) === dayKey(day)).sort((left, right) => Date.parse(left.start) - Date.parse(right.start));
-            const commitments = fixedCommitments.filter((commitment) => dayKey(commitment.start) === dayKey(day));
-            return <div className="draft-day" key={dayKey(day)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); moveBlockToDay(event.dataTransfer.getData("text/schedule-block"), day); }}>
-              <header><div><span>{day.toLocaleDateString(undefined, { weekday: "short" })}</span><strong>{day.getDate()}</strong></div><button aria-label={`Regenerate ${day.toLocaleDateString(undefined, { weekday: "long" })}`} disabled={!blocks.length} onClick={() => regenerateDay(day)}><Sparkles size={13} /></button></header>
+            const blocks = draftBlocks.filter((block) => dayKey(block.start, timeZone) === dayKey(day, timeZone)).sort((left, right) => Date.parse(left.start) - Date.parse(right.start));
+            const commitments = fixedCommitments.filter((commitment) => dayKey(commitment.start, timeZone) === dayKey(day, timeZone));
+            return <div className="draft-day" key={dayKey(day, timeZone)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); moveBlockToDay(event.dataTransfer.getData("text/schedule-block"), day); }}>
+              <header><div><span>{day.toLocaleDateString("en-IN", { weekday: "short", timeZone })}</span><strong>{day.toLocaleDateString("en-IN", { day: "numeric", timeZone })}</strong></div><button aria-label={`Regenerate ${day.toLocaleDateString("en-IN", { weekday: "long", timeZone })}`} disabled={!blocks.length} onClick={() => regenerateDay(day)}><Sparkles size={13} /></button></header>
               <div>{commitments.map((commitment) => <article className="draft-commitment" key={commitment.id}><CalendarClock size={13} /><div><small>{localTimeInput(commitment.start)}–{localTimeInput(commitment.end)}</small><strong>{commitment.title}</strong><span>Protected commitment</span></div></article>)}{blocks.map((block) => <article draggable className={`draft-block${overlapIds.has(block.id) ? " overlap" : ""}${block.flexible ? "" : " fixed"}`} key={block.id} onDragStart={(event) => { event.dataTransfer.setData("text/schedule-block", block.id); event.dataTransfer.effectAllowed = "move"; }} onClick={() => setEditingBlock(block)}>
                 <GripVertical size={14} aria-hidden="true" />
                 <div><small>{localTimeInput(block.start)}–{localTimeInput(block.end)}</small><strong>{block.title}</strong><span>{block.flexible ? "Flexible" : "Fixed"} · {Math.round((Date.parse(block.end) - Date.parse(block.start)) / 60_000)} min</span></div>
@@ -407,9 +410,9 @@ export function GoalsScreen({ state, showToast, onRefresh }: { state: WorkspaceS
         </form> : null}
       </Modal>
 
-      {view === "week" ? <section className="week-board" aria-label="Seven day plan">{week.map((day, index) => { const key = dayKey(day); const schedule = state.schedule.filter((item) => dayKey(isoValue(item, "startsAt") || isoValue(item, "start")) === key); const constraints = state.calendarConstraints.filter((item) => dayKey(isoValue(item, "startsAt")) === key); return <div className={`week-day ${index === 0 ? "today" : ""}`} key={key}><header><span>{day.toLocaleDateString(undefined, { weekday: "short" })}</span><strong>{day.getDate()}</strong></header><div className="week-day-blocks">{constraints.map((item) => <article className="week-block commitment" key={text(item, "id")}><small>{formatDate(item.startsAt, { hour: "numeric", minute: "2-digit" })}</small><strong>{text(item, "title", "Calendar commitment")}</strong><span>Busy</span></article>)}{schedule.map((item) => { const task = state.tasks.find((candidate) => text(candidate, "id") === text(item, "taskId")); return <article className="week-block study" key={text(item, "id")}><small>{formatDate(item.startsAt ?? item.start, { hour: "numeric", minute: "2-digit" })}</small><strong>{text(task, "title", "Study block")}</strong><span>{formatLabel(text(item, "status", "planned"))}</span></article>;})}{!schedule.length && !constraints.length ? <div className="week-empty">Open</div> : null}</div></div>;})}</section> : null}
+      {view === "week" ? <section className="week-board" aria-label="Seven day plan">{week.map((day, index) => { const key = dayKey(day, timeZone); const schedule = state.schedule.filter((item) => dayKey(isoValue(item, "startsAt") || isoValue(item, "start"), timeZone) === key); const constraints = state.calendarConstraints.filter((item) => dayKey(isoValue(item, "startsAt"), timeZone) === key); return <div className={`week-day ${index === 0 ? "today" : ""}`} key={key}><header><span>{day.toLocaleDateString("en-IN", { weekday: "short", timeZone })}</span><strong>{day.toLocaleDateString("en-IN", { day: "numeric", timeZone })}</strong></header><div className="week-day-blocks">{constraints.map((item) => <article className="week-block commitment" key={text(item, "id")}><small>{formatDate(item.startsAt, { hour: "numeric", minute: "2-digit" }, timeZone)}</small><strong>{text(item, "title", "Calendar commitment")}</strong><span>Busy</span></article>)}{schedule.map((item) => { const task = state.tasks.find((candidate) => text(candidate, "id") === text(item, "taskId")); return <article className="week-block study" key={text(item, "id")}><small>{formatDate(item.startsAt ?? item.start, { hour: "numeric", minute: "2-digit" }, timeZone)}</small><strong>{text(task, "title", "Study block")}</strong><span>{formatLabel(text(item, "status", "planned"))}</span></article>;})}{!schedule.length && !constraints.length ? <div className="week-empty">Open</div> : null}</div></div>;})}</section> : null}
 
-      {view === "goals" ? <section className="plan-goals-layout"><div className="plan-goal-index">{state.goals.map((goal) => { const tasks = state.tasks.filter((task) => text(task, "goalId") === text(goal, "id")); const done = tasks.filter((task) => text(task, "status") === "done").length; const progress = Math.max(number(goal, "progress"), tasks.length ? done / tasks.length : 0); return <button key={text(goal, "id")} className={text(goal, "id") === text(selectedGoal, "id") ? "active" : ""} onClick={() => setSelectedGoalId(text(goal, "id"))}><span><Target size={16} /></span><div><strong>{text(goal, "title")}</strong><small>{Math.round(progress * 100)}% · {tasks.length} tasks</small></div></button>;})}</div>{selectedGoal ? <Card className="plan-goal-detail"><header><div><Badge tone={statusTone(text(selectedGoal, "status", "active"))}>{formatLabel(text(selectedGoal, "status", "active"))}</Badge><h2>{text(selectedGoal, "title")}</h2><p>{text(selectedGoal, "outcome")}</p></div><div><strong>{Math.round(number(selectedGoal, "progress", 0) * 100)}%</strong><span>goal progress</span></div></header><div className="plan-goal-meta"><span><CalendarClock size={14} />Due {formatDate(selectedGoal.targetDate ?? selectedGoal.date, { dateStyle: "medium" })}</span><button onClick={() => setForm("task")}><Plus size={14} />Add task</button></div><div className="plan-task-list">{state.tasks.filter((task) => text(task, "goalId") === text(selectedGoal, "id")).map((task) => { const done = text(task, "status") === "done"; return <article key={text(task, "id")}><button className={done ? "task-check done" : "task-check"} disabled={done || busy} onClick={() => void completeTask(text(task, "id"))} aria-label={done ? `${text(task, "title")} completed` : `Mark ${text(task, "title")} complete`}>{done ? <Check size={14} /> : <Circle size={14} />}</button><div><strong>{text(task, "title")}</strong><span>{number(task, "estimatedMinutes", 30)} min · {text(task, "completionEvidence", "No evidence rule set")}</span></div><Badge tone={statusTone(text(task, "status", "backlog"))}>{formatLabel(text(task, "status", "backlog"))}</Badge></article>;})}</div></Card> : null}</section> : null}
+      {view === "goals" ? <section className="plan-goals-layout"><div className="plan-goal-index">{state.goals.map((goal) => { const tasks = state.tasks.filter((task) => text(task, "goalId") === text(goal, "id")); const done = tasks.filter((task) => text(task, "status") === "done").length; const progress = Math.max(number(goal, "progress"), tasks.length ? done / tasks.length : 0); return <button key={text(goal, "id")} className={text(goal, "id") === text(selectedGoal, "id") ? "active" : ""} onClick={() => setSelectedGoalId(text(goal, "id"))}><span><Target size={16} /></span><div><strong>{text(goal, "title")}</strong><small>{Math.round(progress * 100)}% · {tasks.length} tasks</small></div></button>;})}</div>{selectedGoal ? <Card className="plan-goal-detail"><header><div><Badge tone={statusTone(text(selectedGoal, "status", "active"))}>{formatLabel(text(selectedGoal, "status", "active"))}</Badge><h2>{text(selectedGoal, "title")}</h2><p>{text(selectedGoal, "outcome")}</p></div><div><strong>{Math.round(number(selectedGoal, "progress", 0) * 100)}%</strong><span>goal progress</span></div></header><div className="plan-goal-meta"><span><CalendarClock size={14} />Due {formatDate(selectedGoal.targetDate ?? selectedGoal.date, { dateStyle: "medium" }, timeZone)}</span><button onClick={() => setForm("task")}><Plus size={14} />Add task</button></div><div className="plan-task-list">{state.tasks.filter((task) => text(task, "goalId") === text(selectedGoal, "id")).map((task) => { const done = text(task, "status") === "done"; return <article key={text(task, "id")}><button className={done ? "task-check done" : "task-check"} disabled={done || busy} onClick={() => void completeTask(text(task, "id"))} aria-label={done ? `${text(task, "title")} completed` : `Mark ${text(task, "title")} complete`}>{done ? <Check size={14} /> : <Circle size={14} />}</button><div><strong>{text(task, "title")}</strong><span>{number(task, "estimatedMinutes", 30)} min · {text(task, "completionEvidence", "No evidence rule set")}</span></div><Badge tone={statusTone(text(task, "status", "backlog"))}>{formatLabel(text(task, "status", "backlog"))}</Badge></article>;})}</div></Card> : null}</section> : null}
 
       {view === "backlog" ? <Card className="plan-backlog"><header><div><div className="plan-kicker"><ListTodo size={15} />ACTIVE WORK</div><h2>{activeTasks.length} unfinished task{activeTasks.length === 1 ? "" : "s"}</h2></div><Button className="button-primary compact-button" onClick={() => setForm("task")}><Plus size={14} />Add task</Button></header><div>{activeTasks.map((task) => { const goal = state.goals.find((item) => text(item, "id") === text(task, "goalId")); return <article key={text(task, "id")}><button className="task-check" disabled={busy} onClick={() => void completeTask(text(task, "id"))}><Circle size={14} /></button><div><strong>{text(task, "title")}</strong><span>{text(goal, "title", "Unlinked goal")}</span></div><span><Clock3 size={13} />{number(task, "estimatedMinutes", 30)} min</span><span><Flag size={13} />{priorityLabel(task.priority as number | string)}</span><Badge tone={statusTone(text(task, "status", "backlog"))}>{formatLabel(text(task, "status", "backlog"))}</Badge></article>;})}</div></Card> : null}
 

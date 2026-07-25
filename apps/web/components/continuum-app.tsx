@@ -70,7 +70,7 @@ function initials(name: string) {
   return name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
 }
 
-export function ContinuumApp({ user, initialState, view }: { user: AuthUser; initialState: Record<string, unknown>; view: WorkspaceView }) {
+export function ContinuumApp({ user, initialState, view, serverNow }: { user: AuthUser; initialState: Record<string, unknown>; view: WorkspaceView; serverNow: string }) {
   const [mobileNav, setMobileNav] = useState(false);
   const [compactNavigation, setCompactNavigation] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -252,7 +252,7 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
           {currentView === "integrations"
             ? <IntegrationsScreen showToast={setToast} />
             : state
-              ? <WorkspaceScreens view={currentView} state={state} user={user} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} onNavigate={navigate} onRefresh={refreshCurrent} showToast={setToast} />
+              ? <WorkspaceScreens view={currentView} state={state} user={user} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} serverNow={serverNow} onNavigate={navigate} onRefresh={refreshCurrent} showToast={setToast} />
               : <ScreenLoading />}
         </div>
       </main>

@@ -11,5 +11,5 @@ export async function WorkspacePage({ view }: { view: WorkspaceView }) {
   if (!user) redirect(`/login?returnTo=${encodeURIComponent(view === "today" ? "/" : `/${view}`)}`);
   const snapshot = await getStore(user.id).workspace(view);
   const initialState = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
-  return <ContinuumApp user={user} initialState={initialState} view={view} />;
+  return <ContinuumApp user={user} initialState={initialState} view={view} serverNow={new Date().toISOString()} />;
 }

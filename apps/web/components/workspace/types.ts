@@ -58,10 +58,10 @@ export function list(row: Row | undefined, key: string) {
   return Array.isArray(row?.[key]) ? (row[key] as unknown[]).map(String) : [];
 }
 
-export function formatDate(value: unknown, options: Intl.DateTimeFormatOptions = { dateStyle: "medium", timeStyle: "short" }) {
+export function formatDate(value: unknown, options: Intl.DateTimeFormatOptions = { dateStyle: "medium", timeStyle: "short" }, timeZone?: string) {
   if (typeof value !== "string" && !(value instanceof Date)) return "Not scheduled";
   const parsed = new Date(value);
-  return Number.isNaN(parsed.valueOf()) ? "Not scheduled" : new Intl.DateTimeFormat(undefined, options).format(parsed);
+  return Number.isNaN(parsed.valueOf()) ? "Not scheduled" : new Intl.DateTimeFormat("en-IN", { ...options, timeZone }).format(parsed);
 }
 
 export async function postState(type: string, summary: string, payload: Row) {
