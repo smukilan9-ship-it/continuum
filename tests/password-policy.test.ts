@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEMO_EMAIL, DEMO_USERNAME, PASSWORD_MIN_LENGTH, passwordSchema, resolveLoginIdentifier } from "../apps/web/lib/password-policy";
+import { DEMO_EMAIL, DEMO_USERNAME, PASSWORD_MIN_LENGTH, isDemoLoginIdentifier, passwordSchema, resolveLoginIdentifier } from "../apps/web/lib/password-policy";
 import { demoAccountPassword, demoLoginEnabled } from "../apps/web/lib/env";
 
 describe("password policy", () => {
@@ -26,6 +26,13 @@ describe("demo login resolution", () => {
     expect(resolveLoginIdentifier(DEMO_USERNAME)).toBe(DEMO_EMAIL);
     expect(resolveLoginIdentifier("DEMO")).toBe(DEMO_EMAIL);
     expect(resolveLoginIdentifier("maya@continuum.demo")).toBe("maya@continuum.demo");
+  });
+
+  it("recognises both ways the seeded demo account can be entered", () => {
+    expect(isDemoLoginIdentifier(DEMO_USERNAME)).toBe(true);
+    expect(isDemoLoginIdentifier(" DEMO ")).toBe(true);
+    expect(isDemoLoginIdentifier(DEMO_EMAIL)).toBe(true);
+    expect(isDemoLoginIdentifier("maya@continuum.demo")).toBe(false);
   });
 });
 

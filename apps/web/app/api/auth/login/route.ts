@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authenticateUser, createAppSession, enforceRateLimit, sameOriginWrite, sessionCookie } from "@/lib/auth";
-import { DEMO_USERNAME, resolveLoginIdentifier } from "@/lib/password-policy";
+import { demoLoginEnabled } from "@/lib/env";
+import { DEMO_USERNAME, isDemoLoginIdentifier, resolveLoginIdentifier } from "@/lib/password-policy";
 
 // Accept a valid email or the bare demo username; nothing else is a valid login.
 const schema = z.object({
@@ -13,6 +14,9 @@ export async function POST(request: Request) {
   if (!sameOriginWrite(request)) return NextResponse.json({ error: "Cross-origin login is not allowed" }, { status: 403 });
   const parsed = schema.safeParse(await request.json().catch(() => undefined));
   if (!parsed.success) return NextResponse.json({ error: "Invalid credentials" }, { status: 400 });
+  if (isDemoLoginIdentifier(parsed.data.email) && !demoLoginEnabled()) {
+    return NextResponse.json({ error: "Email or password is incorrect" }, { status: 401, headers: { "cache-control": "no-store" } });
+  }
   const addressRate = await enforceRateLimit(request, "login-address", 50, 15 * 60_000);
   if (!addressRate.allowed) return NextResponse.json({ error: "Too many login attempts", resetAt: addressRate.resetAt }, { status: 429 });
   const identifier = resolveLoginIdentifier(parsed.data.email);

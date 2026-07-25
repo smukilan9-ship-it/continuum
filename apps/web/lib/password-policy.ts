@@ -22,6 +22,12 @@ export const passwordSchema = z
 export const DEMO_USERNAME = "demo";
 export const DEMO_EMAIL = "demo@continuum.demo";
 
+/** Match both public identifiers for the seeded demo account. */
+export function isDemoLoginIdentifier(identifier: string): boolean {
+  const normalized = identifier.trim().toLowerCase();
+  return normalized === DEMO_USERNAME || normalized === DEMO_EMAIL;
+}
+
 /**
  * Accept either an email or the bare demo username on the login form. Anything
  * that is not the demo username is passed through untouched so the normal email
