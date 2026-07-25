@@ -1,11 +1,9 @@
-import { randomUUID } from "node:crypto";
-import { configuredProviders, routeTask, streamGeneration } from "@continuum/ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { checkDailyAiBudget, logModelUsage } from "@/lib/ai-budget";
-import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
+import { getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { getStore } from "@/lib/store";
 import { buildAcademicPrompt } from "@/lib/prompt-context";
+import { aiErrorResponse, runStreamingAi } from "@/lib/ai-gateway";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -26,14 +24,8 @@ const codeRequest = z.object({
     tests: z.array(z.object({ name: z.string().max(200), passed: z.boolean(), actual: z.string().max(20_000).optional(), expected: z.string().max(20_000).optional() })).max(50).optional(),
   }).default({ status: "not_run" }),
   goalId: z.string().max(200).optional(),
-  provider: z.enum(["auto", "featherless", "groq"]).default("auto"),
+  provider: z.literal("auto").default("auto"),
 });
-
-function availableRoutes() {
-  const providers = configuredProviders();
-  return [providers.featherless ? "featherless" as const : undefined, providers.groq ? "groq" as const : undefined]
-    .filter((provider): provider is "featherless" | "groq" => Boolean(provider));
-}
 
 export async function POST(request: Request) {
   if (!sameOriginWrite(request)) return NextResponse.json({ error: "Cross-origin code requests are not allowed" }, { status: 403 });
@@ -41,20 +33,6 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const parsed = codeRequest.safeParse(await request.json().catch(() => undefined));
   if (!parsed.success) return NextResponse.json({ error: "Check the topic, request, and code length before trying again" }, { status: 400 });
-  const rate = await enforceRateLimit(request, "code-coach", Number(process.env.CODE_REQUESTS_PER_MINUTE ?? 12), 60_000, user.id);
-  if (!rate.allowed) return NextResponse.json({ error: "You have reached the short-term coding limit. Try again in a minute." }, { status: 429, headers: { "retry-after": "60" } });
-  const available = availableRoutes();
-  if (!available.length) return NextResponse.json({ error: "The code coach is temporarily unavailable" }, { status: 503 });
-  if (parsed.data.provider !== "auto" && !available.includes(parsed.data.provider)) return NextResponse.json({ error: "The selected cloud route is temporarily unavailable" }, { status: 503 });
-  await checkDailyAiBudget(user.id, 8_000);
-
-  const selectedProviders = parsed.data.provider === "auto" ? available : [parsed.data.provider];
-  const decision = routeTask({
-    id: `route_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
-    taskClass: "code_reasoning",
-    sourceLocked: false,
-    availableProviders: selectedProviders,
-  });
   const context = await getStore(user.id).read("load_context", {
     focus: `${parsed.data.topic} ${parsed.data.language}`,
     goalId: parsed.data.goalId,
@@ -79,12 +57,17 @@ export async function POST(request: Request) {
   });
 
   try {
-    const streamed = await streamGeneration({ decision, system: academicPrompt.system, prompt: academicPrompt.prompt, maxOutputTokens: 1800, userId: user.id, abortSignal: request.signal });
-    void Promise.resolve(streamed.result.totalUsage)
-      .then((usage) => logModelUsage({ userId: user.id, decision: streamed.decision, usage }))
-      .catch(() => undefined);
+    const streamed = await runStreamingAi({
+      request,
+      userId: user.id,
+      feature: "code.feedback",
+      taskClass: "code_reasoning",
+      system: academicPrompt.system,
+      prompt: academicPrompt.prompt,
+      maxOutputTokens: 1800,
+    });
     return streamed.result.toTextStreamResponse({ headers: { "cache-control": "no-store" } });
-  } catch {
-    return NextResponse.json({ error: "The code coach could not start. Your work is still in the editor." }, { status: 502 });
+  } catch (error) {
+    return aiErrorResponse(error);
   }
 }

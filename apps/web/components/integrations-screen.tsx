@@ -12,7 +12,7 @@ type Status = {
   obsidian: { available: boolean; tokens: Array<{ id: string; name: string; scopes: string[]; lastUsedAt?: string; expiresAt?: string; createdAt: string }> };
 };
 
-type CredentialProvider = "openalex" | "youtube" | "featherless" | "semantic-scholar";
+type CredentialProvider = "openalex" | "youtube" | "semantic-scholar";
 type CredentialRecord = {
   provider: CredentialProvider;
   name: string;
@@ -187,6 +187,8 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
     const query = new URLSearchParams(window.location.search);
     if (query.get("connected") === "google-calendar") showToast("Google Calendar connected. Sync when you are ready.");
     if (query.get("connection_error")) showToast(query.get("connection_error") === "google_not_configured" ? "Google Calendar needs the app administrator to finish OAuth setup." : "Google Calendar was not connected. Try again.");
+    if (query.get("connection") === "claude") showToast("Claude connected. Its approved permissions are shown below.");
+    if (query.get("connection") === "cancelled") showToast("Claude was not connected. No permissions were granted.");
   }, [refresh, showToast]);
 
   async function copy(value: string, label: string) {
@@ -278,13 +280,8 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
       {error ? <div className="inline-alert" role="alert"><Unplug size={17} /><span>{error}</span><button onClick={() => void refresh()}>Try again</button></div> : null}
 
       <section className="connection-section provider-settings" aria-labelledby="providers-title">
-        <div className="section-heading"><div><p className="eyebrow">PROVIDER SETTINGS</p><h2 id="providers-title">Your keys, your choice</h2></div><p>Continuum works without personal keys where public access exists. Connected secrets stay server-side and can be tested or revoked here.</p></div>
+        <div className="section-heading"><div><p className="eyebrow">RESEARCH PROVIDERS</p><h2 id="providers-title">Optional discovery connections</h2></div><p>Continuum AI is included with your account. These optional keys only add metadata or video-search access and are never used for model access.</p></div>
         {credentialError ? <div className="inline-alert" role="alert"><Unplug size={17} /><span>{credentialError}</span><button onClick={() => void refresh()}>Try again</button></div> : null}
-
-        <div className="settings-group">
-          <div className="settings-group-label"><span>AI providers</span><small>Optional cloud reasoning</small></div>
-          {credentials?.providers.filter((provider) => provider.provider === "featherless").map((provider) => <ProviderCredentialRow key={provider.provider} provider={provider} configured={credentials.configured.find((item) => item.provider === provider.provider)} busy={busy} onAction={credentialAction} />)}
-        </div>
 
         <div className="settings-group">
           <div className="settings-group-label"><span>Research</span><small>Discovery and citation data</small></div>
@@ -302,7 +299,7 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
 
       <section className="connection-section" aria-labelledby="assistants-title">
         <div className="section-heading"><div><p className="eyebrow">DEVELOPER & ASSISTANTS</p><h2 id="assistants-title">One memory, wherever you work</h2></div><p>Claude retrieves only the relevant context it requests. It never receives a raw history dump.</p></div>
-        <ConnectionCard icon={<Link2 size={20} />} title="Claude" status={status?.mcp.connections.length ? "Connected" : "Ready to connect"} connected={Boolean(status?.mcp.connections.length)} description="Use your Continuum goals, projects, sources, decisions, progress, and schedule from Claude through remote MCP.">
+        <ConnectionCard id="claude" icon={<Link2 size={20} />} title="Claude" status={status?.mcp.connections.length ? "Connected" : "Ready to connect"} connected={Boolean(status?.mcp.connections.length)} description="Use your Continuum goals, projects, sources, decisions, progress, and schedule from Claude through remote MCP.">
           <div className="permission-line"><ShieldCheck size={15} /><span>OAuth sign-in · permission-scoped tools · consequential writes require approval</span></div>
           <div className="connection-actions"><Button className="button-primary" disabled={!status?.mcp.endpoint} onClick={() => void copy(status?.mcp.endpoint ?? "", "Connector URL")}><Clipboard size={15} />Copy connector URL</Button></div>
           <Guide title="Connect Claude in four steps" steps={status?.mcp.claude.instructions ?? ["Open Claude Customize → Connectors.", "Add a custom connector.", "Paste the Continuum connector URL.", "Sign in and review permissions."]} official={[{ label: "Claude's official connector guide", href: links.claude }]} />

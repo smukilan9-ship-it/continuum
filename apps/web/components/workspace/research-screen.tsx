@@ -24,9 +24,10 @@ import {
   Upload,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Badge, Button, Card } from "@/components/ui";
+import { Badge, Button, Card, LoadingButton, Modal } from "@/components/ui";
 import { formatLabel, sourceTypeLabel, statusTone } from "@/lib/labels";
 import type { NormalizedScholarlyWork, ScholarlySearchMode } from "@/lib/scholarly";
+import { workspacePath } from "@/lib/workspace-routes";
 import { PageIntro } from "./page-intro";
 import { formatDate, list, postState, text, type Row, type WorkspaceState } from "./types";
 
@@ -75,6 +76,7 @@ export function ResearchScreen({ state, showToast, onRefresh }: { state: Workspa
   const [discovery, setDiscovery] = useState<DiscoveryResponse>();
   const [searchError, setSearchError] = useState<string>();
   const [savingPaper, setSavingPaper] = useState<string>();
+  const [sourceDirty, setSourceDirty] = useState(false);
 
   useEffect(() => {
     if (!state.projects.some((project) => text(project, "id") === projectId)) setProjectId(text(state.projects[0], "id"));
@@ -110,6 +112,7 @@ export function ResearchScreen({ state, showToast, onRefresh }: { state: Workspa
       const response = await fetch("/api/sources", { method: "POST", body: new FormData(event.currentTarget) });
       const body = await response.json() as { duplicate?: boolean; error?: string };
       if (!response.ok) throw new Error(body.error ?? "The source could not be indexed");
+      setSourceDirty(false);
       setPanel(undefined);
       showToast(body.duplicate ? "That exact source is already indexed." : "Source indexed with stable passages and retrieval metadata.");
       await onRefresh();
@@ -180,11 +183,32 @@ export function ResearchScreen({ state, showToast, onRefresh }: { state: Workspa
 
   return (
     <div className="screen research-screen">
-      <PageIntro eyebrow="RESEARCH" title="Evidence, not browser tabs." description="Discover papers, preserve exact sources, test claims, and keep decisions attached to the project they change." action={<><a className="button button-secondary" href="/connections"><Link2 size={16} />Connect tools</a><Button className="button-primary" onClick={() => setPanel(panel === "project" ? undefined : "project")}><Plus size={16} />New project</Button></>} />
+      <PageIntro eyebrow="RESEARCH" title="Evidence, not browser tabs." description="Discover papers, preserve exact sources, test claims, and keep decisions attached to the project they change." action={<><a className="button button-secondary" href={workspacePath.integrations}><Link2 size={16} />Connect tools</a><Button className="button-primary" onClick={() => setPanel(panel === "project" ? undefined : "project")}><Plus size={16} />New project</Button></>} />
 
       {panel === "project" ? <Card className="inline-form-card"><div className="inline-form-heading"><div><h2>Create a research project</h2><p>Give it a bounded purpose and an honest current phase.</p></div><button onClick={() => setPanel(undefined)}>Cancel</button></div><form className="workspace-form form-grid" onSubmit={createProject}><label>Project title<input name="title" required minLength={3} maxLength={200} /></label><label>Phase<input name="phase" defaultValue="Discovery" maxLength={100} /></label><label>Linked goal<select name="goalId"><option value="">No linked goal</option>{state.goals.map((goal) => <option key={text(goal, "id")} value={text(goal, "id")}>{text(goal, "title")}</option>)}</select></label><label className="full-field">Purpose<textarea name="purpose" required minLength={3} maxLength={1000} /></label><div className="form-actions"><Button className="button-primary" disabled={busy}>{busy ? "Saving…" : "Create project"}</Button></div></form></Card> : null}
 
-      {panel === "source" ? <Card className="inline-form-card"><div className="inline-form-heading"><div><h2>Index a source</h2><p>PDF or text, up to 10 MB. Source content is treated as untrusted evidence, never as instructions.</p></div><button onClick={() => setPanel(undefined)}>Cancel</button></div><form className="workspace-form form-grid" onSubmit={uploadSource}><label>Project<select name="projectId" required value={projectId} onChange={(event) => chooseProject(event.target.value)}>{state.projects.map((project) => <option key={text(project, "id")} value={text(project, "id")}>{text(project, "title")}</option>)}</select></label><label>File<input name="file" type="file" accept="application/pdf,text/plain,.txt,.md" required /></label><div className="form-actions"><Button className="button-primary" disabled={busy}><Upload size={15} />{busy ? "Indexing…" : "Upload and index"}</Button></div></form></Card> : null}
+      <Modal
+        open={panel === "source"}
+        onOpenChange={(open) => { if (!open) { setPanel(undefined); setSourceDirty(false); } }}
+        title="Add a source"
+        description="Add a PDF or readable text file to this project’s source library."
+        dirty={sourceDirty && !busy}
+        dirtyMessage="Discard this selected source? It has not been uploaded yet."
+        footer={<><Button className="button-secondary" type="button" disabled={busy} onClick={() => { if (!sourceDirty || window.confirm("Discard this selected source?")) { setSourceDirty(false); setPanel(undefined); } }}>Cancel</Button><LoadingButton form="source-upload-form" className="button-primary" loading={busy} loadingLabel="Indexing source…"><Upload size={15} />Add and index source</LoadingButton></>}
+      >
+        <form id="source-upload-form" className="workspace-form source-modal-form" onSubmit={uploadSource} onChange={() => setSourceDirty(true)}>
+          <div className="source-type-options" aria-label="Supported source types">
+            <span><FileText size={17} /><strong>PDF</strong><small>Up to 10 MB</small></span>
+            <span><NotebookPen size={17} /><strong>Text or Markdown</strong><small>Readable UTF-8 files</small></span>
+          </div>
+          <label>Choose a file<input autoFocus name="file" type="file" accept="application/pdf,text/plain,.txt,.md,.markdown,.csv,.json,.yaml,.yml,.tex" required /></label>
+          <label>Save to project<select name="projectId" required value={projectId} onChange={(event) => chooseProject(event.target.value)}>{state.projects.map((project) => <option key={text(project, "id")} value={text(project, "id")}>{text(project, "title")}</option>)}</select></label>
+          <div className="source-index-explainer">
+            <ShieldCheck size={18} />
+            <div><strong>What happens after you add it</strong><p>Continuum extracts readable text, creates stable passages for precise citations, and links the source to this project. Source text is treated as evidence, never as instructions.</p></div>
+          </div>
+        </form>
+      </Modal>
 
       {panel === "decision" ? <Card className="inline-form-card"><div className="inline-form-heading"><div><h2>Record an accepted decision</h2><p>Use this only for a decision you reviewed and accepted.</p></div><button onClick={() => setPanel(undefined)}>Cancel</button></div><form className="workspace-form form-grid" onSubmit={saveDecision}><input type="hidden" name="projectId" value={projectId} /><label className="full-field">Decision<textarea name="text" required minLength={3} maxLength={2000} /></label><label className="full-field">Reasoning<textarea name="reasoning" required minLength={3} maxLength={5000} /></label>{projectSources.length ? <fieldset className="source-choice full-field"><legend>Supporting sources</legend>{projectSources.map((source) => <label key={text(source, "id")}><input type="checkbox" name="sourceIds" value={text(source, "id")} />{text(source, "title")}</label>)}</fieldset> : null}<div className="form-actions"><Button className="button-primary" disabled={busy}><CheckCircle2 size={15} />{busy ? "Saving…" : "Save accepted decision"}</Button></div></form></Card> : null}
 

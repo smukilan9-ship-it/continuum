@@ -72,9 +72,15 @@ function initials(name: string) {
 
 export function ContinuumApp({ user, initialState, view }: { user: AuthUser; initialState: Record<string, unknown>; view: WorkspaceView }) {
   const [mobileNav, setMobileNav] = useState(false);
+  const [compactNavigation, setCompactNavigation] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>(view);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const closeNavigationRef = useRef<HTMLButtonElement>(null);
+  const openNavigationRef = useRef<HTMLButtonElement>(null);
+  const mainAreaRef = useRef<HTMLElement>(null);
+  const mobileNavigationRef = useRef<HTMLElement>(null);
 
   // Per-view cache seeded with the server-rendered snapshot. Navigation switches
   // the visible view instantly from cache and refreshes it in the background, so a
@@ -137,6 +143,43 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 840px)");
+    const sync = () => {
+      setCompactNavigation(query.matches);
+      if (!query.matches) setMobileNav(false);
+    };
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    const setInert = (element: HTMLElement | null, inert: boolean) => {
+      if (!element) return;
+      (element as HTMLElement & { inert: boolean }).inert = inert;
+    };
+    setInert(sidebarRef.current, compactNavigation && !mobileNav);
+    setInert(mainAreaRef.current, compactNavigation && mobileNav);
+    setInert(mobileNavigationRef.current, compactNavigation && mobileNav);
+
+    if (!compactNavigation || !mobileNav) return;
+    closeNavigationRef.current?.focus();
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setMobileNav(false);
+      window.requestAnimationFrame(() => openNavigationRef.current?.focus());
+    };
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [compactNavigation, mobileNav]);
+
+  const closeMobileNavigation = () => {
+    setMobileNav(false);
+    window.requestAnimationFrame(() => openNavigationRef.current?.focus());
+  };
+
   // Intercept in-app link clicks so navigation is instant, while preserving
   // new-tab and modifier-click behavior against the real server routes.
   const linkHandler = (next: WorkspaceView) => (event: React.MouseEvent) => {
@@ -153,13 +196,18 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
 
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`} aria-label="Workspace navigation">
+      <aside
+        ref={sidebarRef}
+        className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}
+        aria-label="Workspace navigation"
+        aria-hidden={compactNavigation && !mobileNav ? true : undefined}
+      >
         <div className="sidebar-head">
           <Link className="brand" href="/" onClick={linkHandler("today")} aria-label="Continuum home">
             <span className="brand-symbol">C</span>
             <span>Continuum</span>
           </Link>
-          <button className="icon-button mobile-only" onClick={() => setMobileNav(false)} aria-label="Close navigation"><X size={20} /></button>
+          <button ref={closeNavigationRef} className="icon-button mobile-only" onClick={closeMobileNavigation} aria-label="Close navigation"><X size={20} /></button>
         </div>
 
         <nav className="main-nav" aria-label="Primary navigation">
@@ -190,13 +238,13 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
         </div>
       </aside>
 
-      {mobileNav ? <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} /> : null}
+      {mobileNav ? <button className="sidebar-scrim" aria-label="Close navigation" onClick={closeMobileNavigation} /> : null}
 
-      <main className="main-area">
+      <main ref={mainAreaRef} className="main-area" aria-hidden={compactNavigation && mobileNav ? true : undefined}>
         <header className="topbar">
-          <button className="icon-button mobile-only" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Menu size={20} /></button>
+          <button ref={openNavigationRef} className="icon-button mobile-only" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Menu size={20} /></button>
           <div className="location-label"><span>Continuum</span><strong>{meta.title}</strong></div>
-          <button className="search-button" onClick={() => setCommandOpen(true)}><Search size={17} /><span>Search workspace</span><kbd>⌘K</kbd></button>
+          <button className="search-button" aria-label="Search workspace" onClick={() => setCommandOpen(true)}><Search size={17} /><span>Search workspace</span><kbd>⌘K</kbd></button>
           <div className="topbar-right"><ThemeToggle /><span className="privacy-state"><i />Saved</span></div>
         </header>
 
@@ -209,7 +257,7 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
         </div>
       </main>
 
-      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+      <nav ref={mobileNavigationRef} className="mobile-bottom-nav" aria-label="Mobile navigation" aria-hidden={compactNavigation && mobileNav ? true : undefined}>
         {mobileItems.map((item) => {
           const Icon = item.icon;
           return <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={currentView === item.id ? "active" : ""} aria-current={currentView === item.id ? "page" : undefined} onClick={linkHandler(item.id)}><Icon size={19} /><span>{item.label}</span></Link>;

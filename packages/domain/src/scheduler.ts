@@ -127,7 +127,7 @@ function placeTask(
     if (capacity < task.minimumBlockMinutes) continue;
 
     const duration = Math.min(remaining, task.maximumBlockMinutes, capacity);
-    if (duration < task.minimumBlockMinutes && remaining > task.minimumBlockMinutes) continue;
+    if (duration < task.minimumBlockMinutes) continue;
     if (!task.splittable && duration < remaining) continue;
 
     const end = start + duration * MINUTE;
@@ -138,8 +138,8 @@ function placeTask(
       start: iso(start),
       end: iso(end),
       status: "planned",
-      flexible: task.splittable,
-      completionEvidenceRequired: !task.completionEvidence,
+      flexible: true,
+      completionEvidenceRequired: Boolean(task.completionEvidence),
     });
     remaining -= duration;
     interval.start = end + bufferMinutes * MINUTE;
@@ -171,7 +171,7 @@ export class DeterministicScheduler implements Scheduler {
     }
 
     blocks.sort((a, b) => toMs(a.start) - toMs(b.start));
-    explanations.push("Hard commitments, task dependencies, energy fit, and ten-minute buffers were enforced deterministically.");
+    explanations.push(`Hard commitments, task dependencies, energy fit, and ${input.bufferMinutes ?? 10}-minute buffers were enforced deterministically.`);
     if (unscheduledTaskIds.length) explanations.push(`${unscheduledTaskIds.length} task(s) need more available time before their deadlines.`);
     else explanations.push("Every active task fits inside the available study windows.");
 

@@ -1,14 +1,11 @@
 "use client";
 
-import { ArrowRight, CalendarClock, Check, Clock3, FileCheck2, Link2, Play, Target } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, CalendarClock, Clock3, FileCheck2, Link2, Play, Target } from "lucide-react";
 import { Badge, Button, Card } from "@/components/ui";
 import { OnboardingFlow } from "./onboarding-flow";
 import { PageIntro } from "./page-intro";
-import { formatDate, list, text, type Row, type WorkspaceState } from "./types";
+import { formatDate, list, text, type WorkspaceState } from "./types";
 import type { WorkspaceView } from "@/lib/workspace-routes";
-
-type PlanPreview = { proposalId?: string; items: Row[]; assumptions: string[] };
 
 export function TodayScreen({ state, userName, onNavigate, onRefresh }: { state: WorkspaceState; userName: string; onNavigate: (view: WorkspaceView) => void; onRefresh: () => Promise<void> }) {
   const nextTask = state.tasks.find((task) => text(task, "status") !== "done");
@@ -16,36 +13,6 @@ export function TodayScreen({ state, userName, onNavigate, onRefresh }: { state:
   const nextBlock = upcoming[0];
   const latestReceipt = state.receipts[0];
   const recentExternal = state.resourceActivities.find((activity) => !["verified", "abandoned"].includes(text(activity, "status")));
-  const [plan, setPlan] = useState<PlanPreview>();
-  const [planBusy, setPlanBusy] = useState(false);
-  const [planError, setPlanError] = useState("");
-
-  async function proposePlan() {
-    setPlanBusy(true);
-    setPlanError("");
-    try {
-      const response = await fetch("/api/schedule", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "propose" }) });
-      const body = await response.json() as { proposalId?: string; items?: Row[]; assumptions?: string[]; error?: string };
-      if (!response.ok) throw new Error(body.error ?? "The plan could not be generated");
-      setPlan({ proposalId: body.proposalId, items: body.items ?? [], assumptions: body.assumptions ?? [] });
-    } catch (error) { setPlanError(error instanceof Error ? error.message : "The plan could not be generated"); }
-    finally { setPlanBusy(false); }
-  }
-
-  async function commitPlan() {
-    if (!plan?.proposalId) return;
-    setPlanBusy(true);
-    setPlanError("");
-    try {
-      const response = await fetch("/api/schedule", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "commit", proposalId: plan.proposalId, confirmedAt: new Date().toISOString() }) });
-      const body = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(body.error ?? "The plan could not be committed");
-      setPlan(undefined);
-      setPlanBusy(false);
-      await onRefresh();
-    } catch (error) { setPlanError(error instanceof Error ? error.message : "The plan could not be committed"); setPlanBusy(false); }
-  }
-
   if (!state.goals.length) return <OnboardingFlow userName={userName} onRefresh={onRefresh} />;
 
   return (
@@ -68,10 +35,8 @@ export function TodayScreen({ state, userName, onNavigate, onRefresh }: { state:
 
         <Card className="schedule-card">
           <div className="card-heading-row"><div><p className="eyebrow">SCHEDULE</p><h2>{nextBlock ? "Next block" : "Plan your work"}</h2></div><CalendarClock size={20} /></div>
-          {nextBlock ? <div className="next-block"><strong>{text(nextBlock, "title")}</strong><span><Clock3 size={14} />{formatDate(nextBlock.start ?? nextBlock.startsAt)}</span><small>{text(nextBlock, "completionEvidence", "Completion evidence required")}</small></div> : <p>No block is committed. Generate a deterministic proposal; nothing changes until you confirm it.</p>}
-          {!nextBlock && !plan ? <Button className="button-secondary" disabled={planBusy || !nextTask} onClick={() => void proposePlan()}>{planBusy ? "Planning…" : "Generate proposal"}<ArrowRight size={15} /></Button> : null}
-          {plan ? <div className="plan-preview"><div><strong>{plan.items.length} proposed block{plan.items.length === 1 ? "" : "s"}</strong><button onClick={() => setPlan(undefined)}>Discard</button></div>{plan.items.slice(0, 4).map((item) => <span key={text(item, "id")}>{text(item, "time")} · {text(item, "title")}</span>)}{plan.assumptions.map((assumption) => <small key={assumption}>{assumption}</small>)}{plan.proposalId ? <Button className="button-primary" disabled={planBusy} onClick={() => void commitPlan()}><Check size={15} />{planBusy ? "Committing…" : "Confirm and commit"}</Button> : <small>This local seeded workspace previews the solver without writing a schedule.</small>}</div> : null}
-          {planError ? <p className="form-error" role="alert">{planError}</p> : null}
+          {nextBlock ? <div className="next-block"><strong>{text(nextBlock, "title")}</strong><span><Clock3 size={14} />{formatDate(nextBlock.start ?? nextBlock.startsAt)}</span><small>{text(nextBlock, "completionEvidence", "Completion evidence required")}</small></div> : <p>No block is saved yet. Tell Continuum when you are actually free, then edit the draft before saving it.</p>}
+          {!nextBlock ? <Button className="button-secondary" disabled={!nextTask} onClick={() => onNavigate("goals")}>Build my week<ArrowRight size={15} /></Button> : null}
         </Card>
 
         <Card className="resume-card">

@@ -76,7 +76,7 @@ export interface Store {
   oauthGrantUnavailable(jti: string): Promise<boolean>;
   revokeOAuthGrant(jti: string): Promise<void>;
   consumeOAuthCode(jti: string): Promise<void>;
-  consumeOAuthGrant(jti: string, kind: "code" | "refresh"): Promise<void>;
+  consumeOAuthGrant(jti: string, kind: "code" | "refresh" | "consent"): Promise<void>;
 }
 
 function opaqueId(prefix: string) {
@@ -356,7 +356,7 @@ class MemoryStore implements Store {
   async listMilestones(goalId?: string) { return this.memoryMilestones.filter((milestone) => !goalId || milestone.goalId === goalId).sort((left, right) => Number(left.order) - Number(right.order)); }
   async saveOnboardingIntake() { /* Local development identity does not persist a profile. */ }
   async seedResources() { /* Curated registry is already in the application bundle. */ }
-  async recommendResource(args: Record<string, unknown>) { return recommendBestResource({ id: opaqueId("recommendation"), topic: String(args.topic ?? "electric potential"), goalId: args.goalId ? String(args.goalId) : undefined, conceptId: args.conceptId ? String(args.conceptId) : undefined, goalType: (args.goalType as "school" | "exam" | "university" | "research" | "coding" | undefined) ?? "school", need: (args.need as ResourceNeed | undefined) ?? "conceptual_intuition", level: args.level ? String(args.level) : undefined, minutesAvailable: args.minutesAvailable ? Number(args.minutesAvailable) : undefined, costPreference: (args.costPreference as "free_only" | "free_preferred" | "any" | undefined) ?? "free_only", preferredFormats: Array.isArray(args.preferredFormats) ? args.preferredFormats.map(String) : undefined }); }
+  async recommendResource(args: Record<string, unknown>) { return recommendBestResource({ id: opaqueId("recommendation"), topic: String(args.topic ?? "electric potential"), goalId: args.goalId ? String(args.goalId) : undefined, conceptId: args.conceptId ? String(args.conceptId) : undefined, goalType: (args.goalType as "school" | "exam" | "university" | "research" | "coding" | undefined) ?? "school", need: (args.need as ResourceNeed | undefined) ?? "conceptual_intuition", level: args.level ? String(args.level) : undefined, minutesAvailable: args.minutesAvailable ? Number(args.minutesAvailable) : undefined, costPreference: (args.costPreference as "free_only" | "free_preferred" | "any" | undefined) ?? "free_only", preferredFormats: Array.isArray(args.preferredFormats) ? args.preferredFormats.map(String) : undefined, excludeResourceIds: Array.isArray(args.excludeResourceIds) ? args.excludeResourceIds.map(String) : undefined, rejectionReasons: Array.isArray(args.rejectionReasons) ? args.rejectionReasons.map(String) : undefined, feedback: args.feedback ? String(args.feedback) : undefined }); }
   async saveResourceActivity(activity: ResourceActivity, metadata: Record<string, unknown> = {}) { const index = demoStore.resourceActivities.findIndex((item) => item.id === activity.id); const value = { ...activity, metadata }; if (index >= 0) demoStore.resourceActivities[index] = value; else demoStore.resourceActivities.unshift(value); }
   async getResourceActivity(activityId: string) { return demoStore.resourceActivities.find((item) => item.id === activityId); }
   async scheduleResourceFollowup(input: { goalId: string; activityId: string; title: string; evidence: string; startsAt: string; minutes: number }) {
@@ -367,7 +367,7 @@ class MemoryStore implements Store {
   async registerOAuthGrant(input: { jti: string; kind: string; expiresAt: string }) { demoStore.oauthGrants[input.jti] = { kind: input.kind, revoked: false, consumed: false, expiresAt: input.expiresAt }; }
   async oauthGrantUnavailable(jti: string) { const grant = demoStore.oauthGrants[jti]; return !grant || Boolean(grant.revoked || grant.consumed || Date.parse(grant.expiresAt) <= Date.now()); }
   async revokeOAuthGrant(jti: string) { const grant = demoStore.oauthGrants[jti]; if (grant) grant.revoked = true; }
-  async consumeOAuthGrant(jti: string, kind: "code" | "refresh") { const grant = demoStore.oauthGrants[jti]; if (!grant || grant.kind !== kind || grant.revoked || grant.consumed) throw new Error(`${kind === "code" ? "Authorization code" : "Refresh token"} was already used or was not issued`); grant.consumed = true; }
+  async consumeOAuthGrant(jti: string, kind: "code" | "refresh" | "consent") { const grant = demoStore.oauthGrants[jti]; if (!grant || grant.kind !== kind || grant.revoked || grant.consumed) throw new Error(`${kind === "code" ? "Authorization code" : kind === "refresh" ? "Refresh token" : "Authorization request"} was already used or was not issued`); grant.consumed = true; }
   async consumeOAuthCode(jti: string) { await this.consumeOAuthGrant(jti, "code"); }
 }
 
@@ -579,7 +579,7 @@ class NeonStore implements Store {
   async listMilestones(goalId?: string) { return this.repo.listMilestones(this.userId, goalId); }
   async saveOnboardingIntake(educationLevel: string, intake: Record<string, unknown>, now: string) { await this.repo.saveOnboardingIntake(this.userId, educationLevel, intake, now); }
   async seedResources() { this.resourceSeed ??= this.repo.seedResources(curatedResourceRegistry); await this.resourceSeed; }
-  async recommendResource(args: Record<string, unknown>) { await this.seedResources(); const registry = await this.repo.listResources(); return recommendBestResource({ id: opaqueId("recommendation"), topic: String(args.topic ?? "electric potential"), goalId: args.goalId ? String(args.goalId) : undefined, conceptId: args.conceptId ? String(args.conceptId) : undefined, goalType: (args.goalType as "school" | "exam" | "university" | "research" | "coding" | undefined) ?? "school", need: (args.need as ResourceNeed | undefined) ?? "conceptual_intuition", level: args.level ? String(args.level) : undefined, minutesAvailable: args.minutesAvailable ? Number(args.minutesAvailable) : undefined, costPreference: (args.costPreference as "free_only" | "free_preferred" | "any" | undefined) ?? "free_only", preferredFormats: Array.isArray(args.preferredFormats) ? args.preferredFormats.map(String) : undefined }, registry.length ? registry : curatedResourceRegistry); }
+  async recommendResource(args: Record<string, unknown>) { await this.seedResources(); const registry = await this.repo.listResources(); return recommendBestResource({ id: opaqueId("recommendation"), topic: String(args.topic ?? "electric potential"), goalId: args.goalId ? String(args.goalId) : undefined, conceptId: args.conceptId ? String(args.conceptId) : undefined, goalType: (args.goalType as "school" | "exam" | "university" | "research" | "coding" | undefined) ?? "school", need: (args.need as ResourceNeed | undefined) ?? "conceptual_intuition", level: args.level ? String(args.level) : undefined, minutesAvailable: args.minutesAvailable ? Number(args.minutesAvailable) : undefined, costPreference: (args.costPreference as "free_only" | "free_preferred" | "any" | undefined) ?? "free_only", preferredFormats: Array.isArray(args.preferredFormats) ? args.preferredFormats.map(String) : undefined, excludeResourceIds: Array.isArray(args.excludeResourceIds) ? args.excludeResourceIds.map(String) : undefined, rejectionReasons: Array.isArray(args.rejectionReasons) ? args.rejectionReasons.map(String) : undefined, feedback: args.feedback ? String(args.feedback) : undefined }, registry.length ? registry : curatedResourceRegistry); }
   async saveResourceActivity(activity: ResourceActivity, metadata?: Record<string, unknown>) { await this.seedResources(); await this.repo.saveResourceActivity(activity, metadata); }
   async getResourceActivity(activityId: string) { return await this.repo.getResourceActivity(activityId, this.userId) as unknown as Record<string, unknown> | undefined; }
   async scheduleResourceFollowup(input: { goalId: string; activityId: string; title: string; evidence: string; startsAt: string; minutes: number }) {
@@ -588,7 +588,7 @@ class NeonStore implements Store {
   async registerOAuthGrant(input: { jti: string; userId: string; clientId: string; kind: string; scopes: string[]; expiresAt: string }) { await this.repo.registerOAuthGrant(input); }
   async oauthGrantUnavailable(jti: string) { return this.repo.oauthGrantUnavailable(jti); }
   async revokeOAuthGrant(jti: string) { await this.repo.revokeOAuthGrant(jti); }
-  async consumeOAuthGrant(jti: string, kind: "code" | "refresh") { await this.repo.consumeOAuthGrant(jti, kind); }
+  async consumeOAuthGrant(jti: string, kind: "code" | "refresh" | "consent") { await this.repo.consumeOAuthGrant(jti, kind); }
   async consumeOAuthCode(jti: string) { await this.consumeOAuthGrant(jti, "code"); }
 }
 

@@ -7,10 +7,7 @@ import {
   Braces,
   Check,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   Clipboard,
-  Clock3,
   Copy,
   Database,
   FileCode2,
@@ -20,7 +17,6 @@ import {
   Play,
   RotateCcw,
   Save,
-  Share2,
   Sparkles,
   Square,
   TerminalSquare,
@@ -56,7 +52,7 @@ import { useCodeSession } from "./use-code-session";
 type Toast = (message: string | null) => void;
 type Provider = "auto" | "ollama";
 type Mode = "explain" | "debug" | "practice" | "review";
-type OutputPanel = "output" | "tests" | "coach" | "history";
+type OutputPanel = "output" | "tests" | "coach";
 
 const starters: Array<{ mode: Mode; label: string; prompt: string }> = [
   { mode: "explain", label: "Explain", prompt: "Explain the result from first principles, then give me one short check for understanding." },
@@ -172,7 +168,7 @@ function outcomeTone(outcome: ExecutionOutcome) {
 }
 
 function statusLabel(status: ExecutionStatus) {
-  return ({ preparing: "Preparing sandbox", loading_python: "Loading Python runtime", loading_sql: "Loading SQL runtime", running: "Running", testing: "Running tests" })[status];
+  return ({ preparing: "Preparing your program", loading_python: "Starting Python", loading_sql: "Starting SQL", running: "Running your code", testing: "Checking the tests" })[status];
 }
 
 export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; user: AuthUser; showToast: Toast }) {
@@ -185,7 +181,7 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
     stdin: starterInput.python,
     tests: starterTests.python,
   });
-  const { goalId, topic, language, mode, provider, prompt, code, stdin, tests, runtimeResult, runtimeHistory, answer, attempts } = session;
+  const { goalId, topic, language, mode, provider, prompt, code, stdin, tests, runtimeResult, runtimeHistory, answer } = session;
   const runnableLanguage = normalizeRunnableLanguage(language);
 
   const [live, setLive] = useState("");
@@ -197,7 +193,6 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
   const [checkpointBusy, setCheckpointBusy] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [panel, setPanel] = useState<OutputPanel>("output");
-  const [lessonOpen, setLessonOpen] = useState(true);
   const coachAbortRef = useRef<AbortController | undefined>(undefined);
   const runRef = useRef<ExecutionHandle | undefined>(undefined);
   const shownAnswer = coachBusy ? live : answer;
@@ -297,13 +292,6 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
     catch { showToast("Copy failed. Select the source manually."); }
   }
 
-  async function shareCode() {
-    if (navigator.share) {
-      try { await navigator.share({ title: `${topic} — Continuum`, text: code }); return; } catch { return; }
-    }
-    await copyCode();
-  }
-
   function restoreRun(runId: string) {
     const run = runtimeHistory.find((item) => item.id === runId);
     if (!run) return;
@@ -314,23 +302,38 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
 
   return (
     <div className="screen code-screen premium-screen">
-      <PageIntro eyebrow="CODE LAB" title="Write it. Run it. Understand why it works." description="A deterministic browser sandbox produces program output; your curriculum-aware coach reads that result only when you ask for feedback." />
+      <PageIntro eyebrow="CODE" title="Write it. Run it. Understand why it works." description="Your task, editor, output, tests, and optional feedback are together in one workspace." />
 
       <div className="studio-toolbar" aria-label="Code workspace controls">
-        <div className="studio-file"><FileCode2 size={18} /><div><strong>student-record-lab</strong><span>Draft saved on this device</span></div></div>
-        <label className="studio-language"><span className="sr-only">Language</span><select value={language.toLowerCase()} onChange={(event) => switchLanguage(event.target.value)}><optgroup label="Runnable in this browser">{runnableLabels.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup><optgroup label="Editor only — runtime deferred">{EDITOR_ONLY_LANGUAGES.map((option) => <option key={option} value={option.toLowerCase()}>{option} — editor only</option>)}</optgroup></select></label>
+        <div className="studio-file"><FileCode2 size={18} /><div><strong>Filter records safely</strong><span>Class 12 Computer Science</span></div></div>
+        <label className="studio-language"><span>Language</span><select value={language.toLowerCase()} onChange={(event) => switchLanguage(event.target.value)}><optgroup label="Ready to run">{runnableLabels.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup><optgroup label="Writing only">{EDITOR_ONLY_LANGUAGES.map((option) => <option key={option} value={option.toLowerCase()}>{option}</option>)}</optgroup></select></label>
+        <span className="studio-save-status"><Save size={14} />Saved on this device</span>
         <div className="studio-toolbar-actions">
-          <button className="icon-text-button" type="button" onClick={() => void copyCode()}><Copy size={15} />Copy</button>
-          <button className="icon-text-button" type="button" onClick={() => void shareCode()}><Share2 size={15} />Share</button>
+          <Button className="button-secondary" type="button" onClick={() => setPanel("coach")}><Sparkles size={15} />Ask for help</Button>
           {runtimeBusy ? <Button className="button-secondary" type="button" onClick={() => runRef.current?.stop()}><Square size={14} />Stop</Button> : <Button className="button-primary" type="button" disabled={!runnableLanguage || !code.trim()} onClick={() => void runCode()}><Play size={15} />Run <kbd>⌘↵</kbd></Button>}
         </div>
+      </div>
+      <div className="program-runbar">
+        <label><span>Program input</span><textarea value={stdin} onChange={(event) => update({ stdin: event.target.value })} placeholder="Enter any input your program should read" /></label>
+        <p><CheckCircle2 size={14} />Running the program happens on this device. Feedback is requested separately and never starts automatically.</p>
       </div>
 
       {confirmReset ? <div className="confirm-inline" role="alertdialog" aria-label="Reset coding session"><span>Clear the current source, input, results, feedback, and history? This cannot be undone.</span><div><button type="button" className="ghost-action" onClick={() => setConfirmReset(false)}>Keep working</button><Button className="button-secondary" onClick={() => { reset(); setLive(""); setCoachError(""); setConfirmReset(false); showToast("Started a fresh coding session."); }}>Reset session</Button></div></div> : null}
 
-      <div className={`code-studio ${lessonOpen ? "" : "lesson-collapsed"}`}>
+      <div className="code-studio">
+        <aside className="lesson-rail" aria-label="Task instructions">
+          <div className="lesson-rail-heading"><BookOpenCheck size={18} /><div><span>TASK</span><strong>Filter records safely</strong></div></div>
+          <section><h2>What to build</h2><p>Use a threshold to select scores, then print the selected values and their summary.</p></section>
+          <section><h2>Example</h2><code>Input 90 → Selected: [91]</code></section>
+          <section><h2>What success looks like</h2><p>Your program runs without an error and the sample test passes.</p></section>
+          <details className="code-hint"><summary>Hint</summary><p>Filter the list first. Calculate the result from the filtered list, not the original one.</p></details>
+          <dl><div><dt>You will practise</dt><dd>Lists, conditions, input, and query results</dd></div><div><dt>To complete this</dt><dd>Show correct output and pass one sample test</dd></div><div><dt>Connected goal</dt><dd>{text(state.goals[1] ?? state.goals[0], "title", "Class 12 Computer Science")}</dd></div></dl>
+          <details className="environment-details"><summary>Environment details</summary><div className="runtime-note"><Database size={16} /><div><strong>{runnableLanguage ? `${languageLabel(runnableLanguage)} runs locally` : "Writing only"}</strong><span>{runnableLanguage ? LANGUAGE_RUNTIME_NOTES[runnableLanguage] : "You can write and request feedback, but this language cannot run here yet."}</span></div></div></details>
+          <button type="button" className="ghost-action reset-link" onClick={() => setConfirmReset(true)}><RotateCcw size={14} />Reset workspace</button>
+        </aside>
+
         <section className="editor-pane" aria-label="Source editor">
-          <header><div><span className="file-dot" />main.{runnableLanguage === "python" ? "py" : runnableLanguage === "typescript" ? "ts" : runnableLanguage === "javascript" ? "js" : runnableLanguage === "sql" ? "sql" : "txt"}</div><span><Keyboard size={14} />Tab indents · ⌘Z undo</span></header>
+          <header><div><span className="file-dot" />main.{runnableLanguage === "python" ? "py" : runnableLanguage === "typescript" ? "ts" : runnableLanguage === "javascript" ? "js" : runnableLanguage === "sql" ? "sql" : "txt"}</div><span><button className="editor-copy" type="button" onClick={() => void copyCode()}><Copy size={13} />Copy</button><Keyboard size={14} />Tab indents · ⌘Z undo</span></header>
           <CodeEditor value={code} language={language} onChange={(next) => update({ code: next })} placeholder={`Write ${languageLabel(language)} here`} minHeight={440} ariaLabel={`${languageLabel(language)} source editor`} />
         </section>
 
@@ -338,46 +341,52 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
           <div className="output-tabs" role="tablist" aria-label="Execution panels">
             <button type="button" role="tab" aria-selected={panel === "output"} className={panel === "output" ? "active" : ""} onClick={() => setPanel("output")}><TerminalSquare size={15} />Output</button>
             <button type="button" role="tab" aria-selected={panel === "tests"} className={panel === "tests" ? "active" : ""} onClick={() => setPanel("tests")}><TestTube2 size={15} />Tests{runtimeResult?.tests.length ? <small>{runtimeResult.tests.filter((test) => test.passed).length}/{runtimeResult.tests.length}</small> : null}</button>
-            <button type="button" role="tab" aria-selected={panel === "coach"} className={panel === "coach" ? "active" : ""} onClick={() => setPanel("coach")}><Sparkles size={15} />AI feedback</button>
-            <button type="button" role="tab" aria-selected={panel === "history"} className={panel === "history" ? "active" : ""} onClick={() => setPanel("history")}><History size={15} />History</button>
+            <button type="button" role="tab" aria-selected={panel === "coach"} className={panel === "coach" ? "active" : ""} onClick={() => setPanel("coach")}><Sparkles size={15} />Feedback</button>
           </div>
 
           <div className="output-body">
-            {runtimeBusy ? <div className="runtime-loading" role="status"><LoaderCircle className="spin" size={23} /><strong>{statusLabel(runtimeStatus)}</strong><span>The sandbox has no server secrets and is discarded after this run.</span></div> : null}
+            {runtimeBusy ? <div className="runtime-loading" role="status"><LoaderCircle className="spin" size={23} /><strong>{statusLabel(runtimeStatus)}</strong><span>Output and tests will appear here as soon as the run finishes.</span></div> : null}
 
-            {!runtimeBusy && panel === "output" ? <RuntimeOutput result={runtimeResult} onRun={() => void runCode()} runnable={Boolean(runnableLanguage)} /> : null}
+            {!runtimeBusy && panel === "output" ? <><RuntimeOutput result={runtimeResult} onFeedback={() => setPanel("coach")} />{runtimeHistory.length ? <details className="run-history-details"><summary><History size={14} />Previous runs ({runtimeHistory.length})</summary><div className="run-history">{runtimeHistory.map((run) => <button type="button" key={run.id} onClick={() => restoreRun(run.id)}><span className={`run-mark ${run.result.outcome}`} /><span><strong>{outcomeLabel(run.result.outcome)}</strong><small>{new Date(run.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {run.result.durationMs} ms</small></span><RotateCcw size={14} /></button>)}</div></details> : null}</> : null}
             {!runtimeBusy && panel === "tests" ? <TestsPanel tests={tests} result={runtimeResult} onChange={(next) => update({ tests: next })} /> : null}
             {!runtimeBusy && panel === "coach" ? <form className="feedback-panel" onSubmit={submitForFeedback}>
-              <div className="ai-boundary"><WandSparkles size={17} /><div><strong>AI feedback is separate from program output</strong><span>{runtimeResult ? "The coach will receive the exact result above." : "Run the code first for grounded debugging feedback."}</span></div></div>
+              <div className="ai-boundary"><WandSparkles size={17} /><div><strong>Get feedback only when you ask</strong><span>{runtimeResult ? "Continuum will use your code and this run’s exact result." : "Run first so feedback can use real output instead of guessing."}</span></div></div>
               <div className="mode-tabs compact" aria-label="Feedback mode">{starters.map((starter) => <button key={starter.mode} type="button" className={mode === starter.mode ? "active" : ""} onClick={() => update({ mode: starter.mode, prompt: starter.prompt })}>{starter.label}</button>)}</div>
-              <label>What should the coach help with?<textarea value={prompt} onChange={(event) => update({ prompt: event.target.value })} minLength={2} maxLength={8000} required /></label>
-              <div className="feedback-actions"><label>Route<select value={provider} onChange={(event) => update({ provider: event.target.value as Provider })}><option value="auto">Best healthy cloud model</option><option value="ollama">Ollama on this device</option></select></label>{coachBusy ? <Button type="button" className="button-secondary" onClick={() => coachAbortRef.current?.abort()}><Square size={14} />Stop</Button> : <Button className="button-primary" disabled={!topic.trim() || !prompt.trim()}><Sparkles size={15} />Submit for feedback</Button>}</div>
+              <label>What would you like help with?<textarea value={prompt} onChange={(event) => update({ prompt: event.target.value })} minLength={2} maxLength={8000} required /></label>
+              <div className="feedback-actions"><label>Feedback source<select value={provider} onChange={(event) => update({ provider: event.target.value as Provider })}><option value="auto">Continuum</option><option value="ollama">Ollama on this device</option></select></label>{coachBusy ? <Button type="button" className="button-secondary" onClick={() => coachAbortRef.current?.abort()}><Square size={14} />Stop</Button> : <Button className="button-primary" disabled={!topic.trim() || !prompt.trim()}><Sparkles size={15} />Get feedback</Button>}</div>
               {coachError ? <div className="code-error" role="alert"><strong>Feedback unavailable</strong><span>{coachError}</span><small>Your source and deterministic output are unchanged.</small></div> : null}
-              {shownAnswer ? <><CoachMarkdown value={shownAnswer} /><footer><button type="button" className="icon-text-button" onClick={() => void navigator.clipboard.writeText(shownAnswer)}><Clipboard size={15} />Copy feedback</button><Button type="button" className="button-secondary" onClick={() => setCheckpointOpen((open) => !open)}><Save size={15} />Save checkpoint</Button></footer></> : !coachError && !coachBusy ? <div className="coach-empty compact"><Braces size={24} /><h2>Ask after you run.</h2><p>The coach can explain output, diagnose a failure, review style, or create a similar problem.</p></div> : null}
+              {shownAnswer ? <><CoachMarkdown value={shownAnswer} /><footer><button type="button" className="icon-text-button" onClick={() => void navigator.clipboard.writeText(shownAnswer)}><Clipboard size={15} />Copy feedback</button><Button type="button" className="button-secondary" onClick={() => setCheckpointOpen((open) => !open)}><Save size={15} />Save checkpoint</Button></footer></> : !coachError && !coachBusy ? <div className="coach-empty compact"><Braces size={24} /><h2>Run, then ask.</h2><p>Get an explanation, help with an error, a code review, or a similar practice problem.</p></div> : null}
               {checkpointOpen ? <div className="checkpoint-form"><label>What did you learn?<textarea name="learned" required minLength={2} maxLength={2000} /></label><label>What will you do next?<input name="nextAction" required minLength={2} maxLength={500} /></label><Button type="button" className="button-primary" disabled={checkpointBusy} onClick={(event) => { const form = event.currentTarget.form; if (form) void saveCheckpoint(form); }}><Check size={15} />{checkpointBusy ? "Saving…" : "Save to memory"}</Button></div> : null}
             </form> : null}
-            {!runtimeBusy && panel === "history" ? <div className="run-history">{runtimeHistory.length ? runtimeHistory.map((run) => <button type="button" key={run.id} onClick={() => restoreRun(run.id)}><span className={`run-mark ${run.result.outcome}`} /> <span><strong>{outcomeLabel(run.result.outcome)}</strong><small>{new Date(run.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {run.result.durationMs} ms · {run.result.language}</small></span><RotateCcw size={14} /></button>) : <div className="coach-empty compact"><Clock3 size={23} /><h2>No runs yet</h2><p>Deterministic results are kept on this device with your source draft.</p></div>}{attempts.length ? <p className="history-note">{attempts.length} earlier AI feedback attempt{attempts.length === 1 ? "" : "s"} also saved.</p> : null}</div> : null}
           </div>
         </section>
-
-        <aside className={`lesson-rail ${lessonOpen ? "" : "collapsed"}`} aria-label="Lesson context">
-          <div className="lesson-rail-heading"><BookOpenCheck size={18} />{lessonOpen ? <div><span>CLASS 12 COMPUTER SCIENCE</span><strong>Filter records safely</strong></div> : null}<button className="lesson-toggle" type="button" aria-label={lessonOpen ? "Collapse lesson context" : "Expand lesson context"} aria-expanded={lessonOpen} onClick={() => setLessonOpen((open) => !open)}>{lessonOpen ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}</button></div>
-          {lessonOpen ? <><p>Use a threshold to select records, then explain how the same condition becomes a parameter in a database query.</p>
-            <dl><div><dt>Objective</dt><dd>Lists, conditions, input, query results</dd></div><div><dt>Evidence</dt><dd>Correct output and one passing test</dd></div><div><dt>Linked goal</dt><dd>{text(state.goals[1] ?? state.goals[0], "title", "Class 12 Computer Science")}</dd></div></dl>
-            <label className="stdin-field"><span>Program input / stdin</span><textarea value={stdin} onChange={(event) => update({ stdin: event.target.value })} placeholder="One input value per line" /></label>
-            <div className="runtime-note"><Database size={16} /><div><strong>{runnableLanguage ? `${languageLabel(runnableLanguage)} runtime` : "Editor-only language"}</strong><span>{runnableLanguage ? LANGUAGE_RUNTIME_NOTES[runnableLanguage] : "Syntax editing and AI review are available; Run stays disabled until an isolated provider exists."}</span></div></div>
-            <button type="button" className="ghost-action reset-link" onClick={() => setConfirmReset(true)}><RotateCcw size={14} />Reset workspace</button></> : null}
-        </aside>
       </div>
     </div>
   );
 }
 
-function RuntimeOutput({ result, onRun, runnable }: { result: ExecutionResult | undefined; onRun: () => void; runnable: boolean }) {
-  if (!result) return <div className="runtime-empty"><TerminalSquare size={28} /><h2>Program output appears here.</h2><p>Run uses a disposable local browser worker. AI is not involved.</p><Button className="button-primary" type="button" disabled={!runnable} onClick={onRun}><Play size={15} />Run program</Button></div>;
-  return <div className="runtime-result"><header><Badge tone={outcomeTone(result.outcome)}>{outcomeLabel(result.outcome)}</Badge><span>{result.durationMs} ms · exit {result.exitCode ?? "—"}{result.timedOut ? " · timeout" : ""}</span></header>{result.stdout ? <section><h3>Program output</h3><pre>{result.stdout}</pre></section> : null}{result.tables?.length ? result.tables.map((table, index) => <section className="sql-result" key={`${index}-${table.columns.join("-")}`}><h3>Result table {index + 1}</h3><div><table><thead><tr>{table.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{table.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell === null ? <em>NULL</em> : String(cell)}</td>)}</tr>)}</tbody></table></div></section>) : null}{typeof result.rowsModified === "number" ? <p className="rows-modified">{result.rowsModified} row{result.rowsModified === 1 ? "" : "s"} changed during the run.</p> : null}{result.stderr ? <section className="runtime-stderr"><h3>{result.outcome === "compiler_error" ? "Compiler error" : result.outcome === "runtime_error" ? "Runtime error" : "Runtime message"}</h3><pre>{result.stderr}</pre></section> : null}{!result.stdout && !result.stderr && !result.tables?.length && result.outcome === "success" ? <div className="quiet-success"><CheckCircle2 size={19} /><span>Completed without printable output.</span></div> : null}</div>;
+function RuntimeOutput({ result, onFeedback }: { result: ExecutionResult | undefined; onFeedback: () => void }) {
+  if (!result) return <div className="runtime-empty"><TerminalSquare size={28} /><h2>Your output will appear here.</h2><p>Enter any program input above, then use the single Run button in the top bar.</p></div>;
+  const passed = result.tests.filter((test) => test.passed).length;
+  const guidance = result.outcome === "success"
+    ? result.tests.length && passed === result.tests.length
+      ? `Your program ran and passed ${passed} of ${result.tests.length} tests.`
+      : result.tests.length
+        ? `Your program ran, but ${result.tests.length - passed} test${result.tests.length - passed === 1 ? "" : "s"} still need attention.`
+        : "Your program ran successfully. Check the output against the task."
+    : result.outcome === "compiler_error"
+      ? "The code could not be translated into a runnable program. Start with the first error below."
+      : result.outcome === "runtime_error"
+        ? "The program started, then stopped at an error. The message below identifies the failure."
+        : result.outcome === "timeout"
+          ? "The program took too long, often because a loop did not finish."
+          : result.outcome === "stopped"
+            ? "The run was stopped before it finished."
+            : "The local runner is temporarily unavailable. Your code is still saved.";
+  return <div className="runtime-result"><header><Badge tone={outcomeTone(result.outcome)}>{outcomeLabel(result.outcome)}</Badge><span>{result.durationMs} ms · exit {result.exitCode ?? "—"}{result.timedOut ? " · timeout" : ""}</span></header><div className={`runtime-guidance ${result.outcome === "success" ? "success" : "error"}`}>{result.outcome === "success" ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}<div><strong>{result.outcome === "success" ? "Run complete" : "The program needs a change"}</strong><span>{guidance}</span></div></div>{result.stdout ? <section><h3>Program output</h3><pre>{result.stdout}</pre></section> : null}{result.tables?.length ? result.tables.map((table, index) => <section className="sql-result" key={`${index}-${table.columns.join("-")}`}><h3>Result table {index + 1}</h3><div><table><thead><tr>{table.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{table.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell === null ? <em>NULL</em> : String(cell)}</td>)}</tr>)}</tbody></table></div></section>) : null}{typeof result.rowsModified === "number" ? <p className="rows-modified">{result.rowsModified} row{result.rowsModified === 1 ? "" : "s"} changed during the run.</p> : null}{result.stderr ? <section className="runtime-stderr"><h3>{result.outcome === "compiler_error" ? "What prevented the run" : result.outcome === "runtime_error" ? "Where the run stopped" : "Run message"}</h3><pre>{result.stderr}</pre></section> : null}{!result.stdout && !result.stderr && !result.tables?.length && result.outcome === "success" ? <div className="quiet-success"><CheckCircle2 size={19} /><span>Completed without printable output.</span></div> : null}<div className="runtime-next-action"><Button className="button-secondary" type="button" onClick={onFeedback}><Sparkles size={14} />{result.outcome === "success" ? "Get feedback" : "Get help with this error"}</Button></div></div>;
 }
 
 function TestsPanel({ tests, result, onChange }: { tests: ExecutionTest[]; result: ExecutionResult | undefined; onChange: (tests: ExecutionTest[]) => void }) {
-  return <div className="tests-panel"><header><div><strong>Sample tests</strong><span>Expected output is compared exactly after normalising line endings.</span></div><Badge tone="neutral">{tests.length} configured</Badge></header>{tests.map((test, index) => { const outcome = result?.tests.find((item) => item.id === test.id); return <div className={`test-row ${outcome ? outcome.passed ? "passed" : "failed" : ""}`} key={test.id}><span>{outcome ? outcome.passed ? <CheckCircle2 size={18} /> : <XCircle size={18} /> : <TestTube2 size={18} />}</span><div><strong>{test.name}</strong><label>Input<textarea value={test.stdin ?? ""} onChange={(event) => onChange(tests.map((item, itemIndex) => itemIndex === index ? { ...item, stdin: event.target.value } : item))} /></label><label>Expected output<textarea value={test.expectedOutput} onChange={(event) => onChange(tests.map((item, itemIndex) => itemIndex === index ? { ...item, expectedOutput: event.target.value } : item))} /></label>{outcome && !outcome.passed ? <p><AlertTriangle size={14} />Actual: <code>{outcome.actualOutput || outcome.error || "No output"}</code></p> : null}</div></div>; })}{!tests.length ? <div className="runtime-empty"><TestTube2 size={25} /><h2>No sample test configured</h2><p>The program can still run. Add a sample from a lesson to check output automatically.</p></div> : null}</div>;
+  const passed = result?.tests.filter((test) => test.passed).length ?? 0;
+  return <div className="tests-panel"><header><div><strong>{result?.tests.length ? passed === result.tests.length ? "All tests passed" : `${result.tests.length - passed} test${result.tests.length - passed === 1 ? "" : "s"} failed` : "Sample tests"}</strong><span>Each test runs your program with the input shown below.</span></div><Badge tone={result?.tests.length ? passed === result.tests.length ? "green" : "red" : "neutral"}>{result?.tests.length ? `${passed}/${result.tests.length} passed` : `${tests.length} ready`}</Badge></header>{tests.map((test, index) => { const outcome = result?.tests.find((item) => item.id === test.id); return <div className={`test-row ${outcome ? outcome.passed ? "passed" : "failed" : ""}`} key={test.id}><span>{outcome ? outcome.passed ? <CheckCircle2 size={18} /> : <XCircle size={18} /> : <TestTube2 size={18} />}</span><div><strong>{test.name}{outcome ? outcome.passed ? " — Passed" : " — Failed" : ""}</strong><label>Input<textarea value={test.stdin ?? ""} onChange={(event) => onChange(tests.map((item, itemIndex) => itemIndex === index ? { ...item, stdin: event.target.value } : item))} /></label><label>Expected output<textarea value={test.expectedOutput} onChange={(event) => onChange(tests.map((item, itemIndex) => itemIndex === index ? { ...item, expectedOutput: event.target.value } : item))} /></label>{outcome && !outcome.passed ? <p><AlertTriangle size={14} />Your output: <code>{outcome.actualOutput || outcome.error || "No output"}</code></p> : null}</div></div>; })}{!tests.length ? <div className="runtime-empty"><TestTube2 size={25} /><h2>No sample test configured</h2><p>The program can still run. Add a sample from a lesson to check output automatically.</p></div> : null}</div>;
 }

@@ -1,37 +1,56 @@
 "use client";
 
 import type { ResourceActivity, ResourceRecommendation } from "@continuum/schemas";
-import { ArrowRight, BookOpen, BrainCircuit, Check, CheckCircle2, ChevronRight, Clock3, ExternalLink, GraduationCap, LoaderCircle, PlayCircle, RotateCcw, Search, ShieldCheck, Sparkles, Target, Video } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, BrainCircuit, Check, CheckCircle2, ChevronRight, Clock3, ExternalLink, GraduationCap, LoaderCircle, PlayCircle, RotateCcw, Search, ShieldCheck, Sparkles, Target, Video } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Badge, Button, Card } from "@/components/ui";
+import { Badge, Button, Card, ConfirmationDialog, ErrorState, LoadingButton, Modal, SuccessState } from "@/components/ui";
 import { PageIntro } from "./page-intro";
 import { formatLabel, masteryLabel } from "@/lib/labels";
 import type { LearningVideo } from "@/lib/youtube";
 import { number, text, type Row, type WorkspaceState } from "./types";
 
 type Toast = (message: string | null) => void;
-type VerificationResult = { verified?: boolean; needsReview?: boolean; scheduleUpdate?: Row };
+type VerificationResult = {
+  verified?: boolean;
+  outcome?: "verified" | "recorded" | "not_sufficient";
+  message?: string;
+  explanation?: string;
+  masteryBefore?: Row;
+  mastery?: Row;
+  receipt?: Row;
+  scheduleUpdate?: Row;
+};
 type LearnView = "home" | "lesson" | "resource";
 type NativeLesson = { id: string; conceptId: string; title: string; explanation: string; checksForUnderstanding: string[]; sourceChunkIds: string[]; evidenceState: string; model: string };
 type LessonCheckpoint = { correct: boolean; explanation: string; mastery: Row };
 type VideoResponse = { videos: LearningVideo[]; status: "live" | "unconfigured" | "failed"; handoffUrl: string; message?: string; note: string };
 
-const needs = [
-  ["diagnosis", "Diagnose a misconception"],
-  ["conceptual_intuition", "Build conceptual intuition"],
-  ["canonical_explanation", "Read a canonical explanation"],
-  ["guided_practice", "Do guided practice"],
-  ["official_exam_simulation", "Take an official exam simulation"],
-  ["source_exploration", "Explore a source set"],
-  ["research_evidence", "Find research evidence"],
-  ["coding_practice", "Use a coding environment"],
+const intentions = [
+  ["concept", "conceptual_intuition", "Learn a concept", "Understand an idea clearly"],
+  ["practice", "guided_practice", "Practise questions", "Build confidence by doing"],
+  ["weak_area", "diagnosis", "Fix a weak area", "Target a misconception or gap"],
+  ["test", "official_exam_simulation", "Prepare for a test", "Use exam-aligned practice"],
+  ["assignment", "guided_practice", "Complete an assignment", "Finish a defined piece of work"],
+  ["resource", "canonical_explanation", "Find a resource", "Choose a reviewed explanation"],
+] as const;
+
+const rejectionOptions = [
+  ["too_long", "Too long"],
+  ["too_easy", "Too easy"],
+  ["too_difficult", "Too difficult"],
+  ["already_used", "I already used it"],
+  ["different_format", "I want a different format"],
+  ["cannot_access", "I cannot access it"],
+  ["not_relevant", "Not relevant enough"],
+  ["other", "Other"],
 ] as const;
 
 export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceState; showToast: Toast; onRefresh: () => Promise<void> }) {
   const [view, setView] = useState<LearnView>("home");
   const [topic, setTopic] = useState("");
-  const [need, setNeed] = useState("conceptual_intuition");
-  const [goalType, setGoalType] = useState("school");
+  const [need, setNeed] = useState("");
+  const [intent, setIntent] = useState("");
+  const goalType = "school";
   const [goalId, setGoalId] = useState(text(state.goals[0], "id"));
   const [minutes, setMinutes] = useState(45);
   const [cost, setCost] = useState("free_only");
@@ -50,11 +69,19 @@ export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceS
   const [videoQuery, setVideoQuery] = useState("electric potential CBSE Class 12");
   const [videos, setVideos] = useState<VideoResponse>();
   const [videoBusy, setVideoBusy] = useState(false);
+  const [rejectionOpen, setRejectionOpen] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [rejectionNote, setRejectionNote] = useState("");
+  const [preferredFormat, setPreferredFormat] = useState("");
+  const [preferences, setPreferences] = useState<{ excludeResourceIds: string[]; rejectionReasons: string[]; feedback?: string; preferredFormats?: string[] }>({ excludeResourceIds: [], rejectionReasons: [] });
+  const [changedPreference, setChangedPreference] = useState("");
+  const [confirmGoalChange, setConfirmGoalChange] = useState(false);
+  const [showResultReview, setShowResultReview] = useState(false);
   const recentActivityId = text(state.resourceActivities.find((item) => !["verified", "abandoned"].includes(text(item, "status"))), "id");
   const focusLearning = state.learningStates.find((item) => text(item, "conceptId").includes("potential")) ?? state.learningStates[0];
 
   useEffect(() => {
-    if (!recentActivityId || activity || recommendation) return;
+    if (view !== "resource" || !recentActivityId || activity || recommendation) return;
     let active = true;
     setResumeBusy(true);
     fetch(`/api/resources?activityId=${encodeURIComponent(recentActivityId)}`, { cache: "no-store" })
@@ -67,18 +94,34 @@ export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceS
       .catch((error) => { if (active) showToast(error instanceof Error ? error.message : "The handoff could not be resumed"); })
       .finally(() => { if (active) setResumeBusy(false); });
     return () => { active = false; };
-  }, [activity, recentActivityId, recommendation, showToast]);
+  }, [activity, recentActivityId, recommendation, showToast, view]);
 
-  function requestBody() {
-    return { topic, need, goalType, costPreference: cost, minutesAvailable: minutes, ...(goalId ? { goalId } : {}) };
+  function inferredGoalType() {
+    const context = `${topic} ${text(state.goals.find((goal) => text(goal, "id") === goalId), "title")}`.toLowerCase();
+    if (/sat|test|exam|neet|jee/.test(context)) return "exam";
+    if (/research|paper|thesis|oasis/.test(context)) return "research";
+    if (/code|python|sql|program/.test(context)) return "coding";
+    return goalType;
   }
 
-  async function query() {
+  function requestBody(nextPreferences = preferences, minutesForRequest = minutes) {
+    return {
+      topic,
+      need,
+      goalType: inferredGoalType(),
+      costPreference: cost,
+      minutesAvailable: minutesForRequest,
+      ...nextPreferences,
+      ...(goalId ? { goalId } : {}),
+    };
+  }
+
+  async function query(nextPreferences = preferences, minutesForRequest = minutes) {
     setBusy(true);
     setResult(undefined);
     setActivity(undefined);
     try {
-      const params = new URLSearchParams(Object.entries(requestBody()).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+      const params = new URLSearchParams(Object.entries(requestBody(nextPreferences, minutesForRequest)).filter(([, value]) => value !== undefined).map(([key, value]) => [key, Array.isArray(value) ? value.join(",") : String(value)]));
       const response = await fetch(`/api/resources?${params}`, { cache: "no-store" });
       const body = await response.json() as { recommendation?: ResourceRecommendation; error?: string };
       if (!response.ok || !body.recommendation) throw new Error(body.error ?? "No reviewed resource matched this need");
@@ -120,25 +163,69 @@ export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceS
     setBusy(true);
     try {
       const contract = recommendation.selected.verification;
-      const numericScore = contract.kind === "score_import" ? Number(answer) : undefined;
-      const response = await fetch("/api/resources", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "verify", activityId: activity.id, answer, ...(Number.isFinite(numericScore) ? { score: numericScore } : {}), ...(contract.kind === "artifact" ? { artifactReference: answer } : {}) }) });
-      const body = await response.json() as { activity?: ResourceActivity; verified?: boolean; needsReview?: boolean; scheduleUpdate?: Row; error?: string };
+      const response = await fetch("/api/resources", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "verify", activityId: activity.id, answer, ...(contract.kind === "artifact" ? { artifactReference: answer } : {}) }) });
+      const body = await response.json() as { activity?: ResourceActivity; error?: string } & VerificationResult;
       if (!response.ok || !body.activity) throw new Error(body.error ?? "Verification failed");
       setActivity(body.activity);
       setResult(body);
-      showToast(body.verified ? "Progress verified. Mastery, memory, receipt, and follow-up are now in sync." : body.needsReview ? "Evidence saved for review; mastery was not changed." : "The checkpoint did not pass; mastery was not changed.");
+      showToast(body.message ?? (body.verified ? "Progress verified." : "Evidence updated."));
       await onRefresh();
     } catch (error) { showToast(error instanceof Error ? error.message : "Verification failed"); }
     finally { setBusy(false); }
   }
 
-  function reset() {
+  function changeLearningGoal() {
     setRecommendation(undefined);
     setActivity(undefined);
     setResult(undefined);
     setAnswer("");
     setReturnEvidence("");
+    setPreferences({ excludeResourceIds: [], rejectionReasons: [] });
+    setChangedPreference("");
+    setNeed("");
+    setIntent("");
     setView("resource");
+  }
+
+  function requestGoalChange() {
+    if (activity || answer.trim() || returnEvidence.trim()) setConfirmGoalChange(true);
+    else changeLearningGoal();
+  }
+
+  async function findDifferentResource() {
+    if (!recommendation || !rejectionReason) return;
+    const format = preferredFormat ? [preferredFormat] : undefined;
+    const nextPreferences = {
+      excludeResourceIds: [...new Set([...preferences.excludeResourceIds, recommendation.selected.id])],
+      rejectionReasons: [...preferences.rejectionReasons, rejectionReason],
+      ...(rejectionNote.trim() ? { feedback: rejectionNote.trim() } : {}),
+      ...(format ? { preferredFormats: format } : {}),
+    };
+    const nextMinutes = rejectionReason === "too_long" ? Math.max(15, Math.min(minutes, recommendation.selected.estimatedMinutes - 1)) : minutes;
+    if (rejectionReason === "too_long") setMinutes(nextMinutes);
+    if (rejectionReason === "cannot_access") setCost("free_only");
+    setPreferences(nextPreferences);
+    const label = rejectionOptions.find(([value]) => value === rejectionReason)?.[1] ?? "Your feedback";
+    setChangedPreference(`${label}${preferredFormat ? ` · prefer ${formatLabel(preferredFormat)}` : ""}${rejectionNote.trim() ? ` · “${rejectionNote.trim()}”` : ""}`);
+    setRejectionOpen(false);
+    setRejectionReason("");
+    setRejectionNote("");
+    setPreferredFormat("");
+    setRecommendation(undefined);
+    setActivity(undefined);
+    setResult(undefined);
+    await query(nextPreferences, nextMinutes);
+  }
+
+  async function continueLearning() {
+    await onRefresh();
+    setRecommendation(undefined);
+    setActivity(undefined);
+    setResult(undefined);
+    setAnswer("");
+    setReturnEvidence("");
+    setChangedPreference("");
+    setView("home");
   }
 
   async function openLesson() {
@@ -197,16 +284,27 @@ export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceS
     setTopic(text(task, "title"));
     setGoalId(text(task, "goalId"));
     setNeed("guided_practice");
+    setIntent("practice");
     setView("resource");
   }
 
   return (
     <div className="screen learn-screen premium-screen">
-      <PageIntro eyebrow="LEARN" title="Know what to learn next—and why." description="Continue a curriculum path, repair a misconception, or leave with a guided resource and return checkpoint." action={<div className="learn-view-actions"><button className={view === "home" ? "active" : ""} onClick={() => setView("home")}>Learning home</button><button className={view === "resource" ? "active" : ""} onClick={() => setView("resource")}>Find a resource</button></div>} />
+      <PageIntro
+        eyebrow={view === "home" ? "LEARN" : view === "resource" ? "LEARN · FIND A RESOURCE" : "LEARN · ACTIVE LESSON"}
+        title={view === "home" ? "What will move your learning forward?" : view === "resource" ? "Find one resource that fits the job." : "Work through the idea, then check it."}
+        description={view === "home" ? "Continue from where you stopped, repair a weak area, or find a reviewed resource for a specific goal." : view === "resource" ? "Tell Continuum what you need. It will ask only the questions that change the recommendation." : "Progress changes only after a check that can support it."}
+      />
 
-      {view === "home" && !recommendation ? <div className="learn-home">
+      {view === "home" ? <div className="learn-home">
+        <section className="learn-landing-actions" aria-label="Learning actions">
+          <button onClick={() => void openLesson()} disabled={lessonBusy}><span><PlayCircle size={20} /></span><strong>Continue learning</strong><small>Resume your current concept</small><ChevronRight size={17} /></button>
+          <button onClick={() => setView("resource")}><span><Search size={20} /></span><strong>Find a resource</strong><small>Match the goal, time, and access</small><ChevronRight size={17} /></button>
+          <button onClick={() => void openLesson()} disabled={lessonBusy}><span><BrainCircuit size={20} /></span><strong>Review weak areas</strong><small>Start with the clearest current gap</small><ChevronRight size={17} /></button>
+          <button onClick={() => setView("resource")} disabled={!recentActivityId}><span><RotateCcw size={20} /></span><strong>Return to an active resource</strong><small>{recentActivityId ? "Continue the saved handoff" : "No active resource right now"}</small><ChevronRight size={17} /></button>
+        </section>
         <section className="learn-home-hero">
-          <Card className="continue-learning-card"><div className="learn-card-label"><Sparkles size={15} />CONTINUE LEARNING</div><div className="continue-learning-body"><div><Badge tone="orange">Misconception to fix</Badge><h2>Electric potential vs potential energy</h2><p>At one location, potential stays fixed. Energy changes with the charge you place there.</p></div><div className="mastery-ring" style={{ "--mastery": `${Math.round(number(focusLearning, "understanding", .52) * 100)}%` } as React.CSSProperties}><strong>{Math.round(number(focusLearning, "understanding", .52) * 100)}%</strong><span>understanding</span></div></div><div className="continue-learning-actions"><Button className="button-primary" disabled={lessonBusy} onClick={() => void openLesson()}>{lessonBusy ? <LoaderCircle className="spin" size={16} /> : <BookOpen size={16} />}Open 6-min lesson</Button><button onClick={() => { setTopic("electric potential and potential energy"); setNeed("conceptual_intuition"); setView("resource"); }}>Compare resources <ChevronRight size={15} /></button></div></Card>
+          <Card className="continue-learning-card"><div className="learn-card-label"><Sparkles size={15} />CONTINUE LEARNING</div><div className="continue-learning-body"><div><Badge tone="orange">Misconception to fix</Badge><h2>Electric potential vs potential energy</h2><p>At one location, potential stays fixed. Energy changes with the charge you place there.</p></div><div className="mastery-ring" style={{ "--mastery": `${Math.round(number(focusLearning, "understanding", .52) * 100)}%` } as React.CSSProperties}><strong>{Math.round(number(focusLearning, "understanding", .52) * 100)}%</strong><span>understanding</span></div></div><div className="continue-learning-actions"><Button className="button-primary" disabled={lessonBusy} onClick={() => void openLesson()}>{lessonBusy ? <LoaderCircle className="spin" size={16} /> : <BookOpen size={16} />}Open 6-min lesson</Button><button onClick={() => { setTopic("electric potential and potential energy"); setNeed("conceptual_intuition"); setIntent("concept"); setView("resource"); }}>Compare resources <ChevronRight size={15} /></button></div></Card>
           <Card className="learning-signal-card"><div className="learn-card-label"><BrainCircuit size={15} />CURRENT SIGNAL</div><strong>{masteryLabel(text(focusLearning, "status", "not_started"))}</strong><p>{text(focusLearning, "explanation", "Continuum needs an unseen checkpoint before it can claim transfer.")}</p><div><span>Exposure <b>{Math.round(number(focusLearning, "exposure", 0) * 100)}%</b></span><span>Transfer <b>{Math.round(number(focusLearning, "transfer", 0) * 100)}%</b></span><span>Retention <b>{Math.round(number(focusLearning, "retention", 0) * 100)}%</b></span></div></Card>
         </section>
 
@@ -221,27 +319,72 @@ export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceS
 
       {view === "resource" || recommendation ? <div className="handoff-steps" aria-label="Resource workflow"><span className={!recommendation ? "active" : "done"}><i>1</i>Define the need</span><span className={recommendation && !activity ? "active" : activity ? "done" : ""}><i>2</i>Choose and start</span><span className={activity?.status === "started" ? "active" : activity?.returnedAt ? "done" : ""}><i>3</i>Return with evidence</span><span className={["returned", "needs_review"].includes(activity?.status ?? "") ? "active" : activity?.status === "verified" ? "done" : ""}><i>4</i>Verify progress</span></div> : null}
 
-      {!recommendation && view === "resource" ? <Card className="resource-search-card"><div className="resource-search-heading"><button onClick={() => setView("home")}><ArrowRight size={14} />Learning home</button><div><p className="eyebrow">GUIDED RESOURCE FINDER</p><h2>Match the resource to the job</h2><p>Continuum compares only reviewed registry entries and refuses weak matches.</p></div></div><div className="resource-form-grid"><label className="resource-topic">What are you trying to learn or complete?<input value={topic} onChange={(event) => setTopic(event.target.value)} maxLength={500} placeholder="Electric potential intuition, SAT full test, Python notebook…" /></label><label>Type of help<select value={need} onChange={(event) => setNeed(event.target.value)}>{needs.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Goal context<select value={goalId} onChange={(event) => setGoalId(event.target.value)}><option value="">No linked goal</option>{state.goals.map((goal) => <option key={text(goal, "id")} value={text(goal, "id")}>{text(goal, "title")}</option>)}</select></label><label>Goal type<select value={goalType} onChange={(event) => setGoalType(event.target.value)}><option value="school">School</option><option value="exam">Exam</option><option value="university">University</option><option value="research">Research</option><option value="coding">Coding</option></select></label><label>Time available<select value={minutes} onChange={(event) => setMinutes(Number(event.target.value))}><option value="10">10 minutes</option><option value="20">20 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="90">90 minutes</option><option value="180">3 hours</option></select></label><label>Access preference<select value={cost} onChange={(event) => setCost(event.target.value)}><option value="free_only">Free only</option><option value="free_preferred">Prefer free</option><option value="any">Any access</option></select></label></div><div className="resource-search-actions"><p><ShieldCheck size={15} />Starting creates a return checkpoint. Opening a link never counts as mastery.</p><Button className="button-primary button-large" disabled={busy || topic.trim().length < 2} onClick={() => void query()}><Search size={16} />{busy ? "Comparing…" : "Compare resources"}</Button></div>{resumeBusy ? <p className="subtle-meta">Restoring your latest handoff…</p> : null}</Card> : null}
+      {!recommendation && view === "resource" ? <Card className="resource-search-card progressive-resource-form">
+        <div className="resource-search-heading">
+          <button onClick={() => setView("home")}><ArrowLeft size={14} />Back to Learn</button>
+          <div><p className="eyebrow">FIND A RESOURCE</p><h2>What are you trying to learn or finish?</h2><p>Write it naturally. Continuum infers the subject and connects the closest active goal.</p></div>
+        </div>
+        <label className="resource-primary-prompt">
+          <span className="sr-only">What are you trying to learn or finish?</span>
+          <textarea autoFocus value={topic} onChange={(event) => setTopic(event.target.value)} maxLength={500} placeholder="For example: understand electric potential, finish my SAT practice test, or debug my Python assignment…" />
+        </label>
+        <fieldset className="learning-intent-options">
+          <legend>What kind of help would move this forward?</legend>
+          <div>{intentions.map(([id, value, label, description]) => <button key={id} type="button" className={intent === id ? "active" : ""} aria-pressed={intent === id} onClick={() => { setIntent(id); setNeed(value); }}><strong>{label}</strong><small>{description}</small></button>)}</div>
+        </fieldset>
+        {need ? <div className="resource-followups">
+          <fieldset><legend>How much time do you have?</legend><div className="choice-chips">{[[15, "15 min"], [30, "30 min"], [45, "45 min"], [60, "1 hour"], [120, "Longer"]].map(([value, label]) => <button key={value} type="button" className={minutes === value ? "active" : ""} aria-pressed={minutes === value} onClick={() => setMinutes(Number(value))}>{label}</button>)}</div></fieldset>
+          <fieldset><legend>What can you access?</legend><div className="choice-chips"><button type="button" className={cost === "free_only" ? "active" : ""} aria-pressed={cost === "free_only"} onClick={() => setCost("free_only")}>Free</button><button type="button" className={cost === "any" ? "active" : ""} aria-pressed={cost === "any"} onClick={() => setCost("any")}>Paid resources are okay</button></div></fieldset>
+          <details className="inferred-goal">
+            <summary><span><Target size={15} />Connected goal</span><strong>{text(state.goals.find((goal) => text(goal, "id") === goalId), "title", "No linked goal")}</strong><small>Change</small></summary>
+            <label>Use this goal<select value={goalId} onChange={(event) => setGoalId(event.target.value)}><option value="">No linked goal</option>{state.goals.map((goal) => <option key={text(goal, "id")} value={text(goal, "id")}>{text(goal, "title")}</option>)}</select></label>
+          </details>
+        </div> : null}
+        <div className="resource-search-actions"><p><ShieldCheck size={15} />You will always see what to do and how progress can be checked before you start.</p><LoadingButton className="button-primary button-large" loading={busy} loadingLabel="Finding the best match…" disabled={topic.trim().length < 2 || !need} onClick={() => void query()}><Search size={16} />Find my best match</LoadingButton></div>
+        {resumeBusy ? <p className="subtle-meta">Restoring your active resource…</p> : null}
+      </Card> : null}
 
       {recommendation ? <Card className="resource-result-card">
-        <div className="resource-result-head"><div><Badge tone={recommendation.decision === "external" ? "blue" : "green"}>{recommendation.decision === "external" ? "External resource selected" : "Native lesson selected"}</Badge><span>{formatLabel(recommendation.selected.authority)} · reviewed {new Date(recommendation.selected.lastReviewedAt).toLocaleDateString()}</span></div><button onClick={reset}><RotateCcw size={14} />Start over</button></div>
-        <div className="resource-title-row"><div><p className="eyebrow">BEST MATCH</p><h2>{recommendation.selected.title}</h2><p>{recommendation.selected.description}</p></div><div className="resource-score"><strong>{Math.round(recommendation.selected.qualityScore * 100)}</strong><span>quality</span></div></div>
-        <div className="resource-stats"><span><Clock3 size={15} />{recommendation.selected.estimatedMinutes} min</span><span><Target size={15} />{formatLabel(recommendation.selected.cost)}</span><span><ShieldCheck size={15} />{recommendation.selected.provider}</span></div>
-        <div className="why-selected"><strong>Why this beats the native option</strong><p>{recommendation.whyBetterThanNative}</p></div>
-        <div className="resource-details"><div><strong>Go to this exact place</strong><span>{recommendation.selected.exactLocator.section ?? recommendation.selected.exactLocator.activity ?? recommendation.selected.exactLocator.exercise ?? "Open the linked activity"}</span></div><div><strong>Focus on</strong><ul>{recommendation.selected.focusInstructions.map((item) => <li key={item}>{item}</li>)}</ul></div><div><strong>Complete before returning</strong><ul>{recommendation.selected.completionInstructions.map((item) => <li key={item}>{item}</li>)}</ul></div><div><strong>Access needed</strong><ul>{recommendation.selected.accessRequirements.map((item) => <li key={item}>{item}</li>)}</ul></div></div>
-        <div className="resource-connection"><div><strong>Goal connection</strong><span>{recommendation.connectedOutcome}</span></div><div><strong>Schedule impact</strong><span>{recommendation.scheduleImpact}</span></div><div><strong>Return check</strong><span>{recommendation.verificationPlan}</span></div></div>
+        <div className="resource-workflow-controls"><button onClick={() => setView("home")}><ArrowLeft size={14} />Back to Learn</button><Button className="button-secondary" onClick={requestGoalChange}><Target size={14} />Change learning goal</Button></div>
+        {changedPreference ? <div className="preference-change"><Check size={15} /><span><strong>Preference updated:</strong> {changedPreference}</span></div> : null}
+        <header className="resource-result-summary">
+          <div><p className="eyebrow">YOUR BEST MATCH</p><h2>{recommendation.selected.title}</h2><p>{recommendation.selected.description}</p></div>
+          <div className="resource-quality"><strong>{Math.round(recommendation.selected.qualityScore * 100)}/100</strong><span>Review quality</span><small>{formatLabel(recommendation.selected.authority)}</small></div>
+        </header>
+        <section className="resource-match-reason"><h3>Why this is the best match</h3><p><strong>For “{topic || recommendation.selected.topicTags.slice(0, 3).join(" · ")}”:</strong> {recommendation.whyBetterThanNative}</p></section>
+        <div className="resource-stats"><span><Clock3 size={15} /><strong>{recommendation.selected.estimatedMinutes} min</strong> duration</span><span><Target size={15} /><strong>{formatLabel(recommendation.selected.cost)}</strong> access</span><span><ShieldCheck size={15} /><strong>{recommendation.selected.provider}</strong> provider</span></div>
+        <section className="resource-exact-action"><span>1</span><div><h3>Exact action to take</h3><p>{recommendation.selected.exactLocator.section ?? recommendation.selected.exactLocator.activity ?? recommendation.selected.exactLocator.exercise ?? "Open the linked activity"}</p></div></section>
+        <div className="resource-focus-grid">
+          <section><span>2</span><div><h3>What to focus on</h3><ul>{recommendation.selected.focusInstructions.map((item) => <li key={item}>{item}</li>)}</ul></div></section>
+          <section><span>3</span><div><h3>What to return with</h3><ul>{recommendation.selected.completionInstructions.map((item) => <li key={item}>{item}</li>)}</ul><p><strong>Progress check:</strong> {recommendation.verificationPlan}</p></div></section>
+        </div>
 
-        {!activity ? <div className="resource-actions"><Button className="button-primary button-large" disabled={busy} onClick={() => void start()}>{recommendation.selected.native ? <BookOpen size={16} /> : <Check size={16} />}{busy ? "Saving…" : recommendation.selected.native ? "Start native lesson" : "Save guided handoff"}</Button><small>Starting records the resource and verification contract. It does not grant progress.</small></div> : null}
+        {!activity ? <div className="resource-actions"><LoadingButton className="button-primary button-large" loading={busy} loadingLabel="Starting resource…" onClick={() => void start()}>{recommendation.selected.native ? <BookOpen size={16} /> : <ExternalLink size={16} />}Start resource</LoadingButton><Button className="button-secondary button-large" onClick={() => setRejectionOpen(true)}><RotateCcw size={15} />Find a different resource</Button><small>Starting saves the activity and its progress check. It does not mark the work complete.</small></div> : null}
 
         {activity?.status === "started" && recommendation.selected.native && recommendation.selected.nativeContent ? <div className="native-lesson">{recommendation.selected.nativeContent.map((block) => <section key={block.heading}><h3>{block.heading}</h3><p>{block.body}</p></section>)}</div> : null}
-        {activity?.status === "started" ? <div className="return-panel"><div><Badge tone="orange">Progress unverified</Badge><h3>{recommendation.selected.native ? "Finish the lesson, then return" : "Your handoff is saved"}</h3><p>{recommendation.selected.native ? "Complete the content above." : "Open the reviewed resource in a new tab. Continuum will keep this return point here."}</p>{!recommendation.selected.native ? <a className="button button-primary button-large" href={recommendation.selected.url} target="_blank" rel="noopener noreferrer">Open {recommendation.selected.provider}<ExternalLink size={16} /></a> : null}</div><label>Optional evidence from the activity<textarea value={returnEvidence} onChange={(event) => setReturnEvidence(event.target.value)} placeholder="Exercise number, score, observation, notebook link, or what you completed" /></label><Button className="button-secondary" disabled={busy} onClick={() => void returned()}>{busy ? "Recording…" : "I’m back — record return"}<ArrowRight size={15} /></Button></div> : null}
+        {activity?.status === "started" ? <div className="return-panel"><div><Badge tone="orange">In progress</Badge><h3>{recommendation.selected.native ? "Finish the lesson, then return" : "Your place is saved"}</h3><p>{recommendation.selected.native ? "Complete the content above." : "Open the resource in a new tab. This page will keep your return point."}</p>{!recommendation.selected.native ? <a className="button button-primary button-large" href={recommendation.selected.url} target="_blank" rel="noopener noreferrer">Open resource<ExternalLink size={16} /></a> : null}</div><label>Notes from the activity (optional)<textarea value={returnEvidence} onChange={(event) => setReturnEvidence(event.target.value)} placeholder="Exercise, score, observation, link, or what you completed" /></label><LoadingButton className="button-secondary" loading={busy} loadingLabel="Recording return…" onClick={() => void returned()}>I’m back — continue<ArrowRight size={15} /></LoadingButton></div> : null}
 
-        {activity && ["returned", "needs_review"].includes(activity.status) ? <div className="verification-panel"><div><Badge tone="blue">Verification required</Badge><h3>Opening a resource is not learning evidence.</h3><p>{recommendation.selected.verification.prompt}</p></div><label>Your answer or artifact reference<input value={answer} onChange={(event) => setAnswer(event.target.value)} /></label><Button className="button-primary" disabled={busy || !answer.trim()} onClick={() => void verify()}><ShieldCheck size={16} />{busy ? "Checking…" : "Verify progress"}</Button></div> : null}
+        {result?.outcome === "verified" ? <section id="verification-result" className="learning-completion">
+          <SuccessState title="Progress verified" body={result.explanation} />
+          <div className="completion-summary"><div><span>Completed</span><strong>{recommendation.selected.title}</strong></div><div><span>Learning change</span><strong>{result.masteryBefore && result.mastery ? `${Math.round(number(result.masteryBefore, "understanding", 0) * 100)}% → ${Math.round(number(result.mastery, "understanding", 0) * 100)}% understanding` : "Related goal and mastery updated"}</strong></div><div><span>Recommended next step</span><strong>{result.scheduleUpdate?.status === "scheduled" ? "A 15-minute spaced review is scheduled for tomorrow." : "Continue from your updated Learn page."}</strong></div></div>
+          <div className="completion-actions"><Button className="button-primary button-large" onClick={() => void continueLearning()}>Continue learning<ArrowRight size={16} /></Button><Button className="button-secondary" onClick={() => setShowResultReview((value) => !value)}>Review this result</Button></div>
+          {showResultReview ? <div className="result-review-details"><p><strong>Verification:</strong> {recommendation.verificationPlan}</p><p><strong>Connected goal:</strong> {text(state.goals.find((goal) => text(goal, "id") === goalId), "title", "No linked goal")}</p><p><strong>Saved evidence:</strong> {activity?.evidenceIds.length ?? 0} evidence record{activity?.evidenceIds.length === 1 ? "" : "s"}</p></div> : null}
+        </section> : null}
 
-        {result ? <div className={result.verified ? "outcome-receipt success" : "outcome-receipt pending"}>{result.verified ? <CheckCircle2 size={22} /> : <ShieldCheck size={22} />}<div><strong>{result.verified ? "Progress verified and written back" : result.needsReview ? "Evidence saved for review" : "Checkpoint not passed"}</strong><span>{result.verified ? result.scheduleUpdate?.status === "scheduled" ? "Mastery, memory, an outcome receipt, and a spaced follow-up now reflect this activity." : "Mastery, memory, and an outcome receipt are updated. Link future activities to a goal to schedule the follow-up automatically." : "Mastery did not increase. The evidence and audit event were still preserved."}</span></div></div> : null}
+        {activity && ["returned", "needs_review"].includes(activity.status) && result?.outcome !== "verified" ? <div className="verification-panel"><div><Badge tone="blue">Check progress now</Badge><h3>Show what you completed</h3><p>{recommendation.selected.verification.prompt}</p></div>{result?.outcome === "recorded" ? <SuccessState title="Evidence recorded" body={result.explanation} /> : result?.outcome === "not_sufficient" ? <ErrorState title="This does not show completion yet" body={result.explanation} /> : null}<label>{recommendation.selected.verification.kind === "score_import" ? "Required score details" : recommendation.selected.verification.kind === "artifact" ? "Artifact or test-output reference" : "Your answer"}<input value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder={recommendation.selected.id === "resource_bluebook_sat" ? "Test 10 · Reading and Writing 760 · Math 760" : "Enter the requested evidence"} /></label><LoadingButton className="button-primary" loading={busy} loadingLabel="Checking progress…" disabled={!answer.trim()} onClick={() => void verify()}><ShieldCheck size={16} />Check progress</LoadingButton></div> : null}
 
-        {recommendation.alternatives.length ? <details className="resource-alternatives"><summary>Why the other {recommendation.alternatives.length} option{recommendation.alternatives.length === 1 ? " was" : "s were"} not selected</summary>{recommendation.alternatives.map((alternative) => <div key={alternative.resource.id}><strong>{alternative.resource.title}</strong><span>{alternative.whyNotSelected}</span></div>)}</details> : null}
+        {recommendation.alternatives.length ? <details className="resource-alternatives"><summary>See why other options ranked lower</summary>{recommendation.alternatives.map((alternative) => <div key={alternative.resource.id}><strong>{alternative.resource.title}</strong><span>{alternative.whyNotSelected}</span></div>)}</details> : null}
       </Card> : null}
+
+      <Modal open={rejectionOpen} onOpenChange={setRejectionOpen} title="Why isn’t this a good fit?" description="Your learning goal stays the same. Continuum will change the next ranking using this feedback." dirty={Boolean(rejectionReason || rejectionNote)} dirtyMessage="Discard this resource feedback?">
+        <div className="resource-rejection-form">
+          <div className="rejection-choices">{rejectionOptions.map(([value, label]) => <button key={value} type="button" className={rejectionReason === value ? "active" : ""} aria-pressed={rejectionReason === value} onClick={() => setRejectionReason(value)}>{label}</button>)}</div>
+          {rejectionReason === "different_format" ? <fieldset><legend>Which format would work better?</legend><div className="choice-chips">{["video", "textbook", "interactive_simulation", "practice"].map((format) => <button key={format} type="button" className={preferredFormat === format ? "active" : ""} onClick={() => setPreferredFormat(format)}>{formatLabel(format)}</button>)}</div></fieldset> : null}
+          <label>Anything else? <span>Optional</span><textarea value={rejectionNote} onChange={(event) => setRejectionNote(event.target.value)} placeholder="For example: I need something I can use offline." /></label>
+          <div className="modal-inline-actions"><Button className="button-secondary" onClick={() => setRejectionOpen(false)}>Cancel</Button><LoadingButton className="button-primary" loading={busy} loadingLabel="Finding another match…" disabled={!rejectionReason || (rejectionReason === "different_format" && !preferredFormat)} onClick={() => void findDifferentResource()}>Find another match</LoadingButton></div>
+        </div>
+      </Modal>
+      <ConfirmationDialog open={confirmGoalChange} onOpenChange={setConfirmGoalChange} title="Change learning goal?" description="This resets the current recommendation, return notes, and unsaved verification answer. Saved activity history remains in Continuum." confirmLabel="Change learning goal" onConfirm={() => { setConfirmGoalChange(false); changeLearningGoal(); }} />
     </div>
   );
 }

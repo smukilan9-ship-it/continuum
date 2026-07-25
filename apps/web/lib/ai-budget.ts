@@ -6,9 +6,20 @@ function configuredDailyCap() {
   return Number.isFinite(value) ? Math.max(1_000, Math.min(10_000_000, Math.floor(value))) : 50_000;
 }
 
-function dayBounds(now = new Date()) {
+export function dayBounds(now = new Date()) {
   const start = new Date(now); start.setUTCHours(0, 0, 0, 0);
   return { start: start.toISOString(), end: new Date(start.getTime() + 86_400_000).toISOString() };
+}
+
+function monthBounds(now = new Date()) {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function boundedNumber(value: string | undefined, fallback: number, min: number, max: number) {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
 }
 
 function userFacingReason(decision: RouteDecision) {
@@ -28,12 +39,46 @@ export async function checkDailyAiBudget(userId: string, requestedTokens: number
   return { used, cap, remaining: Math.max(0, cap - used - requestedTokens) };
 }
 
-export async function logModelUsage(input: { userId: string; decision: RouteDecision; usage?: unknown; occurredAt?: string }) {
+export async function checkSharedAiBudget(requestedTokens: number, now = new Date()) {
+  const dailyTokenCap = boundedNumber(process.env.AI_GLOBAL_DAILY_TOKEN_CAP, 350_000, 10_000, 100_000_000);
+  const monthlyBudgetUsd = boundedNumber(process.env.AI_SHARED_MONTHLY_BUDGET_USD, 25, 1, 10_000);
+  if (!process.env.DATABASE_URL) return { dailyTokens: 0, dailyTokenCap, monthlyCostUsd: 0, monthlyBudgetUsd, nearLimit: false };
+  const repo = new NeonRepository();
+  const [daily, monthly] = await Promise.all([
+    repo.getGlobalModelUsage(dayBounds(now).start, dayBounds(now).end),
+    repo.getGlobalModelUsage(monthBounds(now).start, monthBounds(now).end),
+  ]);
+  if (daily.tokens + requestedTokens > dailyTokenCap || monthly.estimatedCostUsd >= monthlyBudgetUsd) {
+    throw new Error("Shared AI allowance reached");
+  }
+  return {
+    dailyTokens: daily.tokens,
+    dailyTokenCap,
+    monthlyCostUsd: monthly.estimatedCostUsd,
+    monthlyBudgetUsd,
+    nearLimit: daily.tokens + requestedTokens > dailyTokenCap * 0.8 || monthly.estimatedCostUsd > monthlyBudgetUsd * 0.8,
+  };
+}
+
+export function estimateModelCost(decision: RouteDecision, usage?: unknown) {
+  const tokenUsage = usage as { inputTokens?: number; outputTokens?: number } | undefined;
+  const inputTokens = Math.max(0, Number(tokenUsage?.inputTokens ?? 0));
+  const outputTokens = Math.max(0, Number(tokenUsage?.outputTokens ?? 0));
+  const rates = decision.costClass === "high"
+    ? { input: 1.2, output: 2.4 }
+    : decision.costClass === "medium"
+      ? { input: 0.45, output: 0.9 }
+      : { input: 0.08, output: 0.16 };
+  return Number((((inputTokens * rates.input) + (outputTokens * rates.output)) / 1_000_000).toFixed(8));
+}
+
+export async function logModelUsage(input: { userId: string; feature: string; decision: RouteDecision; usage?: unknown; occurredAt?: string }) {
   if (!process.env.DATABASE_URL) return;
   const usage = input.usage as { inputTokens?: number; outputTokens?: number } | undefined;
   await new NeonRepository().logModelRoute({
     id: input.decision.id,
     userId: input.userId,
+    feature: input.feature,
     taskClass: input.decision.taskClass,
     provider: input.decision.route,
     model: input.decision.model,
@@ -43,6 +88,7 @@ export async function logModelUsage(input: { userId: string; decision: RouteDeci
     inputTokens: usage?.inputTokens ?? 0,
     outputTokens: usage?.outputTokens ?? 0,
     costClass: input.decision.costClass,
+    estimatedCostUsd: estimateModelCost(input.decision, usage),
     occurredAt: input.occurredAt ?? new Date().toISOString(),
   });
 }

@@ -1,7 +1,7 @@
 # Featherless verification (live)
 
 Date: 2026-07-21 · Method: direct calls to `api.featherless.ai` with the
-configured `FEATHERLESS_API_KEY`, plus end-to-end calls through the
+configured server-only primary Featherless credential, plus end-to-end calls through the
 `@continuum/ai` router.
 
 ## Headline
@@ -58,10 +58,10 @@ degraded path the code already had — now pointed at real models).
 
 ## Structured (JSON-schema) generation
 
-Featherless is **not** the structured leader. Groq's GPT-OSS models are the
-reliable json_schema route and are tried first (`structuredRouteOrder`). A live
-json_schema probe to `Qwen2.5-72B` returned a transient 422 "busy", confirming
-this ordering is correct.
+Structured generation now follows the central gateway's task policy. A live
+json_schema probe to `Qwen2.5-72B` returned a transient 422 "busy"; safe
+requests may use the other healthy credential or one qualified fallback, while
+high-cost requests are not repeatedly retried.
 
 ## Remaining notes / not done
 

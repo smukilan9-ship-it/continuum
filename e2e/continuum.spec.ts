@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000";
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 
 async function demoLogin(page: Page) {
   await page.goto("/login");
@@ -28,9 +28,8 @@ function rpcJson(raw: string) {
 async function readCurrentWeekThroughMcp(page: Page) {
   const verifier = base64url(randomBytes(32));
   const challenge = base64url(createHash("sha256").update(verifier).digest());
-  const redirectUri = "http://127.0.0.1:3000/callback";
+  const redirectUri = `${baseURL}/callback`;
   const resourceOrigin = new URL(baseURL);
-  if (resourceOrigin.hostname === "127.0.0.1") resourceOrigin.hostname = "localhost";
   const resource = `${resourceOrigin.origin}/api/mcp`;
   const registration = await page.request.post("/api/oauth/register", {
     data: {
@@ -42,21 +41,23 @@ async function readCurrentWeekThroughMcp(page: Page) {
   expect(registration.status()).toBe(201);
   const { client_id: clientId } = await registration.json() as { client_id: string };
 
-  const authorization = await page.request.post("/api/oauth/authorize", {
-    headers: { origin: baseURL, "content-type": "application/x-www-form-urlencoded" },
-    data: new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      state: "playwright",
-      code_challenge: challenge,
-      resource,
-      decision: "approve",
-      scope: "memory:read",
-    }).toString(),
-    maxRedirects: 0,
+  const returnUrl = page.url();
+  const authorizationQuery = new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    state: "playwright",
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    resource,
+    scope: "memory:read",
   });
-  expect(authorization.status()).toBe(303);
-  const code = new URL(authorization.headers().location).searchParams.get("code");
+  await page.goto(`/api/oauth/authorize?${authorizationQuery}`);
+  await expect(page.getByRole("heading", { name: /Allow Continuum Playwright to connect/ })).toBeVisible();
+  await page.getByRole("button", { name: "Approve and connect" }).click();
+  await page.waitForURL(/\/callback\?code=/);
+  await page.waitForLoadState("domcontentloaded");
+  const code = new URL(page.url()).searchParams.get("code");
   expect(code).toBeTruthy();
 
   const tokenResponse = await page.request.post("/api/oauth/token", {
@@ -72,6 +73,8 @@ async function readCurrentWeekThroughMcp(page: Page) {
   });
   expect(tokenResponse.ok()).toBeTruthy();
   const { access_token: accessToken } = await tokenResponse.json() as { access_token: string };
+  await page.goto(returnUrl, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Write it. Run it. Understand why it works." })).toBeVisible();
 
   let rpcId = 0;
   const rpc = async (method: string, params: Record<string, unknown>) => {
@@ -117,7 +120,7 @@ test.describe.serial("Continuum primary journeys", () => {
     });
     await demoLogin(page);
     await page.getByRole("link", { name: "Learn", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Know what to learn next—and why." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "What will move your learning forward?" })).toBeVisible();
 
     await page.getByRole("button", { name: "Open 6-min lesson" }).click();
     await expect(page.getByText("TARGETED MICRO-LESSON")).toBeVisible();
@@ -152,11 +155,11 @@ test.describe.serial("Continuum primary journeys", () => {
     await expect(page.locator(".runtime-result pre")).toContainText("Selected: 88, 91, 85");
     await expect(page.locator(".runtime-result pre")).toContainText("Count: 3");
 
-    await page.getByRole("tab", { name: "AI feedback" }).click();
+    await page.getByRole("tab", { name: "Feedback" }).click();
     await page.getByRole("button", { name: "Explain", exact: true }).click();
-    await page.getByRole("button", { name: "Submit for feedback" }).click();
+    await page.getByRole("button", { name: "Get feedback" }).click();
     await expect(page.locator(".coach-markdown")).toContainText("actual runtime selected four scores");
-    await expect(page.getByText("AI feedback is separate from program output")).toBeVisible();
+    await expect(page.getByText("Get feedback only when you ask")).toBeVisible();
 
     await page.getByRole("button", { name: "Save checkpoint" }).click();
     await page.getByLabel("What did you learn?").fill(checkpointMarker);
@@ -168,7 +171,7 @@ test.describe.serial("Continuum primary journeys", () => {
     await page.getByRole("link", { name: "Code", exact: true }).click();
     await page.getByRole("tab", { name: "Output" }).click();
     await expect(page.locator(".runtime-result pre")).toContainText("Count: 3");
-    await page.getByRole("tab", { name: "AI feedback" }).click();
+    await page.getByRole("tab", { name: "Feedback" }).click();
     await expect(page.locator(".coach-markdown")).toContainText("actual runtime selected four scores");
 
     const packResponse = await readCurrentWeekThroughMcp(page);
@@ -187,12 +190,21 @@ test.describe.serial("Continuum primary journeys", () => {
     await page.getByRole("link", { name: "Plan", exact: true }).click();
     await expect(page.getByRole("heading", { name: "A week that respects real life." })).toBeVisible();
     await expect(page.getByLabel("Seven day plan")).toBeVisible();
-    await page.getByRole("button", { name: "Draft my week" }).click();
-    await expect(page.getByText("DRAFT — NOT CURRENT YET")).toBeVisible();
-    await expect(page.getByText("Confirmation required")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Confirm and commit" })).toBeEnabled();
+    await page.getByRole("button", { name: "Build my week" }).click();
+    await expect(page.getByRole("dialog", { name: "Build a realistic weekly schedule" })).toBeVisible();
+    await page.getByRole("button", { name: "Generate editable draft" }).click();
+    await expect(page.getByRole("heading", { name: "Here is a realistic first draft." })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save final schedule" })).toBeEnabled();
+    await page.getByRole("button", { name: "Add block" }).click();
+    await expect(page.getByRole("dialog", { name: "Add a study block" })).toBeVisible();
+    await page.getByLabel("Title").fill("Playwright editable block");
+    await page.getByRole("button", { name: "Add block" }).click();
+    await expect(page.getByText("Playwright editable block")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
     await page.getByRole("button", { name: "Discard draft" }).click();
-    await expect(page.getByText("DRAFT — NOT CURRENT YET")).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "Discard this schedule draft?" })).toBeVisible();
+    await page.getByRole("button", { name: "Discard draft" }).click();
+    await expect(page.getByRole("heading", { name: "Here is a realistic first draft." })).toHaveCount(0);
   });
 
   test("Research discovers an OpenAlex contract result and saves real provider provenance", async ({ page }) => {
@@ -229,6 +241,15 @@ test.describe.serial("Continuum primary journeys", () => {
     });
     await demoLogin(page);
     await page.getByRole("link", { name: "Research", exact: true }).click();
+    await page.getByRole("link", { name: "Connect tools" }).click();
+    await expect(page).toHaveURL(`${baseURL}/integrations`);
+    await page.goto("/research");
+    await expect(page.getByRole("heading", { name: "Evidence, not browser tabs." })).toBeVisible();
+    await page.locator(".research-library-card").getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Add a source" })).toBeVisible();
+    await expect(page.locator('input[type="file"]')).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Add a source" })).toHaveCount(0);
     await page.getByRole("button", { name: "Discovery", exact: true }).click();
     await page.getByLabel("Query").fill("spatial transcriptomics reproducibility");
     await page.getByRole("button", { name: "Search", exact: true }).click();
@@ -266,5 +287,15 @@ test.describe.serial("Continuum primary journeys", () => {
     await expect(page).toHaveURL(`${baseURL}/research`);
     const dimensions = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
     expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+  });
+
+  test("all primary and legacy internal routes resolve without a 404", async ({ page }) => {
+    await demoLogin(page);
+    for (const path of ["/", "/goals", "/learn", "/code", "/research", "/memory", "/activity", "/integrations", "/connections"]) {
+      const response = await page.goto(path);
+      expect(response?.status(), path).not.toBe(404);
+      await expect(page.getByText("This page could not be found.")).toHaveCount(0);
+    }
+    await expect(page).toHaveURL(`${baseURL}/integrations`);
   });
 });

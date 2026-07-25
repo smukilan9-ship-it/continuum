@@ -32,7 +32,7 @@ const modelErrorCache = new Map<string, CacheEntry<string>>();
 
 export interface FeatherlessCredential {
   /** Stable, non-secret identifier that is safe for status responses. */
-  id: "primary" | `key_${number}`;
+  id: "primary" | "secondary";
   apiKey: string;
 }
 
@@ -59,13 +59,10 @@ function credentialState(id: string) {
 
 /** Returns configured credentials without ever exposing their values to callers or status payloads. */
 export function featherlessCredentials(env: NodeJS.ProcessEnv = process.env): FeatherlessCredential[] {
-  const candidates: FeatherlessCredential[] = [];
-  const primary = env.FEATHERLESS_API_KEY?.trim();
-  if (primary) candidates.push({ id: "primary", apiKey: primary });
-  for (let index = 1; index <= 3; index += 1) {
-    const apiKey = env[`FEATHERLESS_API_KEY_${index}`]?.trim();
-    if (apiKey) candidates.push({ id: `key_${index}`, apiKey });
-  }
+  const candidates: FeatherlessCredential[] = [
+    ...(env.FEATHERLESS_API_KEY_PRIMARY?.trim() ? [{ id: "primary" as const, apiKey: env.FEATHERLESS_API_KEY_PRIMARY.trim() }] : []),
+    ...(env.FEATHERLESS_API_KEY_SECONDARY?.trim() ? [{ id: "secondary" as const, apiKey: env.FEATHERLESS_API_KEY_SECONDARY.trim() }] : []),
+  ];
   const seen = new Set<string>();
   return candidates.filter((credential) => {
     if (seen.has(credential.apiKey)) return false;

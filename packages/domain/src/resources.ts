@@ -27,6 +27,9 @@ export interface ResourceRequest {
   costPreference?: "free_only" | "free_preferred" | "any";
   region?: string;
   preferredFormats?: string[];
+  excludeResourceIds?: string[];
+  rejectionReasons?: string[];
+  feedback?: string;
   accessibility?: string[];
   now?: string;
 }
@@ -392,6 +395,7 @@ function authorityScore(authority: ResourceRegistryEntry["authority"]) {
 
 function scoreResource(request: ResourceRequest, resource: ResourceRegistryEntry) {
   if (!resource.active) return Number.NEGATIVE_INFINITY;
+  if (request.excludeResourceIds?.includes(resource.id)) return Number.NEGATIVE_INFINITY;
   if (request.costPreference === "free_only" && resource.cost !== "free") return Number.NEGATIVE_INFINITY;
   if (request.region && !resource.regions.includes("global") && !resource.regions.includes(request.region)) return Number.NEGATIVE_INFINITY;
   const topicalFit = overlapScore(`${request.topic} ${request.level ?? ""}`, resource);
@@ -407,6 +411,13 @@ function scoreResource(request: ResourceRequest, resource: ResourceRegistryEntry
     : 1;
   const costFit = resource.cost === "free" ? 1 : request.costPreference === "any" ? 0.75 : 0.35;
   const officialBoost = request.need === "official_exam_simulation" && resource.officialFor.length ? 0.25 : 0;
+  const feedbackFit = request.feedback ? overlapScore(request.feedback, resource) * 0.08 : 0;
+  const rejectedForAccess = request.rejectionReasons?.includes("cannot_access") && resource.accessRequirements.some((item) => /account|app|subscription|eligible|device/i.test(item)) ? -0.22 : 0;
+  const difficultyFit = request.rejectionReasons?.includes("too_easy")
+    ? resource.level.some((level) => /university|advanced|graduate/i.test(level)) ? 0.12 : -0.08
+    : request.rejectionReasons?.includes("too_difficult")
+      ? resource.level.some((level) => /school|introductory|class 12/i.test(level)) ? 0.12 : -0.08
+      : 0;
   return Number((
     topicalFit * 0.24
     + needScore(request.need, resource) * 0.25
@@ -417,6 +428,9 @@ function scoreResource(request: ResourceRequest, resource: ResourceRegistryEntry
     + formatFit * 0.04
     + accessibilityFit * 0.03
     + officialBoost
+    + feedbackFit
+    + rejectedForAccess
+    + difficultyFit
   ).toFixed(4));
 }
 
@@ -442,7 +456,7 @@ export function recommendBestResource(request: ResourceRequest, registry = curat
       ? `${winner.resource.provider} is the authoritative testing environment; a native imitation would provide less valid timing and scoring evidence.`
       : winner.resource.formats.includes("interactive_simulation")
         ? `${winner.resource.provider} provides manipulable visual feedback that the native text tutor cannot reproduce as effectively.`
-        : `${winner.resource.provider} has stronger authority or a better activity format for this exact need than the native option.`
+        : `${winner.resource.provider} has the strongest authority and activity format for this exact learning need.`
     : native
       ? "The native adaptive tutor is the best fit because it targets the detected misconception within the available time and can verify transfer immediately."
       : "The selected resource is the strongest eligible match.";

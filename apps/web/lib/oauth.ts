@@ -10,9 +10,10 @@ type TokenPayload = {
   scopes: string[];
   exp: number;
   iat: number;
-  type: "access" | "refresh" | "code";
+  type: "access" | "refresh" | "code" | "consent";
   redirectUri?: string;
   codeChallenge?: string;
+  state?: string;
   jti: string;
 };
 
@@ -86,6 +87,57 @@ export function verifyClientRegistration(clientId: string): OAuthClientRegistrat
   const registration = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as OAuthClientRegistration;
   if (!registration.clientName || !Array.isArray(registration.redirectUris) || !registration.redirectUris.length || registration.redirectUris.some((uri) => !safeOAuthRedirect(uri))) throw new Error("Invalid OAuth client registration");
   return registration;
+}
+
+export type AuthorizationRequest = {
+  clientId: string;
+  client: OAuthClientRegistration;
+  redirectUri: string;
+  state: string;
+  codeChallenge: string;
+  resource: string;
+  requestedScopes: string[];
+};
+
+export function parseAuthorizationRequest(params: URLSearchParams, supportedScopes: readonly string[]): AuthorizationRequest {
+  const clientId = params.get("client_id") ?? "";
+  const redirectUri = params.get("redirect_uri") ?? "";
+  const client = verifyClientRegistration(clientId);
+  if (!safeOAuthRedirect(redirectUri) || !client.redirectUris.includes(redirectUri)) {
+    throw new Error("The callback address does not match this client registration");
+  }
+  const codeChallenge = params.get("code_challenge") ?? "";
+  const state = params.get("state") ?? "";
+  const resource = params.get("resource") ?? mcpResource();
+  if (
+    params.get("response_type") !== "code"
+    || params.get("code_challenge_method") !== "S256"
+    || !/^[A-Za-z0-9_-]{43}$/.test(codeChallenge)
+    || !state
+    || state.length > 512
+    || !validMcpResource(resource)
+  ) {
+    throw new Error("This authorization request is missing valid state, PKCE, or resource information");
+  }
+  const allowed = new Set(supportedScopes);
+  const requestedScopes = (params.get("scope") ?? "memory:read goals:read learning:read research:read schedule:read")
+    .split(" ")
+    .filter((scope) => allowed.has(scope) && client.scopes.includes(scope));
+  return { clientId, client, redirectUri, state, codeChallenge, resource, requestedScopes };
+}
+
+export async function issueOAuthConsent(userId: string, request: AuthorizationRequest) {
+  return issueToken({
+    sub: userId,
+    clientId: request.clientId,
+    scopes: request.requestedScopes,
+    type: "consent",
+    exp: Math.floor(Date.now() / 1000) + 10 * 60,
+    redirectUri: request.redirectUri,
+    codeChallenge: request.codeChallenge,
+    state: request.state,
+    resource: request.resource,
+  });
 }
 
 export async function issueToken(payload: Omit<TokenPayload, "iat" | "jti" | "iss" | "aud" | "resource"> & { resource?: string }) {

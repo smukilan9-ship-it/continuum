@@ -89,13 +89,22 @@ Full details, the reset guarantees, and a 2–4 minute walkthrough are in [docs/
 
 ## Provider configuration
 
-- Featherless: set `FEATHERLESS_API_KEY` and optionally `_1`, `_2`, `_3`. Values stay server-only; status exposes stable IDs (`primary`, `key_1`…) and health, never keys. Least-busy round-robin, per-key/global weighted concurrency, bounded three-key failover, and 429/auth/transient backoff prevent retry storms. Model overrides are optional; the router uses reviewed fallbacks when discovery is unavailable. The default embedding model is `Qwen/Qwen3-Embedding-8B` at 1,536 dimensions.
+- Featherless: set exactly `FEATHERLESS_API_KEY_PRIMARY` and
+  `FEATHERLESS_API_KEY_SECONDARY` in the server environment. Values never enter
+  client configuration, payloads, HTML, logs, status responses, or source maps.
+  The central gateway balances healthy slots, backs off rate-limited/provider-error
+  slots, and performs at most one safe failover. Model overrides are optional;
+  the router uses reviewed fallbacks when discovery is unavailable. The default
+  embedding model is `Qwen/Qwen3-Embedding-8B` at 1,536 dimensions.
 - Groq: set `GROQ_API_KEY`. The default policy uses Llama 3.1 8B Instant for bounded work, Qwen3.6 27B for reasoning, GPT-OSS 120B for code, and GPT-OSS 20B for verification, subject to the live models enabled for the Groq project.
 - Gemini: set `GEMINI_API_KEY_1` through `GEMINI_API_KEY_10` or `GEMINI_API_KEYS`, then explicitly set `GEMINI_DATA_USE_ACKNOWLEDGED=true`. Keys are server-only and responses never expose them. Multiple keys in one Google Cloud project do not multiply project quota.
 - Embeddings: keep `EMBEDDING_DIMENSIONS=1536`. Provider order may include Gemini, Featherless, AI Gateway, or Ollama. Lexical retrieval remains available if every embedding provider fails.
 - Ollama: browser-local generation accepts only loopback endpoints by default. Server-side remote Ollama is rejected unless `ALLOW_REMOTE_OLLAMA=true` is deliberately set.
 
-Structured (JSON-schema) generation is bounded by an overall deadline (`AI_STRUCTURED_DEADLINE_MS`, default 40 s) and a per-attempt timeout (`AI_ATTEMPT_TIMEOUT_MS`, default 20 s), and it uses a schema-capable model per provider (`GROQ_STRUCTURED_MODEL`, default `openai/gpt-oss-120b`). Groq's GPT-OSS models are the most reliable JSON-schema route and are tried first for schema-bound tasks; if a configured provider's model IDs are unavailable, generation routes around it and fails fast rather than hanging.
+Structured (JSON-schema) generation is bounded by the central request deadline
+(`AI_REQUEST_TIMEOUT_MS`, default 30 s). Policy chooses the lowest-cost qualified
+model for each task; safe bounded requests may fail over once, while expensive
+or high-stakes requests are never repeatedly retried.
 
 Provider keys belong in an encrypted deployment secret store or the ignored local environment file. No system can make a key literally impossible to compromise; Continuum reduces exposure through server-only access, least privilege, no logging/display of values, rotation, and revocation.
 

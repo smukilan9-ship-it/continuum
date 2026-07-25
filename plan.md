@@ -67,7 +67,8 @@ SUPABASE_SERVICE_ROLE_KEY=          # server-only
 DATABASE_URL=                        # pooled, server-only
 # AI Gateway / providers (server-only)
 AI_GATEWAY_API_KEY=
-FEATHERLESS_API_KEY=
+FEATHERLESS_API_KEY_PRIMARY=
+FEATHERLESS_API_KEY_SECONDARY=
 GEMINI_API_KEY=
 GROQ_API_KEY=
 EMBEDDING_MODEL=                     # e.g. provider/embed-model

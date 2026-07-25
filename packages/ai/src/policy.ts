@@ -58,23 +58,23 @@ export function routeTask(request: RouteRequest): RouteDecision {
     });
   }
 
-  if (fastTasks.has(request.taskClass) && available.has("groq")) {
-    return routeDecisionSchema.parse({
-      ...base,
-      route: "groq",
-      model: "groq/fast-classifier",
-      reason: "A low-latency structured route is sufficient for this bounded task.",
-      verification: "not_required",
-      costClass: "low",
-    });
-  }
-
   if (fastTasks.has(request.taskClass) && available.has("featherless")) {
     return routeDecisionSchema.parse({
       ...base,
       route: "featherless",
       model: "featherless/catalog-selected-small-model",
-      reason: "A small catalog model is selected for this bounded task so it consumes one concurrency unit where available.",
+      reason: "A small shared model is sufficient for this bounded task and preserves the stronger-model allowance.",
+      verification: "not_required",
+      costClass: "low",
+    });
+  }
+
+  if (fastTasks.has(request.taskClass) && available.has("groq")) {
+    return routeDecisionSchema.parse({
+      ...base,
+      route: "groq",
+      model: "groq/fast-classifier",
+      reason: "A low-latency structured fallback is sufficient for this bounded task.",
       verification: "not_required",
       costClass: "low",
     });

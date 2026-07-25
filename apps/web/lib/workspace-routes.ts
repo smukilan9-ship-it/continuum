@@ -16,8 +16,8 @@ export const workspacePath: Record<WorkspaceView, Route> = {
 export const workspaceMeta: Record<WorkspaceView, { title: string; description: string }> = {
   today: { title: "Today", description: "Your next action, current schedule, and last verified checkpoint." },
   goals: { title: "Plan", description: "Outcomes, deadlines, tasks, calendar constraints, and proof of completion." },
-  learn: { title: "Learn", description: "Choose the strongest native or external resource and verify progress afterward." },
-  code: { title: "Code", description: "Learn programming against your syllabus with a context-aware coding model." },
+  learn: { title: "Learn", description: "Choose the best resource for your goal and verify progress afterward." },
+  code: { title: "Code", description: "Understand the task, write code, run it, check the tests, and ask for help when needed." },
   research: { title: "Research", description: "Projects, source-backed claims, decisions, and unresolved questions." },
   memory: { title: "Memory", description: "Durable academic context retrieved by relevance, not transcript replay." },
   integrations: { title: "Connections", description: "Connect the academic tools you use and control what each one can access." },

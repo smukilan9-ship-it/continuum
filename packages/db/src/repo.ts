@@ -3,6 +3,7 @@ import type { MasteryState, MemoryEvent, OutcomeReceipt, ResourceActivity, Resou
 import { getDatabase } from "./client";
 import {
   auditLog,
+  aiRequestLeases,
   authIdentities,
   artifacts,
   appSessions,
@@ -24,6 +25,7 @@ import {
   milestones,
   modelRoutes,
   modelUsage,
+  oauthConnections,
   oauthGrants,
   papers,
   profiles,
@@ -1090,7 +1092,7 @@ export class NeonRepository {
           if (!taskId || Number.isNaN(startsAt.valueOf()) || Number.isNaN(endsAt.valueOf()) || startsAt >= endsAt || endsAt.valueOf() - startsAt.valueOf() > 8 * 3600_000) throw new Error("Schedule proposal contains invalid task or time bounds");
           const [ownedTask] = await tx.select({ id: tasks.id }).from(tasks).innerJoin(goals, eq(tasks.goalId, goals.id)).where(and(eq(tasks.id, taskId), eq(goals.userId, userId), eq(tasks.deleted, false), eq(goals.deleted, false))).limit(1);
           if (!ownedTask) throw new Error(`Task ${taskId} was not found or is not accessible`);
-          planned.push({ id: `block_${proposal.id.replace(/^proposal_/, "")}_${index + 1}`, taskId, startsAt, endsAt, status: "planned", proposalId: proposal.id, committedAt: new Date() });
+          planned.push({ id: `block_${proposal.id.replace(/^proposal_/, "")}_${index + 1}`, taskId, startsAt, endsAt, status: "planned", flexible: block.flexible !== false, proposalId: proposal.id, committedAt: new Date() });
         }
         if (!planned.length) throw new Error("Schedule proposal contains no blocks to commit");
         const created = await tx.insert(scheduleBlocks).values(planned).returning();
@@ -1200,14 +1202,44 @@ export class NeonRepository {
     await this.db.insert(contextAccessLog).values({ ...input, occurredAt: new Date(input.occurredAt) });
   }
 
-  async logModelRoute(input: { id: string; userId: string; taskClass: string; provider: string; model: string; reason: string; verificationStatus: string; fallbackUsed: boolean; inputTokens: number; outputTokens: number; costClass: string; occurredAt: string }) {
-    await this.db.insert(modelRoutes).values({ id: input.id, userId: input.userId, taskClass: input.taskClass, provider: input.provider, model: input.model, reason: input.reason, verificationStatus: input.verificationStatus, fallbackUsed: input.fallbackUsed });
-    await this.db.insert(modelUsage).values({ id: `usage_${input.id.replace(/^route_/, "")}`, routeId: input.id, userId: input.userId, inputTokens: input.inputTokens, outputTokens: input.outputTokens, costClass: input.costClass, occurredAt: new Date(input.occurredAt) });
+  async logModelRoute(input: { id: string; userId: string; feature: string; taskClass: string; provider: string; model: string; reason: string; verificationStatus: string; fallbackUsed: boolean; inputTokens: number; outputTokens: number; costClass: string; estimatedCostUsd: number; occurredAt: string }) {
+    await this.db.transaction(async (tx) => {
+      await tx.insert(modelRoutes).values({ id: input.id, userId: input.userId, taskClass: input.taskClass, provider: input.provider, model: input.model, reason: input.reason, verificationStatus: input.verificationStatus, fallbackUsed: input.fallbackUsed });
+      await tx.insert(modelUsage).values({ id: `usage_${input.id.replace(/^route_/, "")}`, routeId: input.id, userId: input.userId, feature: input.feature, inputTokens: input.inputTokens, outputTokens: input.outputTokens, costClass: input.costClass, estimatedCostUsd: input.estimatedCostUsd, occurredAt: new Date(input.occurredAt) });
+    });
   }
 
   async getDailyModelUsage(userId: string, dayStart: string, dayEnd: string) {
     const [row] = await this.db.select({ total: sql<number>`coalesce(sum(${modelUsage.inputTokens} + ${modelUsage.outputTokens}), 0)` }).from(modelUsage).where(and(eq(modelUsage.userId, userId), gt(modelUsage.occurredAt, new Date(dayStart)), lt(modelUsage.occurredAt, new Date(dayEnd))));
     return Number(row?.total ?? 0);
+  }
+
+  async getGlobalModelUsage(start: string, end: string) {
+    const [row] = await this.db.select({
+      tokens: sql<number>`coalesce(sum(${modelUsage.inputTokens} + ${modelUsage.outputTokens}), 0)`,
+      estimatedCostUsd: sql<number>`coalesce(sum(${modelUsage.estimatedCostUsd}), 0)`,
+      requests: sql<number>`count(*)`,
+    }).from(modelUsage).where(and(gt(modelUsage.occurredAt, new Date(start)), lt(modelUsage.occurredAt, new Date(end))));
+    return {
+      tokens: Number(row?.tokens ?? 0),
+      estimatedCostUsd: Number(row?.estimatedCostUsd ?? 0),
+      requests: Number(row?.requests ?? 0),
+    };
+  }
+
+  async acquireAiRequestLease(input: { id: string; userId: string; feature: string; expiresAt: string; limit: number }) {
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(773492104)`);
+      await tx.delete(aiRequestLeases).where(lt(aiRequestLeases.expiresAt, new Date()));
+      const [row] = await tx.select({ total: sql<number>`count(*)` }).from(aiRequestLeases);
+      if (Number(row?.total ?? 0) >= input.limit) return false;
+      await tx.insert(aiRequestLeases).values({ id: input.id, userId: input.userId, feature: input.feature, expiresAt: new Date(input.expiresAt) });
+      return true;
+    });
+  }
+
+  async releaseAiRequestLease(id: string) {
+    await this.db.delete(aiRequestLeases).where(eq(aiRequestLeases.id, id));
   }
 
   async createUser(input: { id: string; email: string; displayName: string; timezone: string; educationLevel?: string; passwordHash: string; passwordSalt: string }) {
@@ -1352,12 +1384,39 @@ export class NeonRepository {
   }
 
   async listOAuthConnections(userId: string) {
-    return this.db.select({ id: oauthGrants.id, clientId: oauthGrants.clientId, kind: oauthGrants.kind, scopes: oauthGrants.scopes, expiresAt: oauthGrants.expiresAt, revokedAt: oauthGrants.revokedAt, createdAt: oauthGrants.createdAt }).from(oauthGrants).where(and(eq(oauthGrants.userId, userId), isNull(oauthGrants.revokedAt), gt(oauthGrants.expiresAt, new Date()))).orderBy(desc(oauthGrants.createdAt));
+    return this.db.select().from(oauthConnections)
+      .where(and(eq(oauthConnections.userId, userId), isNull(oauthConnections.revokedAt)))
+      .orderBy(desc(oauthConnections.lastAuthorizedAt));
+  }
+
+  async upsertOAuthConnection(input: { id: string; userId: string; clientId: string; clientName: string; scopes: string[] }) {
+    const now = new Date();
+    await this.db.insert(oauthConnections).values({
+      ...input,
+      connectedAt: now,
+      lastAuthorizedAt: now,
+      revokedAt: null,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: [oauthConnections.userId, oauthConnections.clientId],
+      set: {
+        clientName: input.clientName,
+        scopes: input.scopes,
+        lastAuthorizedAt: now,
+        revokedAt: null,
+        updatedAt: now,
+        version: sql`${oauthConnections.version} + 1`,
+      },
+    });
   }
 
   async revokeOAuthClient(userId: string, clientId: string) {
-    const rows = await this.db.update(oauthGrants).set({ revokedAt: new Date() }).where(and(eq(oauthGrants.userId, userId), eq(oauthGrants.clientId, clientId), isNull(oauthGrants.revokedAt))).returning({ id: oauthGrants.id });
-    return rows.length;
+    return this.db.transaction(async (tx) => {
+      const now = new Date();
+      const rows = await tx.update(oauthGrants).set({ revokedAt: now }).where(and(eq(oauthGrants.userId, userId), eq(oauthGrants.clientId, clientId), isNull(oauthGrants.revokedAt))).returning({ id: oauthGrants.id });
+      const connections = await tx.update(oauthConnections).set({ revokedAt: now, updatedAt: now, version: sql`${oauthConnections.version} + 1` }).where(and(eq(oauthConnections.userId, userId), eq(oauthConnections.clientId, clientId), isNull(oauthConnections.revokedAt))).returning({ id: oauthConnections.id });
+      return rows.length + connections.length;
+    });
   }
 
   async registerOAuthGrant(input: { jti: string; userId: string; clientId: string; kind: string; scopes: string[]; expiresAt: string }) {
@@ -1376,10 +1435,10 @@ export class NeonRepository {
     await this.db.update(oauthGrants).set({ revokedAt: new Date() }).where(eq(oauthGrants.id, jti));
   }
 
-  async consumeOAuthGrant(jti: string, kind: "code" | "refresh") {
+  async consumeOAuthGrant(jti: string, kind: "code" | "refresh" | "consent") {
     await this.ensureDemoSeed();
     const rows = await this.db.update(oauthGrants).set({ consumedAt: new Date() }).where(and(eq(oauthGrants.id, jti), eq(oauthGrants.kind, kind), isNull(oauthGrants.consumedAt), isNull(oauthGrants.revokedAt), gt(oauthGrants.expiresAt, new Date()))).returning({ id: oauthGrants.id });
-    if (!rows.length) throw new Error(`${kind === "code" ? "Authorization code" : "Refresh token"} was already used, expired, or was not issued`);
+    if (!rows.length) throw new Error(`${kind === "code" ? "Authorization code" : kind === "refresh" ? "Refresh token" : "Authorization request"} was already used, expired, or was not issued`);
   }
 
   async consumeOAuthCode(jti: string) {

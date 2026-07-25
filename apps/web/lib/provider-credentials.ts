@@ -1,7 +1,7 @@
 import { NeonRepository } from "@continuum/db";
 import { credentialEncryptionVersion, openCredential, sealCredential } from "@/lib/credential-vault";
 
-export const credentialProviders = ["openalex", "youtube", "featherless", "semantic-scholar"] as const;
+export const credentialProviders = ["openalex", "youtube", "semantic-scholar"] as const;
 export type CredentialProvider = typeof credentialProviders[number];
 export type CredentialHealthStatus = "connected" | "degraded" | "invalid";
 
@@ -22,12 +22,6 @@ export const credentialProviderMetadata: Record<CredentialProvider, {
     purpose: "Retrieve real learning-video metadata before Continuum ranks it.",
     privacy: "Learning queries are sent to Google; the key is used server-side only.",
     docs: "https://developers.google.com/youtube/v3/getting-started",
-  },
-  featherless: {
-    name: "Featherless",
-    purpose: "Run optional cloud explanations, structured feedback, and code reasoning.",
-    privacy: "Only the bounded prompt assembled for an explicit AI task is sent.",
-    docs: "https://featherless.ai/docs",
   },
   "semantic-scholar": {
     name: "Semantic Scholar",
@@ -59,12 +53,6 @@ function providerRequest(provider: CredentialProvider, secret: string): { url: U
     url.searchParams.set("id", "dQw4w9WgXcQ");
     url.searchParams.set("key", secret);
     return { url, init: { headers: { accept: "application/json" } } satisfies RequestInit };
-  }
-  if (provider === "featherless") {
-    return {
-      url: new URL("https://api.featherless.ai/v1/plan"),
-      init: { headers: { accept: "application/json", authorization: `Bearer ${secret}`, "X-Title": "Continuum" } } satisfies RequestInit,
-    };
   }
   const url = new URL("https://api.semanticscholar.org/graph/v1/paper/search");
   url.searchParams.set("query", "academic learning");

@@ -1,14 +1,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { continuumResources, continuumTools, executeTool } from "@continuum/mcp";
+import type { RouteDecision } from "@continuum/schemas";
 import { z } from "zod";
 import { authorizedMcpIdentity, type AuthorizedMcpIdentity } from "@/lib/oauth";
 import { enforceRateLimit } from "@/lib/auth";
 import { getStore } from "@/lib/store";
-import { configuredProviders, generateStructured, routeTask } from "@continuum/ai";
-import { randomUUID } from "node:crypto";
-import { checkDailyAiBudget, logModelUsage } from "@/lib/ai-budget";
 import { buildAcademicPrompt, type PromptSurface } from "@/lib/prompt-context";
+import { availableAiProviders, runStructuredAi } from "@/lib/ai-gateway";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +24,7 @@ async function resourceData(uri: string, identity: AuthorizedMcpIdentity) {
   return store.read("list_goals", { status: "active", limit: 20 }, identity.clientId);
 }
 
-function createServer(identity: AuthorizedMcpIdentity) {
+function createServer(identity: AuthorizedMcpIdentity, request: Request) {
   const server = new McpServer({ name: "continuum", version: "1.0.0" }, { capabilities: { logging: {} } });
 
   for (const tool of continuumTools.filter((candidate) => candidate.remoteAccessible !== false && identity.scopes.includes(candidate.requiredScope))) {
@@ -47,7 +46,7 @@ function createServer(identity: AuthorizedMcpIdentity) {
         const result = await executeTool(tool.name, args, {
           scopes: identity.scopes,
           now,
-          read: (name, readArgs) => name === "route_specialist_task" ? runSpecialistTask(readArgs, identity) : store.read(name, readArgs, identity.clientId),
+          read: (name, readArgs) => name === "route_specialist_task" ? runSpecialistTask(readArgs, identity, request) : store.read(name, readArgs, identity.clientId),
           write: (name, writeArgs) => store.write(name, writeArgs, now, "mcp", identity.clientId),
         });
         return {
@@ -80,13 +79,10 @@ function createServer(identity: AuthorizedMcpIdentity) {
 const specialistOutput = z.object({ answer: z.string(), evidence: z.array(z.string()).default([]), limitations: z.array(z.string()).default([]), confidence: z.number().min(0).max(1) });
 const verifierOutput = z.object({ supported: z.boolean(), reason: z.string(), confidence: z.number().min(0).max(1) });
 
-async function runSpecialistTask(args: Record<string, unknown>, identity: AuthorizedMcpIdentity) {
-  const status = configuredProviders();
-  const available = [status.featherless ? "featherless" : undefined, status.gemini ? "gemini" : undefined, status.aiGateway ? "ai_gateway" : undefined, status.groq ? "groq" : undefined].filter((item): item is "featherless" | "gemini" | "ai_gateway" | "groq" => Boolean(item));
+async function runSpecialistTask(args: Record<string, unknown>, identity: AuthorizedMcpIdentity, request: Request) {
+  const available = availableAiProviders();
   if (!available.length) throw new Error("No specialist model provider is configured");
-  const reservedTokens = args.budgetClass === "high" ? 12_000 : args.budgetClass === "medium" ? 8_000 : 4_000;
-  await checkDailyAiBudget(identity.userId, reservedTokens);
-  const taskClass = args.taskClass as Parameters<typeof routeTask>[0]["taskClass"];
+  const taskClass = args.taskClass as RouteDecision["taskClass"];
   const surface: PromptSurface = taskClass === "code_reasoning"
     ? "code"
     : ["research_synthesis", "citation_entailment", "extraction", "summarization"].includes(taskClass)
@@ -104,22 +100,24 @@ async function runSpecialistTask(args: Record<string, unknown>, identity: Author
     outputContract: "Return an answer, exact supplied evidence identifiers, material limitations, and calibrated confidence using the required schema.",
     additionalPolicy: args.evidenceRequired ? ["The result is evidence-bound. Unsupported claims must be omitted or explicitly labelled inference."] : [],
   });
-  const decision = routeTask({ id: `route_${randomUUID().replaceAll("-", "").slice(0, 20)}`, taskClass, sourceLocked: Boolean(args.evidenceRequired), highStakes: Boolean(args.verificationRequired), schemaRequired: true, availableProviders: available });
-  const primary = await generateStructured({
-    decision,
+  const primary = await runStructuredAi({
+    request,
+    feature: "mcp.specialist",
+    taskClass,
     schema: specialistOutput,
     userId: identity.userId,
     maxOutputTokens: args.budgetClass === "high" ? 2400 : args.budgetClass === "medium" ? 1400 : 700,
     system: academicPrompt.system,
     prompt: academicPrompt.prompt,
+    sourceLocked: Boolean(args.evidenceRequired),
+    highStakes: Boolean(args.verificationRequired),
+    cacheable: !args.verificationRequired,
   });
-  await logModelUsage({ userId: identity.userId, decision: primary.decision, usage: primary.usage });
   let verification: z.infer<typeof verifierOutput> | undefined;
   let verifierRoute: unknown;
   if (args.verificationRequired) {
     const independent = available.filter((provider) => provider !== primary.decision.route);
     if (!independent.length) throw new Error("Independent verification was requested, but no second provider is configured");
-    const verificationDecision = routeTask({ id: `route_${randomUUID().replaceAll("-", "").slice(0, 20)}`, taskClass: "citation_entailment", sourceLocked: Boolean(args.evidenceRequired), schemaRequired: true, availableProviders: independent });
     const verificationPrompt = buildAcademicPrompt({
       surface: "research",
       taskClass: "citation_entailment",
@@ -127,10 +125,21 @@ async function runSpecialistTask(args: Record<string, unknown>, identity: Author
       sourceContent: { proposedResult: primary.output },
       outputContract: "Independently decide whether the proposed result is supported. Reject invented or overstated support and return the verifier schema.",
     });
-    const checked = await generateStructured({ decision: verificationDecision, schema: verifierOutput, userId: identity.userId, maxOutputTokens: 600, system: verificationPrompt.system, prompt: verificationPrompt.prompt });
+    const checked = await runStructuredAi({
+      request,
+      feature: "mcp.verifier",
+      taskClass: "citation_entailment",
+      schema: verifierOutput,
+      userId: identity.userId,
+      maxOutputTokens: 600,
+      system: verificationPrompt.system,
+      prompt: verificationPrompt.prompt,
+      sourceLocked: Boolean(args.evidenceRequired),
+      highStakes: true,
+      allowedProviders: independent,
+    });
     verification = checked.output;
     verifierRoute = checked.decision;
-    await logModelUsage({ userId: identity.userId, decision: checked.decision, usage: checked.usage });
   }
   await store.appendEvent({ type: "model.specialist.routed", summary: `Used specialist assistance for ${taskClass.replaceAll("_", " ")}${verification ? " with an independent check" : ""}.`, entityIds: [primary.decision.id], payload: { route: primary.decision, verifierRoute, verification }, source: { surface: "mcp" }, importance: 0.55 });
   return {
@@ -166,7 +175,7 @@ async function handle(request: Request) {
   const limit = await enforceRateLimit(request, "mcp", Number(process.env.MCP_REQUESTS_PER_MINUTE ?? 120), 60_000, `${identity.userId}:${identity.clientId}`);
   if (!limit.allowed) return new Response(JSON.stringify({ jsonrpc: "2.0", error: { code: -32002, message: "MCP rate limit exceeded", data: { resetAt: limit.resetAt } }, id: null }), { status: 429, headers: { "content-type": "application/json", "retry-after": "60" } });
   const transport = new WebStandardStreamableHTTPServerTransport();
-  const server = createServer(identity);
+  const server = createServer(identity, request);
   await server.connect(transport);
   const response = await transport.handleRequest(request);
   const headers = new Headers(response.headers);

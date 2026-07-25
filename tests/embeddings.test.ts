@@ -21,7 +21,7 @@ describe("embedding provider configuration", () => {
     const env = {
       GEMINI_API_KEY_1: "gemini-secret",
       GEMINI_DATA_USE_ACKNOWLEDGED: "true",
-      FEATHERLESS_API_KEY: "featherless-secret",
+      FEATHERLESS_API_KEY_PRIMARY: "featherless-secret",
       FEATHERLESS_EMBEDDING_MODEL: "BAAI/bge-m3",
       EMBEDDING_PROVIDER: "featherless,gemini",
       EMBEDDING_DIMENSIONS: "1536",
@@ -30,7 +30,7 @@ describe("embedding provider configuration", () => {
   });
 
   it("uses the verified Featherless embedding model when only Featherless is configured", () => {
-    const env = { FEATHERLESS_API_KEY: "featherless-secret", EMBEDDING_DIMENSIONS: "1536" } as NodeJS.ProcessEnv;
+    const env = { FEATHERLESS_API_KEY_PRIMARY: "featherless-secret", EMBEDDING_DIMENSIONS: "1536" } as NodeJS.ProcessEnv;
     expect(embeddingConfiguration(env)).toEqual({ provider: "featherless", model: "Qwen/Qwen3-Embedding-8B", dimensions: 1536, fallbackProviders: [] });
   });
 
@@ -43,7 +43,7 @@ describe("embedding provider configuration", () => {
       if (authorization.endsWith("primary-key")) return new Response("rate limited", { status: 429 });
       return new Response(JSON.stringify({ data: [{ index: 0, embedding: [0.25, 0.75] }] }), { status: 200 });
     }));
-    const env = { FEATHERLESS_API_KEY: "primary-key", FEATHERLESS_API_KEY_1: "backup-key" } as NodeJS.ProcessEnv;
+    const env = { FEATHERLESS_API_KEY_PRIMARY: "primary-key", FEATHERLESS_API_KEY_SECONDARY: "backup-key" } as NodeJS.ProcessEnv;
     const vectors = await embedDocuments(["bounded context"], { provider: "featherless", model: "test/embed", dimensions: 2, fallbackProviders: [] }, env);
     expect(vectors).toEqual([[0.25, 0.75]]);
     expect(authorizations).toHaveLength(2);

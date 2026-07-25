@@ -370,8 +370,10 @@ Provider health (live): `groq healthy (15 models)`, `gemini healthy
 
 ## 6. Credentials / external setup still required
 
-- Working today (configured in `.env.local`): Neon `DATABASE_URL`, Blob token,
-  `GROQ_API_KEY`, `FEATHERLESS_API_KEY`, `GEMINI_API_KEY_1..10` +
+- Working at the time of this archived verification (configured in `.env.local`):
+  Neon `DATABASE_URL`, Blob token, `GROQ_API_KEY`, server-side Featherless
+  credentials (now named `FEATHERLESS_API_KEY_PRIMARY` and
+  `FEATHERLESS_API_KEY_SECONDARY`), `GEMINI_API_KEY_1..10` +
   `GEMINI_DATA_USE_ACKNOWLEDGED=true`, `MCP_JWT_SIGNING_SECRET`.
 - For integrations: Google OAuth client, Zotero API key/OAuth, a local Ollama
   runtime, an Obsidian vault + plugin token. None are required for the core

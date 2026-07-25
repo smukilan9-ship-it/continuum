@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { NeonRepository } from "@continuum/db";
 import { issueToken, mcpResource, validMcpResource, verifyClientRegistration, verifyPkce, verifyToken } from "@/lib/oauth";
 import { getStore } from "@/lib/store";
 import { NextResponse } from "next/server";
@@ -5,11 +7,23 @@ import { enforceRateLimit } from "@/lib/auth";
 
 async function tokenResponse(payload: { sub: string; clientId: string; scopes: string[]; resource: string }) {
   const now = Math.floor(Date.now() / 1000);
+  const registration = verifyClientRegistration(payload.clientId);
+  const accessToken = await issueToken({ ...payload, type: "access", exp: now + 3600 });
+  const refreshToken = await issueToken({ ...payload, type: "refresh", exp: now + 30 * 24 * 3600 });
+  if (process.env.DATABASE_URL) {
+    await new NeonRepository().upsertOAuthConnection({
+      id: `oauth_connection_${randomUUID().replaceAll("-", "").slice(0, 24)}`,
+      userId: payload.sub,
+      clientId: payload.clientId,
+      clientName: registration.clientName,
+      scopes: payload.scopes,
+    });
+  }
   return {
-    access_token: await issueToken({ ...payload, type: "access", exp: now + 3600 }),
+    access_token: accessToken,
     token_type: "Bearer",
     expires_in: 3600,
-    refresh_token: await issueToken({ ...payload, type: "refresh", exp: now + 30 * 24 * 3600 }),
+    refresh_token: refreshToken,
     scope: payload.scopes.join(" "),
   };
 }

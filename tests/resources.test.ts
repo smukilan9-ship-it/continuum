@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { recommendBestResource } from "../packages/domain/src/resources";
 import { checkpointScore } from "../apps/web/lib/resource-verification";
+import { POST as resourceAction } from "../apps/web/app/api/resources/route";
+
+async function postResource(body: Record<string, unknown>) {
+  return resourceAction(new Request("http://localhost:3000/api/resources", {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+    body: JSON.stringify(body),
+  }));
+}
 
 describe("outcome-first resource broker", () => {
   it("chooses PhET over the native tutor for interactive potential intuition", () => {
@@ -34,6 +43,48 @@ describe("outcome-first resource broker", () => {
     const recommendation = recommendBestResource({ id: "recommendation_research", topic: "research papers source exploration", need: "source_exploration", goalType: "research", costPreference: "free_only", now: "2026-07-19T00:00:00.000Z" });
     expect(recommendation.selected.cost).toBe("free");
     expect(recommendation.selected.id).not.toBe("resource_claude_science");
+  });
+
+  it("uses rejection feedback and excludes the rejected resource from the next ranking", () => {
+    const original = recommendBestResource({ id: "recommendation_first", topic: "electric potential voltage equipotential", need: "conceptual_intuition", minutesAvailable: 15, costPreference: "free_only" });
+    const replacement = recommendBestResource({
+      id: "recommendation_second",
+      topic: "electric potential voltage equipotential",
+      need: "conceptual_intuition",
+      minutesAvailable: 15,
+      costPreference: "free_only",
+      excludeResourceIds: [original.selected.id],
+      rejectionReasons: ["different_format"],
+      preferredFormats: ["textbook"],
+      feedback: "I need a readable textbook section",
+    });
+    expect(replacement.selected.id).not.toBe(original.selected.id);
+    expect(replacement.selected.formats).toContain("textbook");
+  });
+
+  it("requires Bluebook section scores instead of silently accepting a total", async () => {
+    const startedResponse = await postResource({
+      action: "start",
+      topic: "digital SAT official full length practice",
+      need: "official_exam_simulation",
+      goalType: "exam",
+      minutesAvailable: 150,
+      costPreference: "free_only",
+    });
+    expect(startedResponse.status).toBe(200);
+    const started = await startedResponse.json() as { activity: { id: string } };
+    await postResource({ action: "return", activityId: started.activity.id });
+
+    const insufficient = await postResource({ action: "verify", activityId: started.activity.id, answer: "BB10 1520" });
+    expect(insufficient.status).toBe(200);
+    await expect(insufficient.json()).resolves.toMatchObject({
+      outcome: "not_sufficient",
+      message: "This does not show completion yet",
+      explanation: expect.stringMatching(/both section scores/i),
+    });
+
+    const verified = await postResource({ action: "verify", activityId: started.activity.id, answer: "Test 10 · Reading and Writing 760 · Math 760" });
+    await expect(verified.json()).resolves.toMatchObject({ outcome: "verified", message: "Progress verified" });
   });
 
   it("accepts a correct short answer with an explanation without accepting contradictions", () => {

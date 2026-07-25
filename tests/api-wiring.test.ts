@@ -3,6 +3,8 @@ import { POST as learn } from "../apps/web/app/api/learning/route";
 import { POST as schedule } from "../apps/web/app/api/schedule/route";
 import { DELETE as deleteSource, POST as ingestSource } from "../apps/web/app/api/sources/route";
 import { POST as retrieve } from "../apps/web/app/api/retrieval/route";
+import { scheduleSeed } from "../apps/web/lib/demo-data";
+import { demoStore } from "../apps/web/lib/demo-store";
 
 function jsonRequest(url: string, body: unknown) {
   return new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -37,9 +39,25 @@ describe("wired application routes", () => {
   });
 
   it("returns a real solver proposal and preserves unaffected work during replan", async () => {
-    const proposedResponse = await schedule(jsonRequest("http://localhost/api/schedule", { action: "propose" }));
-    const proposed = await proposedResponse.json() as { proposal: { blocks: Array<{ id: string; taskId: string; status: string; start: string; end: string }>; explanation: string[] } };
+    demoStore.tasks = scheduleSeed.tasks.map((task) => ({ ...task }));
+    const intake = {
+      wakeTime: "06:30",
+      sleepTime: "22:30",
+      fixedCommitments: "Mon 08:00-15:00 School",
+      weekdayFree: "17:00-20:30",
+      weekendFree: "10:00-16:00",
+      priorities: "Physics\nResearch",
+      deadlines: "Physics: Friday",
+      sessionLength: 45,
+      breakMinutes: 10,
+      noDays: [0],
+      maxDailyMinutes: 180,
+    };
+    const proposedResponse = await schedule(jsonRequest("http://localhost/api/schedule", { action: "propose", intake }));
+    expect(proposedResponse.status).toBe(200);
+    const proposed = await proposedResponse.json() as { proposalId: string; assumptions: string[]; proposal: { blocks: Array<{ id: string; taskId: string; title: string; status: "planned" | "in_progress" | "done" | "missed"; start: string; end: string; flexible: boolean; completionEvidenceRequired: boolean }>; explanation: string[]; id: string; timezone: string; unscheduledTaskIds: string[]; preservedBlockIds: string[]; requiresConfirmation: boolean } };
     expect(proposed.proposal.explanation[0]).toMatch(/deterministically/i);
+    expect(proposed.assumptions.join(" ")).toMatch(/No Google Calendar connection/i);
     const first = proposed.proposal.blocks[0]!;
     first.status = "done";
     const research = proposed.proposal.blocks.find((block) => block.taskId === "task_research")!;
@@ -50,6 +68,15 @@ describe("wired application routes", () => {
     for (const taskId of new Set(proposed.proposal.blocks.filter((block) => block.id !== research.id && Date.parse(block.end) <= Date.parse(research.start)).map((block) => block.taskId))) {
       expect(replanned.proposal.blocks.filter((block) => block.taskId === taskId)).toHaveLength(1);
     }
+
+    const commitResponse = await schedule(jsonRequest("http://localhost/api/schedule", {
+      action: "commit",
+      proposalId: proposed.proposalId,
+      confirmedAt: new Date().toISOString(),
+      blocks: proposed.proposal.blocks.map((block, index) => index === 0 ? { ...block, title: "Edited study block", flexible: false } : block),
+    }));
+    const commitBody = await commitResponse.json() as { error?: string };
+    expect(commitResponse.status, commitBody.error).toBe(200);
   });
 
   it("persists an uploaded source, reuses duplicates, retrieves its exact chunk, and excludes it after deletion", async () => {
