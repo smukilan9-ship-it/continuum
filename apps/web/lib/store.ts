@@ -265,8 +265,8 @@ class MemoryStore implements Store {
         if (!Number.isFinite(Date.parse(start)) || !Number.isFinite(Date.parse(end)) || Date.parse(start) >= Date.parse(end) || Date.parse(end) - Date.parse(start) > 8 * 3600_000) throw new Error("Schedule proposal contains an invalid time range");
         demoStore.schedule = demoStore.schedule.map((block) => block.id === proposal.entityId ? { ...block, start, end, ...(typeof changes.status === "string" ? { status: changes.status } : {}), proposalId: proposal.id, committedAt: now } : block);
         proposal.status = "applied";
-        await this.appendEvent({ type: "schedule.change.committed", summary: "Committed one confirmed schedule block update.", entityIds: [String(proposal.id), String(proposal.entityId)], payload: { externalCalendarWrite: false }, source: { surface } }, now);
-        return { data: { proposal, blocks: demoStore.schedule.filter((block) => block.id === proposal.entityId), externalCalendarWrite: false }, entityIds: [String(proposal.id), String(proposal.entityId)], summary: "Committed the confirmed internal schedule change." };
+        await this.appendEvent({ type: "schedule.change.committed", summary: "Committed one confirmed schedule block update.", entityIds: [String(proposal.id), String(proposal.entityId)], payload: { savedInContinuum: true }, source: { surface } }, now);
+        return { data: { proposal, blocks: demoStore.schedule.filter((block) => block.id === proposal.entityId), savedInContinuum: true }, entityIds: [String(proposal.id), String(proposal.entityId)], summary: "Committed the confirmed schedule change in Continuum." };
       }
       const blocks = ((proposal.payload as { changes?: { blocks?: Array<Record<string, unknown>> } }).changes?.blocks ?? []).map((block) => {
         const taskId = String(block.taskId ?? "");
@@ -279,8 +279,8 @@ class MemoryStore implements Store {
       if (!blocks.length) throw new Error("Schedule proposal contains no blocks to commit");
       demoStore.schedule.unshift(...blocks);
       proposal.status = "applied";
-      await this.appendEvent({ type: "schedule.change.committed", summary: `Committed ${blocks.length} confirmed schedule block${blocks.length === 1 ? "" : "s"}.`, entityIds: [String(proposal.id), ...blocks.map((block) => String(block.id))], payload: { externalCalendarWrite: false }, source: { surface } }, now);
-      return { data: { proposal, blocks, externalCalendarWrite: false }, entityIds: [String(proposal.id), ...blocks.map((block) => String(block.id))], summary: "Committed the confirmed internal schedule change." };
+      await this.appendEvent({ type: "schedule.change.committed", summary: `Committed ${blocks.length} confirmed schedule block${blocks.length === 1 ? "" : "s"}.`, entityIds: [String(proposal.id), ...blocks.map((block) => String(block.id))], payload: { savedInContinuum: true }, source: { surface } }, now);
+      return { data: { proposal, blocks, savedInContinuum: true }, entityIds: [String(proposal.id), ...blocks.map((block) => String(block.id))], summary: "Committed the confirmed schedule change in Continuum." };
     }
     if (name === "record_learning_evidence") {
       const attemptId = String(args.attemptId);
@@ -498,8 +498,8 @@ class NeonStore implements Store {
       assertRecentConfirmation((args.confirmation as { confirmedAt?: unknown } | undefined)?.confirmedAt, now);
       const committed = await this.repo.commitScheduleProposal(String(args.proposalId), this.userId);
       const blockIds = committed.blocks.map((block) => block.id);
-      await this.appendEvent({ type: "schedule.change.committed", summary: `Committed ${blockIds.length} confirmed Continuum schedule block${blockIds.length === 1 ? "" : "s"}.`, entityIds: [committed.proposal.id, ...blockIds], payload: { confirmation: args.confirmation, externalCalendarWrite: false }, source: { surface } }, now);
-      return { data: { proposal: committed.proposal, blocks: committed.blocks, externalCalendarWrite: false }, entityIds: [committed.proposal.id, ...blockIds], summary: "Committed the confirmed internal Continuum schedule change. No external calendar write was claimed." };
+      await this.appendEvent({ type: "schedule.change.committed", summary: `Committed ${blockIds.length} confirmed Continuum schedule block${blockIds.length === 1 ? "" : "s"}.`, entityIds: [committed.proposal.id, ...blockIds], payload: { confirmation: args.confirmation, savedInContinuum: true }, source: { surface } }, now);
+      return { data: { proposal: committed.proposal, blocks: committed.blocks, savedInContinuum: true }, entityIds: [committed.proposal.id, ...blockIds], summary: "Committed the confirmed schedule change in Continuum." };
     }
     if (name === "record_learning_evidence") {
       const attemptId = String(args.attemptId);

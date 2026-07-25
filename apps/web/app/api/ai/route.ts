@@ -4,6 +4,7 @@ import { getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { aiErrorResponse, runStructuredAi } from "@/lib/ai-gateway";
 import { buildAcademicPrompt } from "@/lib/prompt-context";
 import { getStore } from "@/lib/store";
+import { promptContracts } from "@/lib/prompt-registry";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -48,9 +49,7 @@ export async function POST(request: Request) {
       educationLevel: user.educationLevel,
       curriculum: "Use the learner's stored board/curriculum when present; otherwise do not infer one.",
       relevantContext,
-      outputContract: parsed.data.taskClass === "misconception_diagnosis"
-        ? "Return the diagnostic schema with a calibrated score, explicit misconception evidence, prerequisites, intervention, and rationale."
-        : "Return the lesson schema with a concise explanation and one to six checks for understanding.",
+      outputContract: promptContracts.learning[parsed.data.taskClass],
       additionalPolicy: parsed.data.sourceLocked ? ["This task is source-locked. Make no factual claim beyond supplied source evidence."] : [],
     });
     const common = {

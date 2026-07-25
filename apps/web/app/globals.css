@@ -908,15 +908,38 @@ textarea { min-height: 90px; resize: vertical; }
 .studio-toolbar-actions { display: flex; align-items: center; gap: 4px; }
 .studio-toolbar-actions .button { min-height: 38px; }
 .studio-toolbar-actions .button kbd { color: inherit; border: 0; opacity: .8; }
+.studio-file-name { min-width: 150px; display: flex; align-items: center; gap: 8px; color: var(--primary); }
+.studio-file-name input { width: 150px; min-height: 36px; padding: 6px 9px; color: var(--dark-blue); background: var(--surface-soft); border: 1px solid var(--line); border-radius: 7px; font: 700 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 .program-runbar { min-height: 72px; padding: 9px 12px; display: grid; grid-template-columns: minmax(250px, .75fr) minmax(280px, 1.25fr); align-items: center; gap: 16px; background: var(--surface); border: 1px solid var(--line); border-bottom: 0; }
-.program-runbar label { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; color: var(--dark-blue); font-size: 11px; font-weight: 750; }
+.program-runbar label { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px 9px; color: var(--dark-blue); font-size: 11px; font-weight: 750; }
+.program-runbar label small { grid-column: 2; color: var(--muted); font-size: 9px; font-weight: 500; }
 .program-runbar textarea { min-height: 48px; max-height: 92px; padding: 8px 10px; color: var(--ink); background: var(--surface-soft); border: 1px solid var(--line-strong); border-radius: 8px; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; resize: vertical; }
 .program-runbar p { margin: 0; display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .program-runbar p svg { flex: none; color: var(--success); }
 .icon-text-button { min-height: 38px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; color: var(--muted); background: transparent; border: 0; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 680; }
 .icon-text-button:hover { color: var(--dark-blue); background: var(--panel-soft); }
-.code-studio { min-height: 620px; display: grid; grid-template-columns: minmax(190px, .58fr) minmax(400px, 1.35fr) minmax(330px, .92fr); grid-template-areas: "lesson editor execution"; align-items: stretch; overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: 0 0 13px 13px; box-shadow: 0 10px 32px rgba(13, 58, 96, .055); }
-.editor-pane { min-width: 0; grid-area: editor; border-inline: 1px solid var(--line); background: var(--surface); }
+.code-studio { min-height: 620px; display: grid; grid-template-columns: minmax(440px, 1.25fr) minmax(330px, .85fr); grid-template-areas: "editor execution"; align-items: stretch; overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: 0 0 13px 13px; box-shadow: 0 10px 32px rgba(13, 58, 96, .055); }
+.editor-pane { min-width: 0; grid-area: editor; border-right: 1px solid var(--line); background: var(--surface); }
+.code-advanced-settings, .code-task-brief { border: 1px solid var(--line); border-bottom: 0; background: var(--surface); }
+.code-advanced-settings > summary, .code-task-brief > summary { min-height: 40px; padding: 9px 13px; display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--dark-blue); font-size: 11px; font-weight: 750; list-style: none; }
+.code-advanced-settings > summary::-webkit-details-marker, .code-task-brief > summary::-webkit-details-marker { display: none; }
+.code-advanced-settings > summary::after, .code-task-brief > summary::after { content: "›"; margin-left: auto; transition: transform .15s ease; }
+.code-advanced-settings[open] > summary::after, .code-task-brief[open] > summary::after { transform: rotate(90deg); }
+.code-advanced-settings > div { padding: 12px 14px; display: flex; align-items: flex-start; gap: 18px; background: var(--surface-soft); border-top: 1px solid var(--line); }
+.code-advanced-settings label { display: grid; gap: 5px; color: var(--dark-blue); font-size: 11px; font-weight: 700; }
+.code-advanced-settings select { min-height: 38px; padding: 7px 30px 7px 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface); }
+.code-advanced-settings p { max-width: 520px; margin: 4px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.code-task-brief > summary span { display: grid; gap: 1px; }
+.code-task-brief > summary small { color: var(--muted); font-size: 9px; font-weight: 500; }
+.code-task-grid { padding: 14px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; background: var(--surface-soft); border-top: 1px solid var(--line); }
+.code-task-grid section h2 { margin: 0 0 5px; color: var(--dark-blue); font-size: 11px; }
+.code-task-grid section p, .code-task-grid section code { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.code-task-grid section code { display: block; padding: 8px; color: var(--blue-strong); background: var(--blue-soft); border-radius: 7px; }
+.code-task-grid dl { grid-column: 1 / -1; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.code-task-grid dl > div { padding-top: 10px; border-top: 1px solid var(--line); }
+.code-task-grid dt { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.code-task-grid dd { margin: 3px 0 0; color: var(--ink); font-size: 10px; }
+.code-task-grid .reset-link { grid-column: 1 / -1; justify-self: start; }
 .editor-pane > header { min-height: 44px; padding: 0 13px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); background: var(--surface-soft); border-bottom: 1px solid var(--line); font-size: 10px; }
 .editor-pane > header > div { display: flex; align-items: center; gap: 7px; color: var(--dark-blue); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
 .editor-pane > header > span { display: flex; align-items: center; gap: 5px; }
@@ -990,6 +1013,56 @@ textarea { min-height: 90px; resize: vertical; }
 .sql-result em { color: var(--muted); }
 .rows-modified, .quiet-success { margin: 0; padding: 11px 14px; display: flex; align-items: center; gap: 7px; color: var(--success); background: var(--success-soft); font-size: 11px; }
 .runtime-next-action { padding: 12px 14px; display: flex; justify-content: flex-end; }
+.runtime-technical-details { border-bottom: 1px solid var(--line); }
+.runtime-technical-details summary { padding: 10px 14px; cursor: pointer; color: var(--muted); font-size: 10px; font-weight: 700; }
+.runtime-technical-details dl { margin: 0; padding: 0 14px 12px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px 14px; }
+.runtime-technical-details dl > div { display: flex; justify-content: space-between; gap: 8px; }
+.runtime-technical-details dt, .runtime-technical-details dd { margin: 0; font-size: 9px; }
+.runtime-technical-details dt { color: var(--muted); }
+.runtime-technical-details dd { color: var(--dark-blue); font-weight: 700; }
+.runtime-raw-error { padding: 0 14px 14px; display: grid; gap: 7px; }
+.runtime-raw-error > strong { color: var(--muted); font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
+.runtime-raw-error pre { max-height: 180px; font-size: 9px; opacity: .9; }
+.python-file-flow { display: grid; gap: 18px; }
+.python-file-flow section { display: grid; gap: 10px; }
+.python-file-flow h3 { margin: 0; color: var(--dark-blue); font-size: 14px; }
+.python-file-flow ol { margin: 0; padding-left: 22px; color: var(--muted); font-size: 12px; line-height: 1.8; }
+.file-drop { min-height: 86px; padding: 14px; position: relative; display: flex; align-items: center; gap: 12px; color: var(--primary); background: var(--primary-soft); border: 1px dashed var(--primary); border-radius: 10px; cursor: pointer; }
+.file-drop span { display: grid; gap: 3px; }
+.file-drop strong { color: var(--dark-blue); font-size: 12px; }
+.file-drop small { color: var(--muted); font-size: 10px; }
+.file-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.selected-python-file { padding: 11px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 9px; }
+.selected-python-file > div:first-of-type { display: grid; }
+.selected-python-file > div:last-child { margin-left: auto; display: flex; gap: 6px; }
+.selected-python-file strong { color: var(--dark-blue); font-size: 12px; }
+.selected-python-file span { color: var(--muted); font-size: 10px; }
+.privacy-note { margin: 0; padding: 10px; color: var(--muted); background: var(--surface-soft); border-radius: 8px; font-size: 10px; line-height: 1.5; }
+.guided-config { display: grid; gap: 12px; }
+.guided-config h3, .guided-config p { margin: 0; }
+.guided-config h3 { color: var(--dark-blue); font-size: 16px; }
+.guided-config p, .guided-config ol { color: var(--muted); font-size: 12px; line-height: 1.65; }
+.guided-config ol { margin: 0; padding-left: 22px; }
+.guided-config label { display: grid; gap: 6px; color: var(--dark-blue); font-size: 11px; font-weight: 750; }
+.guided-config input { min-height: 42px; padding: 8px 10px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; }
+.guided-step { width: max-content; padding: 4px 8px; color: var(--primary); background: var(--primary-soft); border-radius: 999px; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.secret-field, .copy-field { display: flex; align-items: center; gap: 6px; }
+.secret-field input, .copy-field input { min-width: 0; flex: 1; }
+.secret-field button { width: 40px; height: 40px; display: grid; place-items: center; color: var(--muted); background: transparent; border: 0; border-radius: 7px; }
+.config-test-success, .config-test-error { padding: 10px 11px; display: grid; gap: 3px; border-radius: 8px; }
+.config-test-success { color: var(--success); background: var(--success-soft); }
+.config-test-error { color: var(--error); background: var(--error-soft); }
+.config-test-success strong, .config-test-error strong { font-size: 11px; }
+.config-test-success span, .config-test-error span { color: var(--muted-strong); font-size: 10px; line-height: 1.5; }
+.paper-metadata-details { margin-top: 10px; }
+.paper-metadata-details summary { cursor: pointer; color: var(--primary); font-size: 10px; font-weight: 750; }
+.paper-metadata-details dl { margin: 9px 0 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px 14px; }
+.paper-metadata-details dl > div { min-width: 0; }
+.paper-metadata-details dt { color: var(--muted); font-size: 9px; font-weight: 750; }
+.paper-metadata-details dd { margin: 2px 0 0; color: var(--ink); font-size: 10px; overflow-wrap: anywhere; }
+.paper-metadata-details p { margin: 9px 0 0; color: var(--warning); font-size: 9px; }
+.openalex-attribution { margin-left: auto; color: var(--muted); font-size: 10px; }
+.discovery-more { justify-self: center; margin: 10px auto 2px; }
 .tests-panel > header { padding: 15px; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--line); }
 .tests-panel > header > div { display: grid; gap: 2px; }
 .tests-panel > header strong { color: var(--dark-blue); font-size: 13px; }
@@ -1033,26 +1106,26 @@ textarea { min-height: 90px; resize: vertical; }
 .run-history-details > summary { padding: 0 14px; }
 
 @media (max-width: 1180px) {
-  .code-studio { grid-template-columns: minmax(170px, .55fr) minmax(350px, 1.2fr) minmax(300px, .9fr); }
+  .code-studio { grid-template-columns: minmax(390px, 1.15fr) minmax(300px, .85fr); }
   .icon-text-button { padding-inline: 7px; }
 }
 
 @media (max-width: 1040px) {
   .studio-save-status { display: none; }
   .program-runbar { grid-template-columns: 1fr; gap: 8px; }
-  .code-studio { grid-template-columns: minmax(200px, .56fr) minmax(0, 1.44fr); grid-template-areas: "lesson editor" "execution execution"; }
+  .code-studio { grid-template-columns: 1fr; grid-template-areas: "editor" "execution"; }
   .execution-pane { border-top: 1px solid var(--line); }
   .output-body { min-height: 400px; }
   .runtime-empty, .runtime-loading { min-height: 330px; }
-  .code-studio.lesson-collapsed { grid-template-columns: minmax(200px, .56fr) minmax(0, 1.44fr); grid-template-areas: "lesson editor" "execution execution"; }
+  .code-task-grid { grid-template-columns: repeat(2, 1fr); }
   .lesson-rail.collapsed { min-height: 52px; }
 }
 
 @media (max-width: 700px) {
   .premium-screen .page-intro h1 { font-size: 30px; }
   .studio-toolbar { min-height: 54px; padding: 7px; flex-wrap: wrap; }
-  .studio-file { flex: 1; }
-  .studio-file span { display: none; }
+  .studio-file-name { flex: 1; }
+  .studio-file-name input { width: 100%; }
   .studio-language { order: 3; width: 100%; margin: 0; }
   .studio-language > span { display: none; }
   .studio-language select { width: 100%; min-height: 44px; }
@@ -1060,14 +1133,18 @@ textarea { min-height: 90px; resize: vertical; }
   .studio-toolbar-actions .button { min-height: 44px; }
   .program-runbar { padding: 10px; grid-template-columns: 1fr; }
   .program-runbar label { grid-template-columns: 1fr; }
-  .code-studio { grid-template-columns: 1fr; grid-template-areas: "lesson" "editor" "execution"; }
+  .program-runbar label small { grid-column: 1; }
+  .code-advanced-settings > div { flex-direction: column; }
+  .code-task-grid, .code-task-grid dl { grid-template-columns: 1fr; }
+  .code-studio { grid-template-columns: 1fr; grid-template-areas: "editor" "execution"; }
   .editor-pane { border-inline: 0; }
   .editor-pane .code-editor-shell .cm-scroller { min-height: 430px; max-height: 540px; }
   .editor-pane .code-editor-fallback { min-height: 430px !important; }
   .editor-pane > header > span { display: none; }
   .execution-pane { border-top: 1px solid var(--line); }
   .lesson-rail { border-top: 1px solid var(--line); }
-  .code-studio.lesson-collapsed { grid-template-columns: 1fr; grid-template-areas: "lesson" "editor" "execution"; }
+  .selected-python-file { align-items: flex-start; flex-wrap: wrap; }
+  .selected-python-file > div:last-child { width: 100%; margin-left: 0; }
   .lesson-rail.collapsed { min-height: 56px; padding: 8px 12px; align-items: stretch; }
   .lesson-rail.collapsed .lesson-rail-heading { align-items: center; flex-direction: row; }
   .lesson-rail.collapsed .lesson-toggle { width: 44px; height: 44px; margin: -3px 0 -3px auto; }

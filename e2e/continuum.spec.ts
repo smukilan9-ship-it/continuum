@@ -92,7 +92,13 @@ async function readCurrentWeekThroughMcp(page: Page) {
   };
 
   await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "playwright", version: "1" } });
-  return rpc("tools/call", { name: "get_context_pack", arguments: { packId: "current_week", maxTokens: 4000 } });
+  const result = await rpc("tools/call", { name: "get_context_pack", arguments: { packId: "current_week", maxTokens: 4000 } });
+  const cleanup = await page.request.post("/api/integrations", {
+    headers: { origin: baseURL },
+    data: { action: "revoke_mcp_client", clientId },
+  });
+  expect(cleanup.ok()).toBeTruthy();
+  return result;
 }
 
 test.describe.serial("Continuum primary journeys", () => {
@@ -149,14 +155,16 @@ test.describe.serial("Continuum primary journeys", () => {
     await expect(page.getByRole("heading", { name: "Write it. Run it. Understand why it works." })).toBeVisible();
     await page.getByLabel("Language").selectOption("javascript");
     await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
-    await expect(page.getByRole("tab", { name: /Tests 1\/1/ })).toHaveAttribute("aria-selected", "true");
-    await page.getByRole("tab", { name: "Output" }).click();
-    await expect(page.getByText("Program output", { exact: true })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Output" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(".runtime-result h3", { hasText: "Output" })).toBeVisible();
     await expect(page.locator(".runtime-result pre")).toContainText("Selected: 88, 91, 85");
     await expect(page.locator(".runtime-result pre")).toContainText("Count: 3");
+    await page.getByRole("tab", { name: /^Tests/ }).click();
+    await page.getByRole("button", { name: "Run tests" }).click();
+    await expect(page.getByRole("tab", { name: /Tests 1\/1/ })).toHaveAttribute("aria-selected", "true");
 
     await page.getByRole("tab", { name: "Feedback" }).click();
-    await page.getByRole("button", { name: "Explain", exact: true }).click();
+    await page.getByRole("button", { name: "Explain my code", exact: true }).click();
     await page.getByRole("button", { name: "Get feedback" }).click();
     await expect(page.locator(".coach-markdown")).toContainText("actual runtime selected four scores");
     await expect(page.getByText("Get feedback only when you ask")).toBeVisible();
@@ -179,10 +187,80 @@ test.describe.serial("Continuum primary journeys", () => {
 
     await page.getByLabel("Language").selectOption("sql");
     await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
+    await expect(page.locator(".sql-result")).toContainText("Asha");
+    await page.getByRole("tab", { name: /^Tests/ }).click();
+    await page.getByRole("button", { name: "Run tests" }).click();
     await expect(page.getByRole("tab", { name: /Tests.*1\/1/ })).toHaveAttribute("aria-selected", "true");
     await page.getByRole("tab", { name: "Output" }).click();
     await expect(page.locator(".sql-result")).toContainText("Asha");
     await expect(page.locator(".sql-result")).toContainText("Meera");
+  });
+
+  test("Python execution is direct, stoppable, and accepts a checked local file", async ({ page }) => {
+    let aiRequests = 0;
+    await page.route("**/api/code", async (route) => {
+      aiRequests += 1;
+      await route.fulfill({
+        contentType: "text/plain; charset=utf-8",
+        body: "This program prints the supplied name. The runtime result confirms that the input and output path work.",
+      });
+    });
+    const setEditor = async (source: string) => {
+      const editor = page.locator(".code-editor-shell .cm-content");
+      await editor.click();
+      await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+      await page.keyboard.insertText(source);
+    };
+
+    await demoLogin(page);
+    await page.getByRole("link", { name: "Code", exact: true }).click();
+    await page.getByLabel("Language").selectOption("python");
+
+    await setEditor('print("Hello, world!")');
+    await page.getByLabel("Program input").fill("");
+    await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
+    await expect(page.locator(".runtime-result pre")).toContainText("Hello, world!", { timeout: 45_000 });
+    await expect(page.locator(".runtime-result")).toContainText("exit code 0");
+    expect(aiRequests).toBe(0);
+
+    await setEditor('name = input()\nprint(f"Hello, {name}")');
+    await page.getByLabel("Program input").fill("Asha");
+    await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
+    await expect(page.locator(".runtime-result pre")).toContainText("Hello, Asha");
+
+    await setEditor("print(");
+    await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
+    await expect(page.locator(".runtime-result")).toContainText("Compiler error");
+    await expect(page.locator(".runtime-stderr")).toContainText("SyntaxError");
+
+    await setEditor("print(1 / 0)");
+    await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
+    await expect(page.locator(".runtime-result")).toContainText("Runtime error");
+    await expect(page.locator(".runtime-stderr")).toContainText("ZeroDivisionError");
+
+    await setEditor("while True:\n    pass");
+    await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
+    await page.locator(".studio-toolbar-actions").getByRole("button", { name: "Stop" }).click();
+    await expect(page.locator(".runtime-result")).toContainText("Stopped");
+    await expect(page.locator(".runtime-result")).toContainText("terminated");
+
+    await page.getByRole("button", { name: "Use a file" }).click();
+    const fileInput = page.getByLabel("Choose a Python file");
+    await fileInput.setInputFiles({ name: "uploaded.py", mimeType: "text/x-python", buffer: Buffer.from('print("From file")\\n') });
+    await expect(page.getByText("uploaded.py", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "View code in editor" }).click();
+    await expect(page.getByLabel("File name")).toHaveValue("uploaded.py");
+
+    await page.getByRole("button", { name: "Use a file" }).click();
+    await fileInput.setInputFiles({ name: "not-python.txt", mimeType: "text/plain", buffer: Buffer.from("not Python") });
+    await expect(page.getByRole("alert")).toContainText("ending in .py");
+    await page.getByRole("button", { name: "Cancel" }).click();
+
+    await page.getByRole("button", { name: "AI help" }).click();
+    await page.getByRole("button", { name: "Explain my code" }).click();
+    await page.getByRole("button", { name: "Get feedback" }).click();
+    await expect(page.locator(".coach-markdown")).toContainText("runtime result confirms");
+    expect(aiRequests).toBe(1);
   });
 
   test("Plan drafts a deterministic week and requires confirmation", async ({ page }) => {
@@ -215,7 +293,6 @@ test.describe.serial("Continuum primary journeys", () => {
         contentType: "application/json",
         json: {
           providers: [{ provider: "openalex", status: "live" }, { provider: "crossref", status: "unconfigured", message: "Not requested by this fixture" }],
-          scholarHandoffUrl: "https://scholar.google.com/scholar?q=spatial+transcriptomics",
           attribution: ["OpenAlex"],
           results: [{
             providerId: `W${Date.now()}`,
@@ -256,10 +333,67 @@ test.describe.serial("Continuum primary journeys", () => {
     await expect(page.getByText("OpenAlex: live")).toBeVisible();
     const result = page.locator(".paper-result").filter({ hasText: title });
     await expect(result).toBeVisible();
-    await result.getByRole("button", { name: "Save", exact: true }).click();
+    await result.getByRole("button", { name: "Save to library", exact: true }).click();
     await expect(page.getByRole("status")).toContainText(/Paper saved|already saved/i);
     await page.getByRole("button", { name: /Papers/ }).click();
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  });
+
+  test("connection setup stays in guided dialogs with actionable validation", async ({ page }) => {
+    await page.route("**/api/integrations/credentials", async (route) => {
+      if (route.request().method() === "GET") {
+        return route.fulfill({
+          contentType: "application/json",
+          json: {
+            providers: [
+              { provider: "openalex", name: "OpenAlex", purpose: "Search and rank scholarly works, authors, topics, and citation signals.", privacy: "Search terms and filters are sent to OpenAlex.", docs: "https://developers.openalex.org/api-reference/authentication" },
+              { provider: "youtube", name: "YouTube Data API", purpose: "Retrieve real learning-video metadata before Continuum ranks it.", privacy: "Learning queries are sent to Google; the key is used server-side only.", docs: "https://developers.google.com/youtube/v3/getting-started" },
+            ],
+            configured: [],
+          },
+        });
+      }
+      const body = route.request().postDataJSON() as { action: string; secret?: string };
+      if (body.action === "validate" && body.secret?.startsWith("invalid")) {
+        return route.fulfill({ status: 422, contentType: "application/json", json: { error: "Continuum could not connect because OpenAlex rejected this API key. Check for spaces before or after the key, then try again." } });
+      }
+      if (body.action === "validate") {
+        return route.fulfill({ contentType: "application/json", json: { status: "connected", message: "OpenAlex accepted this API key. It has not been saved yet." } });
+      }
+      return route.fulfill({ status: 201, contentType: "application/json", json: { status: "connected", message: "OpenAlex connected." } });
+    });
+    await demoLogin(page);
+    await page.getByRole("link", { name: "Connections", exact: true }).click();
+    const openAlex = page.locator(".settings-row").filter({ hasText: "OpenAlex" });
+
+    await openAlex.getByRole("button", { name: "Configure" }).click();
+    await expect(page.getByRole("dialog", { name: "Connect OpenAlex" })).toBeVisible();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByRole("dialog", { name: "Connect OpenAlex" })).toHaveCount(0);
+
+    await openAlex.getByRole("button", { name: "Configure" }).click();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Back" }).click();
+    await expect(page.getByText("Step 1 of 2")).toBeVisible();
+    await page.getByRole("button", { name: "Continue" }).click();
+
+    const key = page.getByLabel("API key", { exact: true });
+    await key.fill("invalid-openalex-key");
+    await page.getByRole("button", { name: "Test connection" }).click();
+    await expect(page.getByRole("status")).toContainText("OpenAlex rejected this API key");
+    await key.fill("valid-openalex-key");
+    await page.getByRole("button", { name: "Test connection" }).click();
+    await expect(page.getByRole("status")).toContainText("Connection successful");
+    await page.getByRole("button", { name: "Save connection" }).click();
+    await expect(page.getByRole("dialog", { name: "Connect OpenAlex" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Connect Claude" }).click();
+    await expect(page.getByRole("dialog", { name: "Connect Claude to Continuum" })).toBeVisible();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: "Choose local AI" }).click();
+    await expect(page.getByRole("dialog", { name: "Choose local AI for coding help" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Choose local AI for coding help" })).toHaveCount(0);
   });
 
   test("Memory opens a token-bounded MCP context pack", async ({ page }) => {

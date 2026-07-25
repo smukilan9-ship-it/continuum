@@ -21,7 +21,7 @@ Its two product rules are:
 - Private PDF/text ingestion with sanitization, stable chunks, content hashes, duplicate detection, optional private Blob originals, pgvector embeddings, lexical fallback, and source deletion from retrieval.
 - A syllabus-aware Code Lab with disposable browser workers for real JavaScript, TypeScript, Python (Pyodide), and SQLite execution; stdout/stderr/exit/timeout/test reporting; persisted local sessions; and visibly separate streaming AI coaching. Java, C/C++, and Rust remain honestly editor-only.
 - Featherless task-aware routing from the live plan/catalog with up to four server-side Featherless keys, health/backoff-aware least-busy selection, reviewed task fallbacks, Groq low-latency and reasoning routes, direct Gemini generation/embeddings with up to ten server-side keys, AI Gateway fallback, Featherless embeddings, and optional local Ollama.
-- Real user connection flows for Claude remote MCP, Google Calendar OAuth and explicit two-way schedule sync, encrypted paginated Zotero library indexing, NotebookLM source-pack handoff, Obsidian, and Ollama. Personal NotebookLM is correctly labeled as a handoff because it exposes no general account API.
+- Real user connection flows for Claude remote MCP, encrypted paginated Zotero library indexing, NotebookLM source-pack handoff, Obsidian, and Ollama. Continuum’s own editable planner has no external-calendar dependency. Personal NotebookLM is correctly labeled as a handoff because it exposes no general account API.
 - An optional Obsidian plugin. The user chooses one folder or explicitly opts into the whole vault; secrets use Obsidian SecretStorage, generated Continuum notes cannot overwrite ordinary notes, and original binaries require private Blob storage.
 
 Zero-credential local mode uses an explicitly labeled in-memory development identity. The optional Maya database seed is a separate acceptance fixture. Ordinary persistent accounts never receive its goals or research data; they start with honest onboarding and user-owned records.
@@ -108,7 +108,11 @@ or high-stakes requests are never repeatedly retried.
 
 Provider keys belong in an encrypted deployment secret store or the ignored local environment file. No system can make a key literally impossible to compromise; Continuum reduces exposure through server-only access, least privilege, no logging/display of values, rotation, and revocation.
 
-The model layer is now **discovery- and health-aware** (`packages/ai/src/health.ts`): Gemini models are discovered at runtime and a working, untripped model is selected automatically, so a temporarily-503 or unavailable default is skipped rather than fatal. The shipped `GEMINI_MODEL` and Featherless model IDs are **live-verified** (`gemini-flash-lite-latest`, Qwen2.5 family), not forward-dated. Live provider health is exposed at `GET /api/ai/status`. Featherless removed its public `/v1/models` catalogue endpoint, so its curated IDs are used directly. See [REAL_APP_REPORT.md](REAL_APP_REPORT.md), [docs/provider-registry.md](docs/provider-registry.md), [docs/gemini-verification.md](docs/gemini-verification.md), and [docs/featherless-verification.md](docs/featherless-verification.md).
+The model layer is health-aware (`packages/ai/src/health.ts`), and every route,
+fallback, timeout, quota, and unsupported category is documented in
+[model routing](docs/model-routing.md). Prompt composition, trust boundaries,
+schemas, and actual limitations are documented in
+[prompt engineering](docs/prompt-engineering.md).
 
 See [deployment and configuration](docs/deployment.md) and the [exact integration setup guide](docs/integrations.md). A full audit of performance, security, and feature verification is in [AUDIT_REPORT.md](AUDIT_REPORT.md).
 

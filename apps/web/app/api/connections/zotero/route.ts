@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const requestSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("validate"), apiKey: z.string().trim().min(16).max(256) }),
   z.object({ action: z.literal("connect"), apiKey: z.string().trim().min(16).max(256) }),
   z.object({ action: z.literal("sync") }),
   z.object({ action: z.literal("disconnect") }),
@@ -56,9 +57,16 @@ export async function POST(request: Request) {
 
   try {
     if (parsed.data.action === "disconnect") return NextResponse.json({ disconnected: await repo.revokeIntegration(user.id, "zotero") });
-    if (parsed.data.action === "connect") {
+    if (parsed.data.action === "validate" || parsed.data.action === "connect") {
       const key = await zoteroFetch<ZoteroKey>("/keys/current", parsed.data.apiKey);
       if (!key.userID || !key.access?.user?.library) return NextResponse.json({ error: "Create a Zotero key with personal-library read access" }, { status: 403 });
+      if (parsed.data.action === "validate") {
+        return NextResponse.json({
+          valid: true,
+          username: key.username ?? `Zotero user ${key.userID}`,
+          message: "Zotero accepted this read-only personal-library key. It has not been saved yet.",
+        });
+      }
       const existing = await repo.getIntegration(user.id, "zotero");
       await repo.upsertIntegration({
         id: existing?.id ?? `integration_zotero_${randomUUID().replaceAll("-", "").slice(0, 20)}`,

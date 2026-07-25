@@ -8,6 +8,7 @@ import {
   credentialProviderMetadata,
   credentialProviders,
   maskedCredential,
+  ProviderCredentialUnavailableError,
   providerCredentialEnvelope,
   readUserProviderCredential,
   verifyProviderCredential,
@@ -19,6 +20,7 @@ export const dynamic = "force-dynamic";
 
 const providerSchema = z.enum(credentialProviders);
 const writeSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("validate"), provider: providerSchema, secret: z.string().trim().min(8).max(2_000) }),
   z.object({ action: z.literal("configure"), provider: providerSchema, secret: z.string().trim().min(8).max(2_000), currentPassword: z.string().min(1).max(200).optional() }),
   z.object({ action: z.literal("test"), provider: providerSchema }),
 ]);
@@ -66,9 +68,28 @@ export async function GET(request: Request) {
   const rate = await enforceRateLimit(request, "credential-status", 60, 60_000, user.id);
   if (!rate.allowed) return NextResponse.json({ error: "Credential status limit reached" }, { status: 429 });
   const configured = process.env.DATABASE_URL
-    ? (await Promise.all(credentialProviders.map((provider) => readUserProviderCredential(user.id, provider))))
-      .filter((credential): credential is NonNullable<typeof credential> => Boolean(credential))
-      .map((credential) => publicRecord(credential.integration, credential.metadata, credential.encryptionVersion))
+    ? (await Promise.all(credentialProviders.map(async (provider) => {
+      try {
+        const credential = await readUserProviderCredential(user.id, provider);
+        return credential
+          ? publicRecord(credential.integration, credential.metadata, credential.encryptionVersion)
+          : undefined;
+      } catch (error) {
+        if (!(error instanceof ProviderCredentialUnavailableError)) throw error;
+        const integration = await new NeonRepository().getIntegration(user.id, provider);
+        if (!integration) return undefined;
+        return {
+          provider,
+          ...credentialProviderMetadata[provider],
+          status: "invalid",
+          masked: "Stored key unavailable",
+          reconfigurationRequired: true,
+          problem: `Continuum cannot read this saved ${credentialProviderMetadata[provider].name} key with the current encryption setup. Replace it to reconnect; other connections are unaffected.`,
+          createdAt: integration.createdAt.toISOString(),
+          updatedAt: integration.updatedAt.toISOString(),
+        };
+      }
+    }))).filter((credential): credential is NonNullable<typeof credential> => Boolean(credential))
     : [];
   return NextResponse.json({
     providers: credentialProviders.map((provider) => ({ provider, ...credentialProviderMetadata[provider] })),
@@ -83,17 +104,25 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const rate = await enforceRateLimit(request, "credential-write", 20, 60 * 60_000, user.id);
   if (!rate.allowed) return NextResponse.json({ error: "Credential change limit reached" }, { status: 429 });
-  if (!process.env.DATABASE_URL) return NextResponse.json({ error: "Persistent provider credentials require DATABASE_URL" }, { status: 503 });
   const parsed = writeSchema.safeParse(await request.json().catch(() => undefined));
   if (!parsed.success) return NextResponse.json({ error: "Invalid credential action" }, { status: 400 });
+  if (parsed.data.action === "validate") {
+    const health = await verifyProviderCredential(parsed.data.provider, parsed.data.secret);
+    const name = credentialProviderMetadata[parsed.data.provider].name;
+    if (health.status === "invalid") return NextResponse.json({ error: `Continuum could not connect because ${name} rejected this API key. Check for spaces before or after the key, then try again.`, ...health }, { status: 422 });
+    if (health.status === "degraded") return NextResponse.json({ error: `${name} did not answer the connection check. The key was not saved; wait a moment and try again.`, ...health }, { status: 503 });
+    return NextResponse.json({ provider: parsed.data.provider, ...health, message: `${name} accepted this API key. It has not been saved yet.` });
+  }
+  if (!process.env.DATABASE_URL) return NextResponse.json({ error: "Continuum cannot save provider keys until persistent storage is configured." }, { status: 503 });
 
   const repo = new NeonRepository();
   const existing = await repo.getIntegration(user.id, parsed.data.provider);
   if (parsed.data.action === "configure") {
     if (existing && !await reauthenticate(user, parsed.data.currentPassword)) return NextResponse.json({ error: "Enter your current password before replacing this credential" }, { status: 403 });
     const health = await verifyProviderCredential(parsed.data.provider, parsed.data.secret);
-    if (health.status === "invalid") return NextResponse.json({ error: "The provider rejected this credential", status: health.status, code: health.code }, { status: 422 });
-    if (health.status === "degraded") return NextResponse.json({ error: "The provider could not validate this credential right now", status: health.status, code: health.code }, { status: 503 });
+    const name = credentialProviderMetadata[parsed.data.provider].name;
+    if (health.status === "invalid") return NextResponse.json({ error: `Continuum could not save this key because ${name} rejected it. Check for extra spaces and try again.`, status: health.status, code: health.code }, { status: 422 });
+    if (health.status === "degraded") return NextResponse.json({ error: `${name} did not answer the final connection check, so Continuum did not save the key. Try again shortly.`, status: health.status, code: health.code }, { status: 503 });
     const sealed = sealCredential(providerCredentialEnvelope(parsed.data.provider, parsed.data.secret, health.status, health.checkedAt));
     const masked = maskedCredential(parsed.data.secret);
     const saved = await repo.upsertIntegration({
@@ -114,7 +143,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ provider: parsed.data.provider, status: "connected", masked, lastValidatedAt: health.checkedAt, encryptionVersion: credentialEncryptionVersion(sealed) }, { status: existing ? 200 : 201, headers: { "cache-control": "no-store" } });
   }
 
-  const credential = await readUserProviderCredential(user.id, parsed.data.provider);
+  let credential;
+  try {
+    credential = await readUserProviderCredential(user.id, parsed.data.provider);
+  } catch (error) {
+    if (error instanceof ProviderCredentialUnavailableError) {
+      return NextResponse.json({
+        error: `Continuum cannot read the saved ${credentialProviderMetadata[parsed.data.provider].name} key. Replace it to reconnect.`,
+        code: error.code,
+      }, { status: 409 });
+    }
+    throw error;
+  }
   if (!credential) return NextResponse.json({ error: "This provider is not configured" }, { status: 404 });
   const health = await verifyProviderCredential(parsed.data.provider, credential.secret);
   await repo.upsertIntegration({

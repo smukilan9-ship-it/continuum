@@ -7,10 +7,10 @@ import { POST as exchangeToken } from "../apps/web/app/api/oauth/token/route";
 import { createHash } from "node:crypto";
 import { getStore } from "../apps/web/lib/store";
 
-function authorizationFixture() {
+async function authorizationFixture() {
   const verifier = "continuum-pkce-verifier-with-enough-entropy";
   const challenge = createHash("sha256").update(verifier).digest("base64url");
-  const clientId = issueClientRegistration({
+  const clientId = await issueClientRegistration({
     clientName: "Claude",
     redirectUris: ["https://claude.ai/oauth/callback"],
     scopes: ["memory:read", "goals:read"],
@@ -26,11 +26,11 @@ function authorizationFixture() {
     code_challenge_method: "S256",
     resource: "http://localhost:3000/mcp",
   });
-  return { verifier, clientId, params, authorization: parseAuthorizationRequest(params, supportedScopes) };
+  return { verifier, clientId, params, authorization: await parseAuthorizationRequest(params, supportedScopes) };
 }
 
 async function consentForm(decision: "approve" | "deny", mutate?: (form: URLSearchParams) => void) {
-  const fixture = authorizationFixture();
+  const fixture = await authorizationFixture();
   const consentToken = await issueOAuthConsent("user_maya", fixture.authorization);
   const form = new URLSearchParams(fixture.params);
   form.set("decision", decision);
@@ -91,8 +91,8 @@ describe("durable OAuth grant state", () => {
     }));
     expect(response.status).toBe(201);
     const registration = await response.json() as { client_id: string };
-    expect(verifyClientRegistration(registration.client_id).redirectUris).toEqual(["https://client.example/callback"]);
-    expect(() => verifyClientRegistration(`${registration.client_id}tampered`)).toThrow(/unknown/i);
+    await expect(verifyClientRegistration(registration.client_id)).resolves.toMatchObject({ redirectUris: ["https://client.example/callback"] });
+    await expect(verifyClientRegistration(`${registration.client_id}tampered`)).rejects.toThrow(/unknown/i);
   });
 
   it("rejects unsafe dynamic-client redirect URIs", async () => {
@@ -104,9 +104,9 @@ describe("durable OAuth grant state", () => {
     expect(response.status).toBe(400);
   });
 
-  it("signs a stable client registration payload", () => {
-    const clientId = issueClientRegistration({ clientName: "Claude", redirectUris: ["https://claude.ai/callback"], scopes: ["memory:read"], grantTypes: ["authorization_code", "refresh_token"] });
-    expect(verifyClientRegistration(clientId).clientName).toBe("Claude");
+  it("signs a stable client registration payload", async () => {
+    const clientId = await issueClientRegistration({ clientName: "Claude", redirectUris: ["https://claude.ai/callback"], scopes: ["memory:read"], grantTypes: ["authorization_code", "refresh_token"] });
+    await expect(verifyClientRegistration(clientId)).resolves.toMatchObject({ clientName: "Claude" });
   });
 
   it("approves once, preserves state, and issues a PKCE-bound code", async () => {

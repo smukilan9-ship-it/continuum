@@ -64,7 +64,7 @@ export default async function OAuthAuthorizePage({
 
   let authorization;
   try {
-    authorization = parseAuthorizationRequest(query, supportedScopes);
+    authorization = await parseAuthorizationRequest(query, supportedScopes);
   } catch {
     return (
       <main className="oauth-page">

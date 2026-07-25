@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { credentialEncryptionVersion, openCredential, sealCredential } from "../apps/web/lib/credential-vault";
-import { googleAuthorizationUrl, googleCalendarScopes, googleRedirectUri } from "../apps/web/lib/google-calendar";
 import { googleSignInRedirectUri, googleSignInUrl } from "../apps/web/lib/google-auth";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -37,18 +36,7 @@ describe("integration credential vault", () => {
   });
 });
 
-describe("Google Calendar authorization", () => {
-  it("uses the exact callback and least-purpose calendar scopes", () => {
-    vi.stubEnv("GOOGLE_CLIENT_ID", "continuum-client.apps.googleusercontent.com");
-    vi.stubEnv("GOOGLE_CLIENT_SECRET", "server-only-secret");
-    const url = new URL(googleAuthorizationUrl({ origin: "https://continuum.example/", state: "oauth-state", loginHint: "learner@example.com" }));
-    expect(url.origin).toBe("https://accounts.google.com");
-    expect(url.searchParams.get("redirect_uri")).toBe(googleRedirectUri("https://continuum.example"));
-    expect(url.searchParams.get("state")).toBe("oauth-state");
-    expect(url.searchParams.get("scope")?.split(" ")).toEqual([...googleCalendarScopes]);
-    expect(url.toString()).not.toContain("server-only-secret");
-  });
-
+describe("Google account sign-in", () => {
   it("protects Google sign-in with state, an exact redirect, and PKCE", () => {
     vi.stubEnv("GOOGLE_CLIENT_ID", "continuum-client.apps.googleusercontent.com");
     vi.stubEnv("GOOGLE_CLIENT_SECRET", "server-only-secret");

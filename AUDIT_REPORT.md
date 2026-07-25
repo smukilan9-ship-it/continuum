@@ -174,7 +174,7 @@ Highlights, tested live against the real Neon DB and real providers:
 - **Auth/onboarding — WORKS.** register, login (scrypt), session, logout.
 
 Cannot be live-verified without external credentials/accounts (honestly
-flagged): live Zotero library sync, live Google Calendar two-way sync, a
+flagged): live Zotero library sync, a
 running local Ollama, and any real Gemini/Featherless generation (their
 current keys/model IDs error — Groq carries the model layer).
 
@@ -204,7 +204,7 @@ Detail: [docs/performance-baseline.md](docs/performance-baseline.md),
   coach route around this via Groq, but to restore Gemini/Featherless the
   operator must set working model IDs and healthy keys. This is deployment
   config, not code.
-- **Not live-tested (no credentials):** Zotero, Google Calendar, local
+- **Not live-tested (no credentials):** Zotero, local
   Ollama end-to-end. Deterministic/mocked paths and code paths exist and are
   reviewed.
 - **ChatGPT MCP** remains future scope, as the repo already states.

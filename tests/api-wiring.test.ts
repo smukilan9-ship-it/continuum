@@ -57,7 +57,7 @@ describe("wired application routes", () => {
     expect(proposedResponse.status).toBe(200);
     const proposed = await proposedResponse.json() as { proposalId: string; assumptions: string[]; proposal: { blocks: Array<{ id: string; taskId: string; title: string; status: "planned" | "in_progress" | "done" | "missed"; start: string; end: string; flexible: boolean; completionEvidenceRequired: boolean }>; explanation: string[]; id: string; timezone: string; unscheduledTaskIds: string[]; preservedBlockIds: string[]; requiresConfirmation: boolean } };
     expect(proposed.proposal.explanation[0]).toMatch(/deterministically/i);
-    expect(proposed.assumptions.join(" ")).toMatch(/No Google Calendar connection/i);
+    expect(proposed.assumptions.join(" ")).toMatch(/Nothing changes until you edit and save/i);
     const first = proposed.proposal.blocks[0]!;
     first.status = "done";
     const research = proposed.proposal.blocks.find((block) => block.taskId === "task_research")!;

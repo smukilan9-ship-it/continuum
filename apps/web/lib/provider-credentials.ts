@@ -1,9 +1,18 @@
 import { NeonRepository } from "@continuum/db";
 import { credentialEncryptionVersion, openCredential, sealCredential } from "@/lib/credential-vault";
 
-export const credentialProviders = ["openalex", "youtube", "semantic-scholar"] as const;
+export const credentialProviders = ["openalex", "youtube"] as const;
 export type CredentialProvider = typeof credentialProviders[number];
 export type CredentialHealthStatus = "connected" | "degraded" | "invalid";
+
+export class ProviderCredentialUnavailableError extends Error {
+  readonly code = "stored_credential_unavailable";
+
+  constructor(readonly provider: CredentialProvider) {
+    super(`The saved ${credentialProviderMetadata[provider].name} key must be replaced`);
+    this.name = "ProviderCredentialUnavailableError";
+  }
+}
 
 export const credentialProviderMetadata: Record<CredentialProvider, {
   name: string;
@@ -22,12 +31,6 @@ export const credentialProviderMetadata: Record<CredentialProvider, {
     purpose: "Retrieve real learning-video metadata before Continuum ranks it.",
     privacy: "Learning queries are sent to Google; the key is used server-side only.",
     docs: "https://developers.google.com/youtube/v3/getting-started",
-  },
-  "semantic-scholar": {
-    name: "Semantic Scholar",
-    purpose: "Enrich research discovery with paper, author, citation, and recommendation data.",
-    privacy: "Research queries and identifiers are sent to Semantic Scholar.",
-    docs: "https://www.semanticscholar.org/product/api",
   },
 };
 
@@ -54,11 +57,7 @@ function providerRequest(provider: CredentialProvider, secret: string): { url: U
     url.searchParams.set("key", secret);
     return { url, init: { headers: { accept: "application/json" } } satisfies RequestInit };
   }
-  const url = new URL("https://api.semanticscholar.org/graph/v1/paper/search");
-  url.searchParams.set("query", "academic learning");
-  url.searchParams.set("limit", "1");
-  url.searchParams.set("fields", "paperId");
-  return { url, init: { headers: { accept: "application/json", "x-api-key": secret } } satisfies RequestInit };
+  throw new Error("Unsupported provider");
 }
 
 export async function verifyProviderCredential(provider: CredentialProvider, secret: string, fetcher: typeof fetch = fetch) {
@@ -92,8 +91,13 @@ export async function readUserProviderCredential(userId: string, provider: Crede
   const repo = new NeonRepository();
   const integration = await repo.getIntegration(userId, provider);
   if (!integration?.encryptedCredentials) return undefined;
-  const value = openCredential<SealedProviderCredential>(integration.encryptedCredentials);
-  if (value.provider !== provider || typeof value.secret !== "string") throw new Error("Stored provider credential is invalid");
+  let value: SealedProviderCredential;
+  try {
+    value = openCredential<SealedProviderCredential>(integration.encryptedCredentials);
+    if (value.provider !== provider || typeof value.secret !== "string") throw new Error("Stored provider credential is invalid");
+  } catch {
+    throw new ProviderCredentialUnavailableError(provider);
+  }
   const normalized: SealedProviderCredential = {
     ...value,
     maskedSuffix: value.maskedSuffix ?? value.secret.slice(-4),
@@ -122,8 +126,13 @@ export async function readUserProviderCredential(userId: string, provider: Crede
 }
 
 export async function getUserProviderSecret(userId: string, provider: CredentialProvider) {
-  const credential = await readUserProviderCredential(userId, provider, true);
-  return credential?.metadata.status === "invalid" ? undefined : credential;
+  try {
+    const credential = await readUserProviderCredential(userId, provider, true);
+    return credential?.metadata.status === "invalid" ? undefined : credential;
+  } catch (error) {
+    if (error instanceof ProviderCredentialUnavailableError) return undefined;
+    throw error;
+  }
 }
 
 export function providerCredentialEnvelope(provider: CredentialProvider, secret: string, status: CredentialHealthStatus = "connected", checkedAt = new Date().toISOString(), lastUsedAt?: string) {

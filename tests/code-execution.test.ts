@@ -5,6 +5,7 @@ import {
   EXECUTION_LIMITS,
   capExecutionOutput,
   emptyExecutionResult,
+  formatPythonError,
   gradeExecutionTest,
   normalizeRunnableLanguage,
   normalizedOutput,
@@ -77,6 +78,22 @@ describe("browser code execution contract", () => {
     expect(emptyExecutionResult(request(), "timeout", "hard timeout", 5_001)).toMatchObject({ outcome: "timeout", stdout: "", stderr: "hard timeout", exitCode: 1, timedOut: true });
     expect(emptyExecutionResult(request(), "stopped", "stopped", 25)).toMatchObject({ outcome: "stopped", exitCode: null, timedOut: false });
     expect(emptyExecutionResult(request(), "provider_error", "runtime unavailable", 2)).toMatchObject({ outcome: "provider_error", stdout: "", exitCode: 1 });
+  });
+
+  it("keeps Pyodide internals out of the student-facing Python error", () => {
+    const raw = `PythonError: Traceback (most recent call last):
+  File "/lib/python314.zip/_pyodide/_base.py", line 1, in eval_code_async
+  File "<exec>", line 1
+    print(
+         ^
+SyntaxError: '(' was never closed
+    at new_error (http://localhost/runtime/pyodide.asm.mjs:1:2)
+    at wasm://wasm/module:wasm-function[2]:0x1`;
+    expect(formatPythonError(raw)).toBe(`Traceback (most recent call last):
+  File "<exec>", line 1
+    print(
+         ^
+SyntaxError: '(' was never closed`);
   });
 
   it("keeps network and process APIs blocked in the worker implementation", () => {

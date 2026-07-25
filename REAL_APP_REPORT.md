@@ -58,7 +58,7 @@ and `build` (all green).
   mobile breakpoint with no horizontal overflow; palette reads sky-blue with navy
   authority, metric/detail grids use soft gap tiles (no box-around-every-value).
 - **Integration honesty** — Connections shows Claude MCP "Ready to connect",
-  Google Calendar "Setup required", Zotero "Not connected", Obsidian/Ollama
+  Zotero "Not connected", Obsidian/Ollama
   "Optional", and NotebookLM as **handoff-only** ("Personal NotebookLM does not
   expose a general account-connection API… will not pretend it is connected").
 
@@ -174,7 +174,7 @@ totals updated: `pnpm test` **145 passing** (was 125), typecheck 8/8, build 8/8.
   deterministic draft generation, and a visibly separate explicit confirm/commit.
 - **Research:** project-first tabs, official OpenAlex and Crossref adapters,
   normalized/deduplicated metadata, provider health states, saved provenance, and
-  a Google Scholar URL handoff with no scraping. OpenAlex's adapter is fixture-tested;
+  direct OpenAlex source and open-access links. OpenAlex's adapter is fixture-tested;
   the browser flow uses a named contract fixture because this environment has no key.
 - **Memory + MCP:** meaningful current-state domains, stable token-bounded context
   packs (`current_week`, `current_misconceptions`, `goal:*`, `project:*`), Markdown/
@@ -399,6 +399,6 @@ discovery/health-aware.
 and browser-verified (see §0), and the Connections screen labels every integration
 honestly.
 
-**Deferred (P1, by scope):** live Zotero / Google Calendar / Obsidian / local
+**Deferred (P1, by scope):** live Zotero / Obsidian / local
 Ollama, an automated Playwright suite, and on-deployment reconfirmation of Blob
 binary storage. None block the P0 demo.

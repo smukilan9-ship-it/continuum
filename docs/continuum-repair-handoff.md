@@ -182,7 +182,7 @@ Plan:
 - [ ] Create an overlap and an excessive-workload day and confirm warnings.
 - [ ] Undo, regenerate one day and one block, discard with confirmation, then
   save and reload the final schedule.
-- [ ] Confirm no Google Calendar authorization is requested.
+- [ ] Confirm the planner does not request an external authorization.
 
 Code and accessibility:
 
@@ -211,7 +211,7 @@ Code and accessibility:
 - Schedule dragging moves a block between days; exact time changes use the
   immediately available edit dialog. A pixel-positioned time-grid drag can be
   added later without changing the saved schedule model.
-- Google Calendar remains an optional Connections integration. Continuum does
-  not yet push an internally saved draft to an external calendar.
+- The saved weekly draft remains inside Continuum and is editable without an
+  external account.
 - Browser program runners intentionally remain bounded sandboxes; they are not
   substitutes for full local toolchains or long-running processes.

@@ -7,18 +7,21 @@ import { enforceRateLimit } from "@/lib/auth";
 
 async function tokenResponse(payload: { sub: string; clientId: string; scopes: string[]; resource: string }) {
   const now = Math.floor(Date.now() / 1000);
-  const registration = verifyClientRegistration(payload.clientId);
-  const accessToken = await issueToken({ ...payload, type: "access", exp: now + 3600 });
-  const refreshToken = await issueToken({ ...payload, type: "refresh", exp: now + 30 * 24 * 3600 });
-  if (process.env.DATABASE_URL) {
-    await new NeonRepository().upsertOAuthConnection({
+  const registration = await verifyClientRegistration(payload.clientId);
+  const connection = process.env.DATABASE_URL
+    ? new NeonRepository().upsertOAuthConnection({
       id: `oauth_connection_${randomUUID().replaceAll("-", "").slice(0, 24)}`,
       userId: payload.sub,
       clientId: payload.clientId,
       clientName: registration.clientName,
       scopes: payload.scopes,
-    });
-  }
+    })
+    : Promise.resolve();
+  const [accessToken, refreshToken] = await Promise.all([
+    issueToken({ ...payload, type: "access", exp: now + 3600 }),
+    issueToken({ ...payload, type: "refresh", exp: now + 30 * 24 * 3600 }),
+    connection,
+  ]);
   return {
     access_token: accessToken,
     token_type: "Bearer",
@@ -37,7 +40,7 @@ export async function POST(request: Request) {
     if (form.get("grant_type") === "authorization_code") {
       const code = await verifyToken(String(form.get("code") ?? ""), "code");
       const clientId = String(form.get("client_id") ?? "");
-      verifyClientRegistration(clientId);
+      await verifyClientRegistration(clientId);
       if (clientId !== code.clientId) throw new Error("Authorization code was issued to a different client");
       const resource = String(form.get("resource") ?? code.resource ?? mcpResource());
       if (!validMcpResource(resource) || resource !== code.resource) throw new Error("Resource indicator does not match the authorization request");
@@ -49,7 +52,7 @@ export async function POST(request: Request) {
       const raw = String(form.get("refresh_token") ?? "");
       const refresh = await verifyToken(raw, "refresh");
       const clientId = String(form.get("client_id") ?? "");
-      verifyClientRegistration(clientId);
+      await verifyClientRegistration(clientId);
       if (clientId !== refresh.clientId) throw new Error("Refresh token was issued to a different client");
       const resource = String(form.get("resource") ?? refresh.resource ?? mcpResource());
       if (!validMcpResource(resource) || resource !== refresh.resource) throw new Error("Resource indicator does not match the refresh token");

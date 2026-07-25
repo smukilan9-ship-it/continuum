@@ -65,7 +65,7 @@ export async function GET(request: Request) {
   );
   if (!rate.allowed) return NextResponse.redirect(consentPage(request, "rate_limited"), 303);
   try {
-    parseAuthorizationRequest(new URL(request.url).searchParams, supportedScopes);
+    await parseAuthorizationRequest(new URL(request.url).searchParams, supportedScopes);
   } catch {
     return NextResponse.redirect(consentPage(request, "invalid_request"), 303);
   }
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
 
   let authorization;
   try {
-    authorization = parseAuthorizationRequest(formProtocolUrl(request, form).searchParams, supportedScopes);
+    authorization = await parseAuthorizationRequest(formProtocolUrl(request, form).searchParams, supportedScopes);
   } catch {
     return formError(request, form, "invalid_request");
   }

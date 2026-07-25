@@ -26,6 +26,7 @@ import {
   modelRoutes,
   modelUsage,
   oauthConnections,
+  oauthClients,
   oauthGrants,
   papers,
   profiles,
@@ -1387,6 +1388,24 @@ export class NeonRepository {
     return this.db.select().from(oauthConnections)
       .where(and(eq(oauthConnections.userId, userId), isNull(oauthConnections.revokedAt)))
       .orderBy(desc(oauthConnections.lastAuthorizedAt));
+  }
+
+  async registerOAuthClient(input: { id: string; name: string; redirectUris: string[]; scopes: string[] }) {
+    await this.db.insert(oauthClients).values({
+      id: input.id,
+      name: input.name,
+      redirectUris: input.redirectUris,
+      scopes: input.scopes,
+      publicClient: true,
+    });
+    return input.id;
+  }
+
+  async getOAuthClient(clientId: string) {
+    const [client] = await this.db.select().from(oauthClients)
+      .where(and(eq(oauthClients.id, clientId), isNull(oauthClients.revokedAt)))
+      .limit(1);
+    return client;
   }
 
   async upsertOAuthConnection(input: { id: string; userId: string; clientId: string; clientName: string; scopes: string[] }) {

@@ -72,8 +72,8 @@ Audited before implementation on 2026-07-25.
    next action.
 7. Plan generates generic availability windows starting from the current time.
    It does not collect wake/sleep, fixed commitments, weekday/weekend capacity,
-   break preference, excluded days, or realistic workload. The UI still
-   directs users to Google Calendar and the generated proposal is read-only
+   break preference, excluded days, or realistic workload. The generated
+   proposal is read-only
    except for accept/discard.
 8. Code presents implementation terms in the primary UI, places task context
    in a collapsible right rail, labels feedback “AI feedback,” exposes provider
@@ -146,7 +146,7 @@ Audited before implementation on 2026-07-25.
   Results have a fixed content hierarchy, feedback-driven re-ranking, guarded
   goal changes, deterministic evidence validation, explicit verified/recorded/
   insufficient outcomes, and a completion summary that returns to Learn.
-- Plan no longer depends on Google Calendar. Intake captures wake/sleep, fixed
+- Plan uses Continuum's internal scheduler. Intake captures wake/sleep, fixed
   commitments, weekday/weekend availability, priorities, deadlines, session
   and break preferences, excluded days, and workload. The generated draft can
   be dragged, keyboard-resized, edited, added, deleted, duplicated, marked

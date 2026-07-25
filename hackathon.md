@@ -1142,22 +1142,9 @@ Implement:
 - dependency;
 - flexible daily plan;
 - missed-task replan;
-- confirmation before calendar write.
+- confirmation before saving a schedule.
 
 OR-Tools CP-SAT is the preferred solver, but a deterministic heuristic is acceptable for the hackathon if CP-SAT threatens delivery. Keep the scheduler interface replaceable.
-
-### Google Calendar integration
-
-P1:
-
-- OAuth;
-- read free/busy;
-- create proposed blocks;
-- update after confirmation;
-- reconcile external edits;
-- never expose tokens to model providers.
-
----
 
 ## 7.9 Resource broker
 
@@ -1551,7 +1538,7 @@ Creates a structured task.
 
 #### `propose_schedule_change`
 
-Returns a proposed plan without committing external calendar changes.
+Returns a proposed plan without changing the user's saved Continuum schedule.
 
 #### `commit_schedule_change`
 
@@ -1818,7 +1805,6 @@ Cards:
 - ChatGPT app
 - Obsidian
 - Zotero
-- Google Calendar
 - model providers
 - NotebookLM export
 
@@ -1905,8 +1891,6 @@ Include:
 
 ## 11.2 P1 — build if P0 is stable
 
-- Google Calendar read/free-busy.
-- Calendar write after confirmation.
 - Zotero import.
 - Obsidian Markdown export or plugin proof.
 - ChatGPT inline UI card.
@@ -2690,8 +2674,6 @@ The following sources informed architecture and implementation. Recheck them bec
 
 - Zotero Web API:  
   https://www.zotero.org/support/dev/web_api/v3/start
-- Google Calendar FreeBusy:  
-  https://developers.google.com/workspace/calendar/api/v3/reference/freebusy/query
 - Google OR-Tools constraint optimization:  
   https://developers.google.com/optimization/cp
 - OR-Tools CP-SAT:  

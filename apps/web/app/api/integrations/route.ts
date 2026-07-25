@@ -4,7 +4,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { openCredential } from "@/lib/credential-vault";
-import { googleCalendarConfigured, type GoogleCalendarCredential } from "@/lib/google-calendar";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,17 +35,14 @@ export async function GET(request: Request) {
   if (!rate.allowed) return NextResponse.json({ error: "Integration status rate limit exceeded", resetAt: rate.resetAt }, { status: 429, headers: { "retry-after": "60" } });
   const origin = appOrigin(request);
   const repo = process.env.DATABASE_URL ? new NeonRepository() : undefined;
-  const [grants, integrationTokens, activity, google, zotero] = repo ? await Promise.all([
+  const [grants, integrationTokens, activity, zotero] = repo ? await Promise.all([
     repo.listOAuthConnections(user.id),
     repo.listIntegrationTokens(user.id),
     repo.listMcpClientActivity(user.id),
-    repo.getIntegration(user.id, "google-calendar"),
     repo.getIntegration(user.id, "zotero"),
-  ]) : [[], [], [], undefined, undefined] as const;
+  ]) : [[], [], [], undefined] as const;
   const activityByClient = new Map(activity.map((entry) => [entry.clientId, entry]));
-  let googleDetails: { email?: string; lastSyncAt?: string } = {};
   let zoteroDetails: { username?: string; lastSyncAt?: string } = {};
-  try { if (google?.encryptedCredentials) { const value = openCredential<GoogleCalendarCredential>(google.encryptedCredentials); googleDetails = { email: value.email, lastSyncAt: value.lastSyncAt }; } } catch { /* Surface connected state without exposing a credential error. */ }
   try { if (zotero?.encryptedCredentials) { const value = openCredential<{ username?: string; lastSyncAt?: string }>(zotero.encryptedCredentials); zoteroDetails = { username: value.username, lastSyncAt: value.lastSyncAt }; } } catch { /* Surface connected state without exposing a credential error. */ }
   return NextResponse.json({
     mcp: {
@@ -65,7 +61,6 @@ export async function GET(request: Request) {
       }),
       claude: { supported: true, instructions: ["In Claude, open Customize → Connectors.", "Choose Add custom connector.", `Paste ${origin}/mcp as the remote MCP URL.`, "Sign in to Continuum, review the requested permissions, then enable the connector for your chat."] },
     },
-    googleCalendar: { connected: Boolean(google), available: googleCalendarConfigured(), ...googleDetails, scopes: google?.scopes ?? [] },
     zotero: { connected: Boolean(zotero), available: Boolean(process.env.DATABASE_URL), ...zoteroDetails, scopes: zotero?.scopes ?? [] },
     notebooklm: { mode: "source_pack", accountConnectionAvailable: false },
     obsidian: {

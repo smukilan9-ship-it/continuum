@@ -7,6 +7,7 @@ import { authorizedMcpIdentity, type AuthorizedMcpIdentity } from "@/lib/oauth";
 import { enforceRateLimit } from "@/lib/auth";
 import { getStore } from "@/lib/store";
 import { buildAcademicPrompt, type PromptSurface } from "@/lib/prompt-context";
+import { promptContracts } from "@/lib/prompt-registry";
 import { availableAiProviders, runStructuredAi } from "@/lib/ai-gateway";
 
 export const runtime = "nodejs";
@@ -97,7 +98,7 @@ async function runSpecialistTask(args: Record<string, unknown>, identity: Author
     taskClass,
     userRequest: String(args.task),
     relevantContext,
-    outputContract: "Return an answer, exact supplied evidence identifiers, material limitations, and calibrated confidence using the required schema.",
+    outputContract: promptContracts.specialist,
     additionalPolicy: args.evidenceRequired ? ["The result is evidence-bound. Unsupported claims must be omitted or explicitly labelled inference."] : [],
   });
   const primary = await runStructuredAi({
@@ -123,7 +124,7 @@ async function runSpecialistTask(args: Record<string, unknown>, identity: Author
       taskClass: "citation_entailment",
       userRequest: String(args.task),
       sourceContent: { proposedResult: primary.output },
-      outputContract: "Independently decide whether the proposed result is supported. Reject invented or overstated support and return the verifier schema.",
+      outputContract: promptContracts.citationVerifier,
     });
     const checked = await runStructuredAi({
       request,

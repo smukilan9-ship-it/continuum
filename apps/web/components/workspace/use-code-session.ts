@@ -29,6 +29,7 @@ export type RuntimeAttempt = {
 };
 
 export type CodeSession = {
+  fileName: string;
   goalId: string;
   topic: string;
   language: string;
@@ -44,6 +45,7 @@ export type CodeSession = {
   hintsRevealed: number;
   attempts: CodeAttempt[];
   updatedAt: number;
+  timeoutMs: number;
 };
 
 const VERSION = "v1";
@@ -51,6 +53,7 @@ const storageKey = (userId: string) => `continuum.code-session.${VERSION}.${user
 
 export function makeDefaultSession(defaults: Partial<CodeSession>): CodeSession {
   return {
+    fileName: "main.py",
     goalId: "",
     topic: "",
     language: "Python",
@@ -65,6 +68,7 @@ export function makeDefaultSession(defaults: Partial<CodeSession>): CodeSession 
     hintsRevealed: 0,
     attempts: [],
     updatedAt: Date.now(),
+    timeoutMs: 5_000,
     ...defaults,
   };
 }

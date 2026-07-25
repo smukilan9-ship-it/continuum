@@ -46,7 +46,14 @@ Optional task-class overrides are:
 
 When pinning a model, set `FEATHERLESS_MODEL_CONCURRENCY_COST` accurately. Featherless documents four concurrency units on Premium: models below 16B consume one unit, models below 34B consume two, and models at 70B or above consume four. That corresponds to four small, two medium, or one large request at once; excess work may receive HTTP 429. Continuum favors one-unit models for bounded work and retries/falls back, but the provider remains the final account-wide concurrency authority across multiple server instances.
 
-If live catalog discovery is degraded, generation uses the reviewed task set: `Qwen/Qwen3.5-9B` for fast work, `Qwen/Qwen3.6-27B` for reasoning, `Qwen/Qwen3-Coder-Next` for code, and `openai/gpt-oss-20b` for verification. An explicit `FEATHERLESS_FALLBACK_MODEL` overrides that task set. Featherless embeddings default to `Qwen/Qwen3-Embedding-8B` with 1,536 output dimensions so vectors match the database column. Pin different models only after a provider smoke test and dimension check.
+If live catalog discovery is degraded, generation uses the reviewed task set:
+`Qwen/Qwen2.5-7B-Instruct` for fast work,
+`Qwen/Qwen2.5-72B-Instruct` for reasoning and verification, and
+`Qwen/Qwen2.5-Coder-32B-Instruct` for code. An explicit
+`FEATHERLESS_FALLBACK_MODEL` overrides that task set. Featherless embeddings
+default to `Qwen/Qwen3-Embedding-8B` with 1,536 output dimensions so vectors
+match the database column. Pin different models only after a provider smoke test
+and dimension check.
 
 ## Groq
 
@@ -81,7 +88,7 @@ Server-side Ollama embeddings/generation can use `OLLAMA_BASE_URL`. Non-loopback
 - Registration/login/logout and tenant isolation pass against production-like infrastructure.
 - Google sign-in validates state, PKCE, exact callback, and a verified Google email before creating or resuming an account.
 - Claude connects through OAuth, loads real context, syncs a receipt, and revocation fails the next call.
-- Google Calendar OAuth uses the exact production callback, imports constraints, creates one idempotent committed block, and disconnect revokes local access.
+- Continuum’s internal schedule can be drafted, edited, checked for overlap, and saved without an external-calendar connection.
 - A Zotero read-only key is validated, encrypted, synced without attachment overclaiming, and revocable.
 - External-resource start/return/verify creates a receipt and a schedule block.
 - Provider failure degrades to another configured provider or a clear error; it does not fabricate output.

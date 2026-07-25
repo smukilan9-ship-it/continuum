@@ -20,7 +20,7 @@ The production implementation pass is complete in source and remains local. Noth
 - Grok/xAI: no key or route is configured.
 - ChatGPT MCP: protocol compatibility remains future scope until an account-side connection passes acceptance testing.
 - Vercel AI Gateway: disabled unless the operator explicitly sets `AI_GATEWAY_ENABLED=true` after accepting metered costs.
-- External calendar writes: schedule commits currently update Continuum only and never claim a calendar write.
+- Schedule commits update Continuum's own editable planner.
 
 ## Local acceptance state
 

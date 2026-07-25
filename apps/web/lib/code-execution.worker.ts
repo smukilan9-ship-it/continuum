@@ -4,6 +4,7 @@ import initSqlJs, { type Database } from "sql.js";
 import ts from "typescript";
 import {
   capExecutionOutput,
+  formatPythonError,
   gradeExecutionTest,
   renderSqlTables,
   type ExecutionRequest,
@@ -24,6 +25,10 @@ type PyodideInterface = {
   toPy: (value: unknown) => PythonGlobals;
   runPythonAsync: (source: string, options?: { globals?: PythonGlobals }) => Promise<unknown>;
 };
+
+type WorkerRequest =
+  | { type: "prewarm"; id: string; language: RunnableLanguage }
+  | { type: "execute"; request: ExecutionRequest };
 
 function status(id: string, value: ExecutionStatus) {
   scope.postMessage({ type: "status", id, status: value });
@@ -162,7 +167,16 @@ async function runPython(source: string, stdin: string): Promise<RunPiece> {
   const globals = pyodide.toPy({});
   try {
     await pyodide.runPythonAsync([
-      "import builtins, sys",
+      "import builtins, sys, os, shutil",
+      "for _continuum_path in ('/home/pyodide', '/tmp'):",
+      "    os.makedirs(_continuum_path, exist_ok=True)",
+      "    for _continuum_name in os.listdir(_continuum_path):",
+      "        _continuum_target = os.path.join(_continuum_path, _continuum_name)",
+      "        try:",
+      "            shutil.rmtree(_continuum_target) if os.path.isdir(_continuum_target) else os.remove(_continuum_target)",
+      "        except OSError:",
+      "            pass",
+      "os.chdir('/home/pyodide')",
       "if not hasattr(builtins, '_continuum_original_import'):",
       "    builtins._continuum_original_import = builtins.__import__",
       "_continuum_blocked = {'js', 'pyodide', 'micropip', 'socket', 'urllib', 'http', 'subprocess', 'multiprocessing', 'asyncio'}",
@@ -175,10 +189,29 @@ async function runPython(source: string, stdin: string): Promise<RunPiece> {
     await pyodide.runPythonAsync(source, { globals });
     return { outcome: "success", stdout: capExecutionOutput(stdout.join("")), stderr: capExecutionOutput(stderr.join("")), exitCode: 0 };
   } catch (error) {
-    const message = `${stderr.join("")}${safeText(error)}`;
+    const rawMessage = `${stderr.join("")}${safeText(error)}`;
+    const message = formatPythonError(rawMessage);
     const compiler = /(?:SyntaxError|IndentationError|TabError)/.test(message);
-    return { outcome: compiler ? "compiler_error" : "runtime_error", stdout: capExecutionOutput(stdout.join("")), stderr: capExecutionOutput(message), exitCode: 1 };
+    return {
+      outcome: compiler ? "compiler_error" : "runtime_error",
+      stdout: capExecutionOutput(stdout.join("")),
+      stderr: capExecutionOutput(message),
+      technicalStderr: rawMessage.trim() === message ? undefined : capExecutionOutput(rawMessage),
+      exitCode: 1,
+    };
   } finally {
+    try {
+      await pyodide.runPythonAsync([
+        "import os, shutil",
+        "for _continuum_path in ('/home/pyodide', '/tmp'):",
+        "    for _continuum_name in os.listdir(_continuum_path):",
+        "        _continuum_target = os.path.join(_continuum_path, _continuum_name)",
+        "        try:",
+        "            shutil.rmtree(_continuum_target) if os.path.isdir(_continuum_target) else os.remove(_continuum_target)",
+        "        except OSError:",
+        "            pass",
+      ].join("\n"), { globals });
+    } catch { /* the worker remains isolated; a failed cleanup is cleared when it is replaced */ }
     globals.destroy();
   }
 }
@@ -218,12 +251,32 @@ async function runPiece(language: RunnableLanguage, source: string, stdin: strin
   return runJavaScript(source, stdin, language);
 }
 
-scope.onmessage = async (event: MessageEvent<ExecutionRequest>) => {
-  const request = event.data;
+async function prepareRuntime(language: RunnableLanguage) {
+  if (language === "python") await pythonRuntime();
+  else if (language === "sql") await sqlRuntime();
+}
+
+scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
+  const message = event.data;
+  if (message.type === "prewarm") {
+    try {
+      if (message.language === "python") status(message.id, "loading_python");
+      else if (message.language === "sql") status(message.id, "loading_sql");
+      await prepareRuntime(message.language);
+      scope.postMessage({ type: "ready", id: message.id, language: message.language });
+    } catch (error) {
+      scope.postMessage({ type: "startup_error", id: message.id, error: capExecutionOutput(safeText(error)) });
+    }
+    return;
+  }
+  const request = message.request;
   const startedAt = performance.now();
   try {
     if (request.language === "python") status(request.id, "loading_python");
     else if (request.language === "sql") status(request.id, "loading_sql");
+    await prepareRuntime(request.language);
+    const readyAt = performance.now();
+    status(request.id, "ready");
     status(request.id, "running");
     const main = await runPiece(request.language, request.source, request.stdin);
     const tests = [];
@@ -242,6 +295,10 @@ scope.onmessage = async (event: MessageEvent<ExecutionRequest>) => {
       stdout: capExecutionOutput(main.stdout),
       stderr: capExecutionOutput(main.stderr),
       durationMs: Math.round(performance.now() - startedAt),
+      startupDurationMs: Math.round(readyAt - startedAt),
+      executionDurationMs: Math.round(performance.now() - readyAt),
+      timeoutMs: request.timeoutMs,
+      terminated: false,
       timedOut: false,
       tests,
     };
@@ -255,6 +312,8 @@ scope.onmessage = async (event: MessageEvent<ExecutionRequest>) => {
       stderr: capExecutionOutput(safeText(error)),
       exitCode: 1,
       durationMs: Math.round(performance.now() - startedAt),
+      timeoutMs: request.timeoutMs,
+      terminated: false,
       timedOut: false,
       tests: [],
     };

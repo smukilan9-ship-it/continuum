@@ -1,4 +1,5 @@
-import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { NeonRepository } from "@continuum/db";
 import { getStore } from "@/lib/store";
 
 type TokenPayload = {
@@ -74,14 +75,39 @@ export function safeOAuthRedirect(value: string) {
   } catch { return false; }
 }
 
-export function issueClientRegistration(input: Omit<OAuthClientRegistration, "iat">) {
+function issueSignedClientRegistration(input: Omit<OAuthClientRegistration, "iat">) {
   const encoded = encode(JSON.stringify({ ...input, iat: Math.floor(Date.now() / 1000) } satisfies OAuthClientRegistration));
   const signed = `client.${encoded}`;
   return `${signed}.${signature(signed)}`;
 }
 
-export function verifyClientRegistration(clientId: string): OAuthClientRegistration {
+export async function issueClientRegistration(input: Omit<OAuthClientRegistration, "iat">) {
+  if (process.env.DATABASE_URL) {
+    const clientId = `mcp_client_${randomBytes(18).toString("base64url")}`;
+    await new NeonRepository().registerOAuthClient({
+      id: clientId,
+      name: input.clientName,
+      redirectUris: input.redirectUris,
+      scopes: input.scopes,
+    });
+    return clientId;
+  }
+  return issueSignedClientRegistration(input);
+}
+
+export async function verifyClientRegistration(clientId: string): Promise<OAuthClientRegistration> {
   if (clientId.length > 16_384) throw new Error("Unknown OAuth client");
+  if (clientId.startsWith("mcp_client_") && process.env.DATABASE_URL) {
+    const client = await new NeonRepository().getOAuthClient(clientId);
+    if (!client || client.redirectUris.some((uri) => !safeOAuthRedirect(uri))) throw new Error("Unknown OAuth client");
+    return {
+      clientName: client.name,
+      redirectUris: client.redirectUris,
+      scopes: client.scopes,
+      grantTypes: ["authorization_code", "refresh_token"],
+      iat: Math.floor(client.createdAt.getTime() / 1000),
+    };
+  }
   const [prefix, encoded, provided] = clientId.split(".");
   if (prefix !== "client" || !encoded || !provided || !signaturesMatch(provided, signature(`client.${encoded}`))) throw new Error("Unknown OAuth client");
   const registration = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as OAuthClientRegistration;
@@ -99,10 +125,10 @@ export type AuthorizationRequest = {
   requestedScopes: string[];
 };
 
-export function parseAuthorizationRequest(params: URLSearchParams, supportedScopes: readonly string[]): AuthorizationRequest {
+export async function parseAuthorizationRequest(params: URLSearchParams, supportedScopes: readonly string[]): Promise<AuthorizationRequest> {
   const clientId = params.get("client_id") ?? "";
   const redirectUri = params.get("redirect_uri") ?? "";
-  const client = verifyClientRegistration(clientId);
+  const client = await verifyClientRegistration(clientId);
   if (!safeOAuthRedirect(redirectUri) || !client.redirectUris.includes(redirectUri)) {
     throw new Error("The callback address does not match this client registration");
   }

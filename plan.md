@@ -154,7 +154,7 @@ Vercel project (Fluid Compute, Node 24) for `apps/web` incl. `/api/mcp`; Supabas
 Map each timestamp (0:00 problem → 1:57 close) to a concrete UI route and pre-seeded state so the recording never hits a loading/broken state; deterministic scheduler, fast-model classification, Featherless verifier, and source retrieval all visible in the route panel by 1:48.
 
 ## 15. Feature flags & risk (PRD §18)
-Behind flags (off for P0 demo unless stable): Google Calendar, Zotero, Obsidian plugin/export, ChatGPT inline UI, voice viva, OR-Tools. P0 freeze after Phase 10; everything else additive.
+Behind flags (off for P0 demo unless stable): Zotero, Obsidian plugin/export, ChatGPT inline UI, voice viva, OR-Tools. P0 freeze after Phase 10; everything else additive.
 
 ## 16. Definition of Done
 The 12 checks in PRD §22, verified on a fresh session, plus: deployed URL, working MCP + demo account, public repo with hackathon-window git history, README setup tested, ≤2:00 captioned video with backup.

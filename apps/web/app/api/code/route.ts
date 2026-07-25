@@ -4,6 +4,7 @@ import { getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { getStore } from "@/lib/store";
 import { buildAcademicPrompt } from "@/lib/prompt-context";
 import { aiErrorResponse, runStreamingAi } from "@/lib/ai-gateway";
+import { codePromptContract } from "@/lib/prompt-registry";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -49,11 +50,7 @@ export async function POST(request: Request) {
     relevantContext: context,
     sourceContent: { language: parsed.data.language, exactSourceCode: parsed.data.code },
     runtimeData: parsed.data.runtime,
-    outputContract: parsed.data.mode === "debug"
-      ? "Identify the cause from actual runtime evidence, show the smallest correction, and explain a verification step."
-      : parsed.data.mode === "practice"
-        ? "Give one bounded exercise, a success criterion, and progressive hints before a complete solution."
-        : "Teach the relevant concept, stay consistent with actual runtime evidence, and include one short check for understanding.",
+    outputContract: codePromptContract(parsed.data.mode),
   });
 
   try {

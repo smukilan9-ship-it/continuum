@@ -5,8 +5,6 @@ const cookieAuthenticatedMutationRoutes = [
   "ai",
   "code",
   "code/checkpoint",
-  "connections/google/disconnect",
-  "connections/google/sync",
   "connections/zotero",
   "integrations",
   "integrations/credentials",

@@ -197,6 +197,6 @@ export async function POST(request: Request) {
     proposal,
     proposalId: durableProposalId,
     items: displayItems(proposal, prepared.tasks, user.timezone),
-    assumptions: useSeed ? ["No user tasks were available, so local development used the documented seeded planning input.", "No external calendar connection was required or used."] : parsed.data.action === "propose" ? ["This draft uses the wake, sleep, free-time, break, no-day, and workload limits you entered.", "Fixed commitments you entered are protected from overlap. No Google Calendar connection is required.", "Nothing changes until you edit and save the draft."] : ["Only the affected part of the draft was regenerated.", "No external calendar connection was required or used."],
+    assumptions: useSeed ? ["No user tasks were available, so local development used the documented seeded planning input."] : parsed.data.action === "propose" ? ["This draft uses the wake, sleep, free-time, break, no-day, and workload limits you entered.", "Fixed commitments you entered are protected from overlap.", "Nothing changes until you edit and save the draft."] : ["Only the affected part of the draft was regenerated."],
   });
 }

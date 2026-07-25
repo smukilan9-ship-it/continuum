@@ -326,7 +326,7 @@ export function GoalsScreen({ state, showToast, onRefresh }: { state: WorkspaceS
 
       <div className="plan-toolbar"><div className="plan-view-tabs" aria-label="Plan views"><button className={view === "week" ? "active" : ""} onClick={() => setView("week")}><CalendarDays size={15} />Week</button><button className={view === "goals" ? "active" : ""} onClick={() => setView("goals")}><Target size={15} />Goals</button><button className={view === "backlog" ? "active" : ""} onClick={() => setView("backlog")}><ListTodo size={15} />Backlog</button></div><div className="plan-toolbar-meta"><span><strong>{Math.round(committedMinutes / 60 * 10) / 10}h</strong> scheduled</span><span><strong>{activeTasks.length}</strong> active tasks</span><Button className="button-secondary compact-button" disabled={proposalBusy || !activeTasks.length} onClick={() => setOnboardingOpen(true)}><WandSparkles size={14} />Build my week</Button></div></div>
 
-      <section className="planning-independence-note"><CalendarClock size={19} /><div><strong>Plan without connecting a calendar</strong><span>Enter school, sleep, and free-time limits once. Continuum builds an editable internal schedule; external calendars remain optional.</span></div><Button className="button-secondary compact-button" disabled={!activeTasks.length} onClick={() => setOnboardingOpen(true)}>Set availability</Button></section>
+      <section className="planning-independence-note"><CalendarClock size={19} /><div><strong>Build your week in Continuum</strong><span>Enter school, sleep, and free-time limits once. Continuum builds an editable schedule you can move, resize, and save here.</span></div><Button className="button-secondary compact-button" disabled={!activeTasks.length} onClick={() => setOnboardingOpen(true)}>Set availability</Button></section>
 
       {form === "goal" ? <Card className="inline-form-card"><div className="inline-form-heading"><div><h2>Create a goal</h2><p>Define the outcome before creating work.</p></div><button onClick={() => setForm(undefined)}>Cancel</button></div><form className="workspace-form form-grid" onSubmit={submitGoal}><label>Goal title<input name="title" required minLength={3} maxLength={120} placeholder="Complete the statistics module" /></label><label>Target date<input name="date" type="date" required /></label><label className="full-field">Successful outcome<textarea name="outcome" required minLength={3} maxLength={500} placeholder="Pass the final assessment and explain each core method" /></label><div className="form-actions"><Button className="button-primary" disabled={busy}>{busy ? "Saving…" : "Save goal"}</Button></div></form></Card> : null}
 
@@ -382,7 +382,7 @@ export function GoalsScreen({ state, showToast, onRefresh }: { state: WorkspaceS
         open={onboardingOpen}
         onOpenChange={setOnboardingOpen}
         title="Build a realistic weekly schedule"
-        description="These limits shape the draft. No Google Calendar connection is required."
+        description="These limits shape the editable Continuum draft."
         footer={<><Button className="button-secondary" onClick={() => setOnboardingOpen(false)}>Cancel</Button><LoadingButton form="schedule-intake-form" className="button-primary" loading={proposalBusy} loadingLabel="Building first draft…"><WandSparkles size={15} />Generate editable draft</LoadingButton></>}
       >
         <form id="schedule-intake-form" className="schedule-intake-form" onSubmit={(event) => { event.preventDefault(); void generatePlan(); }}>

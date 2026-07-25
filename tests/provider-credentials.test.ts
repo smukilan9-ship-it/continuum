@@ -22,10 +22,8 @@ describe("provider credential health checks", () => {
     expect(requests.map((request) => request.url.origin)).toEqual([
       "https://api.openalex.org",
       "https://www.googleapis.com",
-      "https://api.semanticscholar.org",
     ]);
-    expect(requests[2]?.url.toString()).not.toContain("secret-semantic-scholar");
-    expect(new Headers(requests[2]?.init?.headers).get("x-api-key")).toContain("secret-semantic-scholar");
+    expect(requests.every((request) => request.url.protocol === "https:")).toBe(true);
   });
 
   it("classifies rejected credentials separately from temporary provider trouble", async () => {

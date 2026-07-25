@@ -53,7 +53,7 @@ disclosed Moderate Hono adapter advisory was also remediated. The final
 
 ### Provider credentials
 
-- OpenAlex, YouTube, Featherless, and Semantic Scholar use fixed official
+- OpenAlex, YouTube, and Featherless use fixed official
   provider origins and server-side health checks.
 - First save requires authentication and HTTPS. Replacement/deletion require
   the current Continuum password; writes are same-origin and rate-limited.
@@ -71,8 +71,8 @@ disclosed Moderate Hono adapter advisory was also remediated. The final
 
 - Provider URLs are constructed from constants; user input becomes query
   parameters, not origins. Ollama accepts only loopback hosts in the browser.
-- Google Scholar is an explicit query handoff and is not scraped or presented
-  as an API.
+- Research discovery uses OpenAlex as its primary scholarly metadata API and
+  Crossref as a DOI-focused secondary source.
 - PDF/text ingestion is size/time/type bounded, hashed, deduplicated, and
   user-scoped. Retrieved text is explicitly delimited as untrusted source data
   in generation policy.
