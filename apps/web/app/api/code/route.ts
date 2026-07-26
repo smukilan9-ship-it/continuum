@@ -26,6 +26,10 @@ const codeRequest = z.object({
   }).default({ status: "not_run" }),
   goalId: z.string().max(200).optional(),
   provider: z.literal("auto").default("auto"),
+  history: z.array(z.object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string().min(1).max(4_000),
+  })).max(12).default([]),
 });
 
 export async function POST(request: Request) {
@@ -50,6 +54,9 @@ export async function POST(request: Request) {
     relevantContext: context,
     sourceContent: { language: parsed.data.language, exactSourceCode: parsed.data.code },
     runtimeData: parsed.data.runtime,
+    previousAttempts: parsed.data.history.length
+      ? parsed.data.history.map((message) => `${message.role === "user" ? "Learner" : "Coach"}: ${message.content}`).join("\n\n")
+      : undefined,
     outputContract: codePromptContract(parsed.data.mode),
   });
 

@@ -8,6 +8,7 @@ describe("code session persistence", () => {
     expect(s.goalId).toBe("goal_1");
     expect(s.language).toBe("Python");
     expect(s.attempts).toEqual([]);
+    expect(s.conversation).toEqual([]);
   });
 
   it("restores a saved session over the current one (the reset-bug fix)", () => {
@@ -42,6 +43,19 @@ describe("code session persistence", () => {
     const restored = mergeSavedSession(current, JSON.stringify(saved));
     expect(restored.attempts).toHaveLength(1);
     expect(restored.attempts[0]!.code).toBe("SELECT 1");
+  });
+
+  it("migrates the previous one-off answer into a persistent conversation", () => {
+    const restored = mergeSavedSession(makeDefaultSession({}), JSON.stringify({
+      mode: "debug",
+      prompt: "Why did this fail?",
+      answer: "The index is outside the list.",
+      updatedAt: 42,
+    }));
+    expect(restored.conversation).toEqual([
+      expect.objectContaining({ role: "user", content: "Why did this fail?" }),
+      expect.objectContaining({ role: "assistant", content: "The index is outside the list." }),
+    ]);
   });
 
   it("falls back to defaults on a corrupt draft instead of throwing", () => {

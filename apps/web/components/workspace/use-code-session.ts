@@ -28,6 +28,14 @@ export type RuntimeAttempt = {
   result: ExecutionResult;
 };
 
+export type CodeChatMessage = {
+  id: string;
+  at: number;
+  role: "user" | "assistant";
+  content: string;
+  mode?: string;
+};
+
 export type CodeSession = {
   fileName: string;
   goalId: string;
@@ -42,6 +50,7 @@ export type CodeSession = {
   runtimeResult?: ExecutionResult;
   runtimeHistory: RuntimeAttempt[];
   answer: string;
+  conversation: CodeChatMessage[];
   hintsRevealed: number;
   attempts: CodeAttempt[];
   updatedAt: number;
@@ -65,6 +74,7 @@ export function makeDefaultSession(defaults: Partial<CodeSession>): CodeSession 
     tests: [],
     runtimeHistory: [],
     answer: "",
+    conversation: [],
     hintsRevealed: 0,
     attempts: [],
     updatedAt: Date.now(),
@@ -82,6 +92,14 @@ export function mergeSavedSession(current: CodeSession, savedJson: string | null
       ...current,
       ...parsed,
       attempts: Array.isArray(parsed.attempts) ? parsed.attempts : current.attempts,
+      conversation: Array.isArray(parsed.conversation)
+        ? parsed.conversation
+        : parsed.answer
+          ? [
+              { id: "migrated_user", at: parsed.updatedAt ?? Date.now(), role: "user" as const, content: parsed.prompt ?? "Explain this code", mode: parsed.mode },
+              { id: "migrated_assistant", at: parsed.updatedAt ?? Date.now(), role: "assistant" as const, content: parsed.answer },
+            ]
+          : current.conversation,
       tests: Array.isArray(parsed.tests) ? parsed.tests : current.tests,
       runtimeHistory: Array.isArray(parsed.runtimeHistory) ? parsed.runtimeHistory : current.runtimeHistory,
     };
@@ -140,6 +158,20 @@ export function useCodeSession(userId: string, defaults: Partial<CodeSession>) {
     }));
   }, []);
 
+  const pushChatExchange = useCallback((input: { prompt: string; answer: string; mode: string }) => {
+    const at = Date.now();
+    setSession((current) => ({
+      ...current,
+      answer: input.answer,
+      conversation: [
+        ...current.conversation,
+        { id: `chat_user_${at}`, at, role: "user" as const, content: input.prompt, mode: input.mode },
+        { id: `chat_assistant_${at}`, at: at + 1, role: "assistant" as const, content: input.answer, mode: input.mode },
+      ].slice(-40),
+      updatedAt: at,
+    }));
+  }, []);
+
   const reset = useCallback(() => {
     const fresh = makeDefaultSession(defaultsRef.current);
     setSession(fresh);
@@ -150,5 +182,5 @@ export function useCodeSession(userId: string, defaults: Partial<CodeSession>) {
     }
   }, [key]);
 
-  return { session, update, pushAttempt, pushRuntimeAttempt, reset, restored };
+  return { session, update, pushAttempt, pushRuntimeAttempt, pushChatExchange, reset, restored };
 }

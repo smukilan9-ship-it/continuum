@@ -130,9 +130,15 @@ test.describe.serial("Continuum primary journeys", () => {
 
     await page.getByRole("button", { name: "Open 6-min lesson" }).click();
     await expect(page.getByText("TARGETED MICRO-LESSON")).toBeVisible();
-    await page.getByRole("button", { name: "I can explain the contrast" }).click();
+    const readLesson = page.getByRole("button", { name: "I can explain the contrast" });
+    if (await readLesson.count()) await readLesson.click();
     await page.getByPlaceholder("Answer in volts").fill("24");
+    await page.reload();
+    await expect(page.getByText("TARGETED MICRO-LESSON")).toBeVisible();
+    await expect(page.getByPlaceholder("Answer in volts")).toHaveValue("24");
     await page.getByRole("button", { name: "Check answer" }).click();
+    await expect(page.getByText("Transfer checkpoint passed")).toBeVisible();
+    await page.reload();
     await expect(page.getByText("Transfer checkpoint passed")).toBeVisible();
 
     await page.locator(".native-lesson-screen header").getByRole("button", { name: "Learning home" }).click();
@@ -140,11 +146,56 @@ test.describe.serial("Continuum primary journeys", () => {
     await expect(page.getByText("YouTube: live")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Electric Potential: A Visual Explanation" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Watch on YouTube" })).toHaveAttribute("href", /youtube\.com\/watch/);
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Electric Potential: A Visual Explanation" })).toBeVisible();
+  });
+
+  test("Learn preserves resource choices and evidence through refresh, reranks feedback, and restores verified completion", async ({ page }) => {
+    await demoLogin(page);
+    await page.getByRole("link", { name: "Learn", exact: true }).click();
+    await page.getByRole("button", { name: /Find a resource/ }).first().click();
+    await page.getByLabel("What are you trying to learn or finish?").fill("electric potential and potential energy");
+    await page.getByRole("button", { name: /Learn a concept/ }).click();
+    const recommendationRequest = page.waitForRequest((request) => request.url().includes("/api/resources?") && request.url().includes("topic=electric"));
+    await page.getByRole("button", { name: "Find my best match" }).click();
+    const recommendationUrl = new URL((await recommendationRequest).url());
+    expect(recommendationUrl.searchParams.get("goalType")).toBe("school");
+    expect(recommendationUrl.searchParams.get("goalId")).toBe(null);
+    await expect(page.getByRole("heading", { name: "Charges and Fields" })).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Charges and Fields" })).toBeVisible();
+    await page.getByRole("button", { name: "Find a different resource" }).click();
+    await page.getByRole("button", { name: "I want a different format" }).click();
+    await page.getByRole("button", { name: "Textbook" }).click();
+    await page.getByLabel("Anything else? Optional").fill("Prefer the official CBSE source.");
+    await page.getByRole("button", { name: "Find another match" }).click();
+    await expect(page.locator(".preference-change")).toContainText("prefer Textbook");
+    await expect(page.getByRole("heading", { name: /NCERT Physics XII/ })).toBeVisible();
+
+    await page.getByRole("button", { name: "Start resource" }).click();
+    await expect(page.getByText("Your place is saved")).toBeVisible();
+    await page.getByLabel("Notes from the activity (optional)").fill("Completed the worked example without copying.");
+    await page.reload();
+    await expect(page.getByRole("heading", { name: /NCERT Physics XII/ })).toBeVisible();
+    await expect(page.getByLabel("Notes from the activity (optional)")).toHaveValue("Completed the worked example without copying.");
+    await page.getByRole("button", { name: /I’m back/ }).click();
+    await expect(page.getByText("Show what you completed")).toBeVisible();
+    await page.getByLabel("Your answer").fill("24");
+    await page.getByRole("button", { name: "Check progress" }).click();
+    await expect(page.getByRole("heading", { name: "Progress verified" })).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Progress verified" })).toBeVisible();
+    await page.getByRole("button", { name: "Continue learning" }).click();
+    await expect(page.getByRole("heading", { name: "What will move your learning forward?" })).toBeVisible();
   });
 
   test("Code Lab runs real JavaScript, separates AI feedback, persists navigation, and exposes an update through MCP", async ({ page }) => {
     const checkpointMarker = `Playwright runtime evidence ${Date.now()}`;
+    const feedbackRequests: Array<{ history?: unknown[]; prompt?: string }> = [];
     await page.route("**/api/code", async (route) => {
+      feedbackRequests.push(JSON.parse(route.request().postData() ?? "{}") as { history?: unknown[]; prompt?: string });
       await route.fulfill({
         contentType: "text/plain; charset=utf-8",
         body: "The actual runtime selected four scores at the supplied cutoff. The filter keeps each score greater than or equal to 80; the program output and the passing sample test agree.",
@@ -159,15 +210,19 @@ test.describe.serial("Continuum primary journeys", () => {
     await expect(page.locator(".runtime-result h3", { hasText: "Output" })).toBeVisible();
     await expect(page.locator(".runtime-result pre")).toContainText("Selected: 88, 91, 85");
     await expect(page.locator(".runtime-result pre")).toContainText("Count: 3");
-    await page.getByRole("tab", { name: /^Tests/ }).click();
-    await page.getByRole("button", { name: "Run tests" }).click();
-    await expect(page.getByRole("tab", { name: /Tests 1\/1/ })).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("button", { name: "Check sample" }).click();
+    await expect(page.locator(".runtime-result")).toContainText("passed 1 of 1 tests");
 
-    await page.getByRole("tab", { name: "Feedback" }).click();
+    await page.getByRole("tab", { name: /AI tutor/ }).click();
     await page.getByRole("button", { name: "Explain my code", exact: true }).click();
     await page.getByRole("button", { name: "Get feedback" }).click();
     await expect(page.locator(".coach-markdown")).toContainText("actual runtime selected four scores");
     await expect(page.getByText("Get feedback only when you ask")).toBeVisible();
+    await page.getByLabel("Continue the conversation").fill("Which edge case should I try next?");
+    await page.getByRole("button", { name: "Get feedback" }).click();
+    await expect(page.locator(".code-message.user").last()).toContainText("Which edge case should I try next?");
+    expect(feedbackRequests).toHaveLength(2);
+    expect(feedbackRequests[1]?.history).toHaveLength(2);
 
     await page.getByRole("button", { name: "Save checkpoint" }).click();
     await page.getByLabel("What did you learn?").fill(checkpointMarker);
@@ -179,8 +234,8 @@ test.describe.serial("Continuum primary journeys", () => {
     await page.getByRole("link", { name: "Code", exact: true }).click();
     await page.getByRole("tab", { name: "Output" }).click();
     await expect(page.locator(".runtime-result pre")).toContainText("Count: 3");
-    await page.getByRole("tab", { name: "Feedback" }).click();
-    await expect(page.locator(".coach-markdown")).toContainText("actual runtime selected four scores");
+    await page.getByRole("tab", { name: /AI tutor/ }).click();
+    await expect(page.locator(".code-conversation")).toContainText("Which edge case should I try next?");
 
     const packResponse = await readCurrentWeekThroughMcp(page);
     expect(JSON.stringify(packResponse)).toContain(checkpointMarker);
@@ -188,9 +243,8 @@ test.describe.serial("Continuum primary journeys", () => {
     await page.getByLabel("Language").selectOption("sql");
     await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
     await expect(page.locator(".sql-result")).toContainText("Asha");
-    await page.getByRole("tab", { name: /^Tests/ }).click();
-    await page.getByRole("button", { name: "Run tests" }).click();
-    await expect(page.getByRole("tab", { name: /Tests.*1\/1/ })).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("button", { name: "Check sample" }).click();
+    await expect(page.locator(".runtime-result")).toContainText("passed 1 of 1 tests");
     await page.getByRole("tab", { name: "Output" }).click();
     await expect(page.locator(".sql-result")).toContainText("Asha");
     await expect(page.locator(".sql-result")).toContainText("Meera");
@@ -244,22 +298,35 @@ test.describe.serial("Continuum primary journeys", () => {
     await expect(page.locator(".runtime-result")).toContainText("Stopped");
     await expect(page.locator(".runtime-result")).toContainText("terminated");
 
-    await page.getByRole("button", { name: "Use a file" }).click();
-    const fileInput = page.getByLabel("Choose a Python file");
+    await page.getByRole("button", { name: "Import file" }).click();
+    const fileInput = page.getByLabel("Choose a code file");
     await fileInput.setInputFiles({ name: "uploaded.py", mimeType: "text/x-python", buffer: Buffer.from('print("From file")\\n') });
     await expect(page.getByText("uploaded.py", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "View code in editor" }).click();
     await expect(page.getByLabel("File name")).toHaveValue("uploaded.py");
 
-    await page.getByRole("button", { name: "Use a file" }).click();
+    await page.getByRole("button", { name: "Import file" }).click();
     await fileInput.setInputFiles({ name: "not-python.txt", mimeType: "text/plain", buffer: Buffer.from("not Python") });
-    await expect(page.getByRole("alert")).toContainText("ending in .py");
+    await expect(page.getByRole("alert")).toContainText("Python");
     await page.getByRole("button", { name: "Cancel" }).click();
+
+    await page.getByRole("button", { name: "Import file" }).click();
+    await fileInput.setInputFiles({ name: "imported.ts", mimeType: "text/plain", buffer: Buffer.from('console.log("From TypeScript")\n') });
+    await page.getByRole("button", { name: "View code in editor" }).click();
+    await expect(page.getByLabel("Language")).toHaveValue("typescript");
+    await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
+    await expect(page.locator(".runtime-result pre")).toContainText("From TypeScript");
+
+    await page.getByRole("button", { name: "Import file" }).click();
+    await fileInput.setInputFiles({ name: "Main.java", mimeType: "text/plain", buffer: Buffer.from('class Main { public static void main(String[] args) { System.out.println("Hello"); } }') });
+    await page.getByRole("button", { name: "View code in editor" }).click();
+    await expect(page.getByLabel("Language")).toHaveValue("java");
+    await expect(page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ })).toBeDisabled();
 
     await page.getByRole("button", { name: "AI help" }).click();
     await page.getByRole("button", { name: "Explain my code" }).click();
     await page.getByRole("button", { name: "Get feedback" }).click();
-    await expect(page.locator(".coach-markdown")).toContainText("runtime result confirms");
+    await expect(page.locator(".code-conversation")).toContainText("runtime result confirms");
     expect(aiRequests).toBe(1);
   });
 

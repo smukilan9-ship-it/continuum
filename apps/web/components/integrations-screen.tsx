@@ -187,7 +187,8 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
   const [obsidianOpen, setObsidianOpen] = useState(false);
   const [obsidianToken, setObsidianToken] = useState("");
   const [ollamaUrl, setOllamaUrl] = useState("http://127.0.0.1:11434");
-  const [ollamaState, setOllamaState] = useState<{ reachable: boolean; models: string[] }>();
+  const [ollamaState, setOllamaState] = useState<{ reachable: boolean; models: Array<{ name: string; size: number }> }>();
+  const [ollamaModel, setOllamaModel] = useState("");
   const [ollamaOpen, setOllamaOpen] = useState(false);
   const [claudeOpen, setClaudeOpen] = useState(false);
   const [claudeTest, setClaudeTest] = useState<{ ok: boolean; message: string }>();
@@ -223,6 +224,7 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
     void refresh();
     const saved = window.localStorage.getItem("continuum_ollama_url");
     if (saved) setOllamaUrl(saved);
+    setOllamaModel(window.localStorage.getItem("continuum_ollama_model") ?? "");
     const query = new URLSearchParams(window.location.search);
     if (query.get("connection") === "claude") showToast("Claude connected. Its approved permissions are shown below.");
     if (query.get("connection") === "cancelled") showToast("Claude was not connected. No permissions were granted.");
@@ -299,21 +301,24 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
       if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) throw new Error("Only a local Ollama address is allowed");
       const response = await fetch(new URL("/api/tags", url), { signal: AbortSignal.timeout(5_000) });
       if (!response.ok) throw new Error(`Ollama returned ${response.status}`);
-      const payload = await response.json() as { models?: Array<{ name: string }> };
-      const models = (payload.models ?? []).map((model) => model.name);
+      const payload = await response.json() as { models?: Array<{ name: string; size?: number }> };
+      const models = (payload.models ?? []).map((model) => ({ name: model.name, size: model.size ?? 0 }));
       setOllamaState({ reachable: true, models });
+      const current = models.find((model) => model.name === ollamaModel && model.size <= 8 * 1024 ** 3);
+      const recommended = [...models].filter((model) => !model.size || model.size <= 8 * 1024 ** 3).sort((left, right) => left.size - right.size)[0];
+      setOllamaModel(current?.name ?? recommended?.name ?? models[0]?.name ?? "");
       showToast(models.length ? `Ollama responded with ${models.length} local model${models.length === 1 ? "" : "s"}. Save to use this setup.` : "Ollama is reachable. Install a model before saving this setup.");
     } catch (cause) { setOllamaState({ reachable: false, models: [] }); showToast(cause instanceof Error ? cause.message : "Ollama is unavailable"); }
     finally { setBusy(""); }
   }
 
   function saveOllama() {
-    if (!ollamaState?.reachable || !ollamaState.models[0]) return;
+    if (!ollamaState?.reachable || !ollamaModel) return;
     const url = new URL(ollamaUrl);
     window.localStorage.setItem("continuum_ollama_url", url.origin);
-    window.localStorage.setItem("continuum_ollama_model", ollamaState.models[0]);
+    window.localStorage.setItem("continuum_ollama_model", ollamaModel);
     setOllamaOpen(false);
-    showToast(`Local AI saved with ${ollamaState.models[0]}.`);
+    showToast(`Local AI saved with ${ollamaModel}.`);
   }
 
   async function testClaudeConnector() {
@@ -428,7 +433,7 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
         <div className="section-heading"><div><p className="eyebrow">LOCAL AI</p><h2 id="local-title">Keep coding help on this computer</h2></div><p>Ollama is optional. Its URL and selected model stay in this browser.</p></div>
         <ConnectionCard icon={<Laptop size={20} />} title="Ollama" status={ollamaState?.reachable ? "Available locally" : "Optional"} connected={ollamaState?.reachable} description="Use a model running on your own computer from the Code workspace.">
           <div className="connection-actions"><Button className="button-primary" onClick={() => setOllamaOpen(true)}><Laptop size={15} />Choose local AI</Button></div>
-          {ollamaState?.models.length ? <p className="connection-note"><strong>Installed:</strong> {ollamaState.models.slice(0, 6).join(" · ")}</p> : null}
+          {ollamaState?.models.length ? <p className="connection-note"><strong>Installed:</strong> {ollamaState.models.slice(0, 6).map((model) => model.name).join(" · ")}</p> : null}
           <Guide title="Set up Ollama" steps={["Install Ollama from its official download page.", "Use Ollama's official CLI to install at least one code-capable model, then start Ollama.", "If your browser blocks the local request, allow only your Continuum origin in OLLAMA_ORIGINS.", "Test the connection here, then choose Ollama in the Code workspace."]} official={[{ label: "Official Ollama download", href: links.ollama }, { label: "Official Ollama API guide", href: links.ollamaApi }]} />
         </ConnectionCard>
       </section>
@@ -478,7 +483,7 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
         onOpenChange={setOllamaOpen}
         title="Choose local AI for coding help"
         description="Ollama is optional and affects AI help only. Running code in Continuum does not use Ollama or any other model."
-        footer={<><Button className="button-secondary" type="button" onClick={() => setOllamaOpen(false)}>Cancel</Button><Button className="button-primary" type="button" disabled={!ollamaState?.reachable || !ollamaState.models[0]} onClick={saveOllama}>Save local AI</Button></>}
+        footer={<><Button className="button-secondary" type="button" onClick={() => setOllamaOpen(false)}>Cancel</Button><Button className="button-primary" type="button" disabled={!ollamaState?.reachable || !ollamaModel || Boolean(ollamaState.models.find((model) => model.name === ollamaModel && model.size > 8 * 1024 ** 3))} onClick={saveOllama}>Save local AI</Button></>}
       >
         <div className="guided-config">
           <p><strong>Why it is needed:</strong> This address lets the Code tab request optional explanations from a model running on your computer.</p>
@@ -486,7 +491,9 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
           <a className="button button-secondary" href={links.ollama} target="_blank" rel="noreferrer">Download Ollama <ExternalLink size={13} /></a>
           <label>Local Ollama address<input autoFocus inputMode="url" value={ollamaUrl} onChange={(event) => { setOllamaUrl(event.target.value); setOllamaState(undefined); }} placeholder="Example: http://127.0.0.1:11434" /></label>
           <Button className="button-secondary" type="button" disabled={busy === "ollama"} onClick={() => void testOllama()}>{busy === "ollama" ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}{busy === "ollama" ? "Testing…" : "Test connection"}</Button>
-          {ollamaState ? <div className={ollamaState.reachable && ollamaState.models.length ? "config-test-success" : "config-test-error"} role="status"><strong>{ollamaState.reachable && ollamaState.models.length ? "Local AI is ready" : "Setup is incomplete"}</strong><span>{ollamaState.reachable ? (ollamaState.models.length ? `Found ${ollamaState.models.slice(0, 4).join(", ")}.` : "Ollama responded, but no model is installed. Install a model, then test again.") : "Continuum could not reach this local address. Confirm Ollama is running and the address is correct."}</span></div> : null}
+          {ollamaState?.reachable && ollamaState.models.length ? <label>Model<select value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)}>{ollamaState.models.map((model) => <option key={model.name} value={model.name}>{model.name} · {model.size ? `${(model.size / 1024 ** 3).toFixed(1)} GB` : "size unknown"}</option>)}</select><small>For a 16 GB Mac, choose a model below 8 GB. Continuum caps local requests to an 8K context so the computer remains responsive.</small></label> : null}
+          {ollamaState ? <div className={ollamaState.reachable && ollamaState.models.length ? "config-test-success" : "config-test-error"} role="status"><strong>{ollamaState.reachable && ollamaState.models.length ? "Local AI is ready" : "Setup is incomplete"}</strong><span>{ollamaState.reachable ? (ollamaState.models.length ? `Found ${ollamaState.models.slice(0, 4).map((model) => model.name).join(", ")}.` : "Ollama responded, but no model is installed. Install a model, then test again.") : "Continuum could not reach this local address. Confirm Ollama is running and the address is correct."}</span></div> : null}
+          {ollamaState?.models.find((model) => model.name === ollamaModel && model.size > 8 * 1024 ** 3) ? <div className="config-test-error" role="alert"><strong>This model is too large for reliable local help</strong><span>Choose a model under 8 GB. Larger weights can force macOS to swap memory and make the whole computer appear frozen.</span></div> : null}
           <p className="privacy-note">The address and selected model are stored only in this browser. Code still runs in Continuum’s isolated browser runtime; local AI is called only when you explicitly request AI help.</p>
         </div>
       </Modal>

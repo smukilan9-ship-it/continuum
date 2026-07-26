@@ -45,13 +45,23 @@ const rejectionOptions = [
   ["other", "Other"],
 ] as const;
 
-export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceState; showToast: Toast; onRefresh: () => Promise<void> }) {
+const goalStopWords = new Set(["about", "after", "and", "before", "build", "class", "complete", "finish", "for", "from", "learn", "master", "project", "score", "study", "the", "this", "what", "with", "your"]);
+
+function goalMatchScore(query: string, goal: Row) {
+  const terms = new Set(query.toLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length > 2 && !goalStopWords.has(term)));
+  if (!terms.size) return 0;
+  const goalText = `${text(goal, "title")} ${text(goal, "outcome")}`.toLowerCase();
+  return [...terms].filter((term) => goalText.includes(term)).length;
+}
+
+export function LearnScreen({ state, userId, showToast, onRefresh }: { state: WorkspaceState; userId: string; showToast: Toast; onRefresh: () => Promise<void> }) {
   const [view, setView] = useState<LearnView>("home");
   const [topic, setTopic] = useState("");
   const [need, setNeed] = useState("");
   const [intent, setIntent] = useState("");
   const goalType = "school";
   const [goalId, setGoalId] = useState(text(state.goals[0], "id"));
+  const [goalOverridden, setGoalOverridden] = useState(false);
   const [minutes, setMinutes] = useState(45);
   const [cost, setCost] = useState("free_only");
   const [recommendation, setRecommendation] = useState<ResourceRecommendation>();
@@ -63,7 +73,7 @@ export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceS
   const [result, setResult] = useState<VerificationResult>();
   const [lesson, setLesson] = useState<NativeLesson>();
   const [lessonBusy, setLessonBusy] = useState(false);
-  const [lessonRead, setLessonRead] = useState(false);
+  const [lessonRead, setLessonRead] = useState(() => state.learningStates.some((item) => text(item, "conceptId").includes("potential") && number(item, "exposure", 0) > 0));
   const [checkpointAnswer, setCheckpointAnswer] = useState("");
   const [checkpoint, setCheckpoint] = useState<LessonCheckpoint>();
   const [videoQuery, setVideoQuery] = useState("electric potential CBSE Class 12");
@@ -77,34 +87,111 @@ export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceS
   const [changedPreference, setChangedPreference] = useState("");
   const [confirmGoalChange, setConfirmGoalChange] = useState(false);
   const [showResultReview, setShowResultReview] = useState(false);
+  const [resumeActivityId, setResumeActivityId] = useState("");
+  const [resumeRequested, setResumeRequested] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
   const recentActivityId = text(state.resourceActivities.find((item) => !["verified", "abandoned"].includes(text(item, "status"))), "id");
+  const activityToResume = resumeActivityId || (resumeRequested ? recentActivityId : "");
   const focusLearning = state.learningStates.find((item) => text(item, "conceptId").includes("potential")) ?? state.learningStates[0];
 
   useEffect(() => {
-    if (view !== "resource" || !recentActivityId || activity || recommendation) return;
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(`continuum.learn-session.v1.${userId}`) ?? "null") as Record<string, unknown> | null;
+      if (saved) {
+        if (["home", "lesson", "resource"].includes(String(saved.view))) setView(saved.view as LearnView);
+        if (typeof saved.topic === "string") setTopic(saved.topic);
+        if (typeof saved.need === "string") setNeed(saved.need);
+        if (typeof saved.intent === "string") setIntent(saved.intent);
+        if (typeof saved.goalId === "string") setGoalId(saved.goalId);
+        if (typeof saved.goalOverridden === "boolean") setGoalOverridden(saved.goalOverridden);
+        if (typeof saved.minutes === "number") setMinutes(saved.minutes);
+        if (typeof saved.cost === "string") setCost(saved.cost);
+        if (typeof saved.returnEvidence === "string") setReturnEvidence(saved.returnEvidence);
+        if (typeof saved.answer === "string") setAnswer(saved.answer);
+        if (typeof saved.checkpointAnswer === "string") setCheckpointAnswer(saved.checkpointAnswer);
+        if (typeof saved.videoQuery === "string") setVideoQuery(saved.videoQuery);
+        if (typeof saved.lessonRead === "boolean") setLessonRead(saved.lessonRead);
+        if (typeof saved.rejectionOpen === "boolean") setRejectionOpen(saved.rejectionOpen);
+        if (typeof saved.rejectionReason === "string") setRejectionReason(saved.rejectionReason);
+        if (typeof saved.rejectionNote === "string") setRejectionNote(saved.rejectionNote);
+        if (typeof saved.preferredFormat === "string") setPreferredFormat(saved.preferredFormat);
+        if (typeof saved.resumeActivityId === "string") setResumeActivityId(saved.resumeActivityId);
+        if (saved.recommendation && typeof saved.recommendation === "object") setRecommendation(saved.recommendation as ResourceRecommendation);
+        if (saved.lesson && typeof saved.lesson === "object") setLesson(saved.lesson as NativeLesson);
+        if (saved.checkpoint && typeof saved.checkpoint === "object") setCheckpoint(saved.checkpoint as LessonCheckpoint);
+        if (saved.videos && typeof saved.videos === "object") setVideos(saved.videos as VideoResponse);
+        if (saved.preferences && typeof saved.preferences === "object") setPreferences(saved.preferences as typeof preferences);
+        if (typeof saved.changedPreference === "string") setChangedPreference(saved.changedPreference);
+      }
+    } catch {
+      // A corrupt local draft must never block the server-backed Learn workspace.
+    }
+    setDraftRestored(true);
+  }, [userId]);
+
+  useEffect(() => {
+    if (!draftRestored) return;
+    try {
+      window.localStorage.setItem(`continuum.learn-session.v1.${userId}`, JSON.stringify({
+        view, topic, need, intent, goalId, goalOverridden, minutes, cost, recommendation: activity ? undefined : recommendation,
+        returnEvidence, answer, checkpointAnswer, checkpoint, videoQuery, videos, lesson, lessonRead, preferences,
+        rejectionOpen, rejectionReason, rejectionNote, preferredFormat,
+        changedPreference, resumeActivityId: activity?.id ?? resumeActivityId,
+      }));
+    } catch {
+      // Continue in memory if storage is unavailable or full.
+    }
+  }, [activity, answer, changedPreference, checkpoint, checkpointAnswer, cost, draftRestored, goalId, goalOverridden, intent, lesson, lessonRead, minutes, need, preferences, preferredFormat, recommendation, rejectionNote, rejectionOpen, rejectionReason, resumeActivityId, returnEvidence, topic, userId, videoQuery, videos, view]);
+
+  useEffect(() => {
+    if (goalOverridden || topic.trim().length < 3) return;
+    const ranked = state.goals.map((goal) => ({ id: text(goal, "id"), score: goalMatchScore(topic, goal) })).sort((left, right) => right.score - left.score);
+    setGoalId(ranked[0]?.score ? ranked[0].id : "");
+  }, [goalOverridden, state.goals, topic]);
+
+  useEffect(() => {
+    if (view !== "resource" || !activityToResume || activity || recommendation) return;
     let active = true;
     setResumeBusy(true);
-    fetch(`/api/resources?activityId=${encodeURIComponent(recentActivityId)}`, { cache: "no-store" })
+    fetch(`/api/resources?activityId=${encodeURIComponent(activityToResume)}`, { cache: "no-store" })
       .then(async (response) => {
         const body = await response.json() as { activity?: ResourceActivity; recommendation?: ResourceRecommendation; error?: string };
         if ([404, 409].includes(response.status)) return;
         if (!response.ok || !body.activity || !body.recommendation) throw new Error(body.error ?? "The handoff could not be resumed");
-        if (active) { setActivity(body.activity); setRecommendation(body.recommendation); }
+        if (active) {
+          setActivity(body.activity);
+          setRecommendation(body.recommendation);
+          setResumeActivityId(body.activity.id);
+          if (body.activity.status === "verified") setResult({ verified: true, outcome: "verified", explanation: "This activity and its completion evidence were verified and saved to your learning memory." });
+          if (body.activity.status === "needs_review") setResult({ verified: false, outcome: "recorded", explanation: "This evidence is saved, but its format cannot be checked automatically. Add deterministic output or complete the requested checkpoint to verify it." });
+        }
       })
       .catch((error) => { if (active) showToast(error instanceof Error ? error.message : "The handoff could not be resumed"); })
       .finally(() => { if (active) setResumeBusy(false); });
     return () => { active = false; };
-  }, [activity, recentActivityId, recommendation, showToast, view]);
+  }, [activity, activityToResume, recommendation, showToast, view]);
 
   function inferredGoalType() {
-    const context = `${topic} ${text(state.goals.find((goal) => text(goal, "id") === goalId), "title")}`.toLowerCase();
-    if (/sat|test|exam|neet|jee/.test(context)) return "exam";
-    if (/research|paper|thesis|oasis/.test(context)) return "research";
-    if (/code|python|sql|program/.test(context)) return "coding";
+    const topicContext = topic.toLowerCase();
+    if (/sat|test|exam|neet|jee/.test(topicContext)) return "exam";
+    if (/research|paper|thesis|oasis/.test(topicContext)) return "research";
+    if (/code|python|sql|program/.test(topicContext)) return "coding";
+    if (topicContext.trim()) return goalType;
+    const goalContext = text(state.goals.find((goal) => text(goal, "id") === goalId), "title").toLowerCase();
+    if (/sat|test|exam|neet|jee/.test(goalContext)) return "exam";
+    if (/research|paper|thesis|oasis/.test(goalContext)) return "research";
+    if (/code|python|sql|program/.test(goalContext)) return "coding";
     return goalType;
   }
 
+  function effectiveGoalId() {
+    if (goalOverridden) return goalId;
+    const ranked = state.goals.map((goal) => ({ id: text(goal, "id"), score: goalMatchScore(topic, goal) })).sort((left, right) => right.score - left.score);
+    return ranked[0]?.score ? ranked[0].id : "";
+  }
+
   function requestBody(nextPreferences = preferences, minutesForRequest = minutes) {
+    const linkedGoalId = effectiveGoalId();
     return {
       topic,
       need,
@@ -112,7 +199,7 @@ export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceS
       costPreference: cost,
       minutesAvailable: minutesForRequest,
       ...nextPreferences,
-      ...(goalId ? { goalId } : {}),
+      ...(linkedGoalId ? { goalId: linkedGoalId } : {}),
     };
   }
 
@@ -140,6 +227,7 @@ export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceS
       if (!response.ok || !body.activity || !body.recommendation) throw new Error(body.error ?? "The guided handoff could not be saved");
       setActivity(body.activity);
       setRecommendation(body.recommendation);
+      setResumeActivityId(body.activity.id);
       showToast(body.recommendation.selected.native ? "Native lesson started. Progress remains unverified." : "Handoff saved. Open the resource when you are ready.");
     } catch (error) { showToast(error instanceof Error ? error.message : "The guided handoff could not be saved"); }
     finally { setBusy(false); }
@@ -182,6 +270,9 @@ export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceS
     setReturnEvidence("");
     setPreferences({ excludeResourceIds: [], rejectionReasons: [] });
     setChangedPreference("");
+    setResumeActivityId("");
+    setResumeRequested(false);
+    setGoalOverridden(false);
     setNeed("");
     setIntent("");
     setView("resource");
@@ -225,6 +316,9 @@ export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceS
     setAnswer("");
     setReturnEvidence("");
     setChangedPreference("");
+    setResumeActivityId("");
+    setResumeRequested(false);
+    setGoalOverridden(false);
     setView("home");
   }
 
@@ -281,6 +375,11 @@ export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceS
   }
 
   function continueTask(task: Row) {
+    setRecommendation(undefined);
+    setActivity(undefined);
+    setResumeActivityId("");
+    setResumeRequested(false);
+    setGoalOverridden(true);
     setTopic(text(task, "title"));
     setGoalId(text(task, "goalId"));
     setNeed("guided_practice");
@@ -299,12 +398,12 @@ export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceS
       {view === "home" ? <div className="learn-home">
         <section className="learn-landing-actions" aria-label="Learning actions">
           <button onClick={() => void openLesson()} disabled={lessonBusy}><span><PlayCircle size={20} /></span><strong>Continue learning</strong><small>Resume your current concept</small><ChevronRight size={17} /></button>
-          <button onClick={() => setView("resource")}><span><Search size={20} /></span><strong>Find a resource</strong><small>Match the goal, time, and access</small><ChevronRight size={17} /></button>
+          <button onClick={() => { setRecommendation(undefined); setActivity(undefined); setResumeActivityId(""); setResumeRequested(false); setGoalOverridden(false); setView("resource"); }}><span><Search size={20} /></span><strong>Find a resource</strong><small>Match the goal, time, and access</small><ChevronRight size={17} /></button>
           <button onClick={() => void openLesson()} disabled={lessonBusy}><span><BrainCircuit size={20} /></span><strong>Review weak areas</strong><small>Start with the clearest current gap</small><ChevronRight size={17} /></button>
-          <button onClick={() => setView("resource")} disabled={!recentActivityId}><span><RotateCcw size={20} /></span><strong>Return to an active resource</strong><small>{recentActivityId ? "Continue the saved handoff" : "No active resource right now"}</small><ChevronRight size={17} /></button>
+          <button onClick={() => { setRecommendation(undefined); setActivity(undefined); setResumeRequested(true); setView("resource"); }} disabled={!recentActivityId}><span><RotateCcw size={20} /></span><strong>Return to an active resource</strong><small>{recentActivityId ? "Continue the saved handoff" : "No active resource right now"}</small><ChevronRight size={17} /></button>
         </section>
         <section className="learn-home-hero">
-          <Card className="continue-learning-card"><div className="learn-card-label"><Sparkles size={15} />CONTINUE LEARNING</div><div className="continue-learning-body"><div><Badge tone="orange">Misconception to fix</Badge><h2>Electric potential vs potential energy</h2><p>At one location, potential stays fixed. Energy changes with the charge you place there.</p></div><div className="mastery-ring" style={{ "--mastery": `${Math.round(number(focusLearning, "understanding", .52) * 100)}%` } as React.CSSProperties}><strong>{Math.round(number(focusLearning, "understanding", .52) * 100)}%</strong><span>understanding</span></div></div><div className="continue-learning-actions"><Button className="button-primary" disabled={lessonBusy} onClick={() => void openLesson()}>{lessonBusy ? <LoaderCircle className="spin" size={16} /> : <BookOpen size={16} />}Open 6-min lesson</Button><button onClick={() => { setTopic("electric potential and potential energy"); setNeed("conceptual_intuition"); setIntent("concept"); setView("resource"); }}>Compare resources <ChevronRight size={15} /></button></div></Card>
+          <Card className="continue-learning-card"><div className="learn-card-label"><Sparkles size={15} />CONTINUE LEARNING</div><div className="continue-learning-body"><div><Badge tone="orange">Misconception to fix</Badge><h2>Electric potential vs potential energy</h2><p>At one location, potential stays fixed. Energy changes with the charge you place there.</p></div><div className="mastery-ring" style={{ "--mastery": `${Math.round(number(focusLearning, "understanding", .52) * 100)}%` } as React.CSSProperties}><strong>{Math.round(number(focusLearning, "understanding", .52) * 100)}%</strong><span>understanding</span></div></div><div className="continue-learning-actions"><Button className="button-primary" disabled={lessonBusy} onClick={() => void openLesson()}>{lessonBusy ? <LoaderCircle className="spin" size={16} /> : <BookOpen size={16} />}Open 6-min lesson</Button><button onClick={() => { setRecommendation(undefined); setActivity(undefined); setResumeActivityId(""); setResumeRequested(false); setGoalOverridden(false); setTopic("electric potential and potential energy"); setNeed("conceptual_intuition"); setIntent("concept"); setView("resource"); }}>Compare resources <ChevronRight size={15} /></button></div></Card>
           <Card className="learning-signal-card"><div className="learn-card-label"><BrainCircuit size={15} />CURRENT SIGNAL</div><strong>{masteryLabel(text(focusLearning, "status", "not_started"))}</strong><p>{text(focusLearning, "explanation", "Continuum needs an unseen checkpoint before it can claim transfer.")}</p><div><span>Exposure <b>{Math.round(number(focusLearning, "exposure", 0) * 100)}%</b></span><span>Transfer <b>{Math.round(number(focusLearning, "transfer", 0) * 100)}%</b></span><span>Retention <b>{Math.round(number(focusLearning, "retention", 0) * 100)}%</b></span></div></Card>
         </section>
 
@@ -337,7 +436,7 @@ export function LearnScreen({ state, showToast, onRefresh }: { state: WorkspaceS
           <fieldset><legend>What can you access?</legend><div className="choice-chips"><button type="button" className={cost === "free_only" ? "active" : ""} aria-pressed={cost === "free_only"} onClick={() => setCost("free_only")}>Free</button><button type="button" className={cost === "any" ? "active" : ""} aria-pressed={cost === "any"} onClick={() => setCost("any")}>Paid resources are okay</button></div></fieldset>
           <details className="inferred-goal">
             <summary><span><Target size={15} />Connected goal</span><strong>{text(state.goals.find((goal) => text(goal, "id") === goalId), "title", "No linked goal")}</strong><small>Change</small></summary>
-            <label>Use this goal<select value={goalId} onChange={(event) => setGoalId(event.target.value)}><option value="">No linked goal</option>{state.goals.map((goal) => <option key={text(goal, "id")} value={text(goal, "id")}>{text(goal, "title")}</option>)}</select></label>
+            <label>Use this goal<select value={goalId} onChange={(event) => { setGoalId(event.target.value); setGoalOverridden(true); }}><option value="">No linked goal</option>{state.goals.map((goal) => <option key={text(goal, "id")} value={text(goal, "id")}>{text(goal, "title")}</option>)}</select></label>
           </details>
         </div> : null}
         <div className="resource-search-actions"><p><ShieldCheck size={15} />You will always see what to do and how progress can be checked before you start.</p><LoadingButton className="button-primary button-large" loading={busy} loadingLabel="Finding the best match…" disabled={topic.trim().length < 2 || !need} onClick={() => void query()}><Search size={16} />Find my best match</LoadingButton></div>

@@ -61,7 +61,7 @@ export type ExecutionResult = {
 export type ExecutionStatus = "preparing" | "loading_python" | "loading_sql" | "ready" | "running" | "testing" | "stopping";
 
 export const EXECUTION_LIMITS = {
-  maxSourceCharacters: 50_000,
+  maxSourceCharacters: 200_000,
   maxStdinCharacters: 20_000,
   maxOutputCharacters: 64_000,
   maxTests: 8,
