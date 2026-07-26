@@ -17,6 +17,12 @@ const nextConfig = {
     "@continuum/schemas",
   ],
   async headers() {
+    const oauthPopupHeaders = [
+      // Claude completes hosted connector authorization in a cross-origin popup.
+      // A same-origin COOP policy severs that popup from Claude before its
+      // callback can finish the code exchange, leaving the UI on "Connecting".
+      { key: "Cross-Origin-Opener-Policy", value: "unsafe-none" },
+    ];
     const securityHeaders = [
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -27,7 +33,12 @@ const nextConfig = {
       ...(process.env.NODE_ENV === "production" ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }] : []),
       ...(process.env.VERCEL_ENV === "preview" ? [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }] : []),
     ];
-    return [{ source: "/(.*)", headers: securityHeaders }];
+    return [
+      { source: "/(.*)", headers: securityHeaders },
+      { source: "/login", headers: oauthPopupHeaders },
+      { source: "/oauth/authorize", headers: oauthPopupHeaders },
+      { source: "/api/oauth/authorize", headers: oauthPopupHeaders },
+    ];
   },
 };
 

@@ -32,6 +32,8 @@ async function tokenResponse(payload: { sub: string; clientId: string; scopes: s
 }
 
 export async function POST(request: Request) {
+  const startedAt = Date.now();
+  const requestId = request.headers.get("x-vercel-id");
   const rate = await enforceRateLimit(request, "oauth-token", Number(process.env.OAUTH_TOKEN_REQUESTS_PER_MINUTE ?? 60), 60_000);
   if (!rate.allowed) return NextResponse.json({ error: "slow_down", error_description: "Token endpoint rate limit exceeded" }, { status: 429, headers: { "retry-after": "60" } });
   const form = await request.formData().catch(() => undefined);
@@ -46,7 +48,9 @@ export async function POST(request: Request) {
       if (!validMcpResource(resource) || resource !== code.resource) throw new Error("Resource indicator does not match the authorization request");
       if (code.redirectUri !== String(form.get("redirect_uri") ?? "") || !code.codeChallenge || !verifyPkce(String(form.get("code_verifier") ?? ""), code.codeChallenge)) throw new Error("PKCE or redirect URI verification failed");
       await getStore(code.sub).consumeOAuthCode(code.jti);
-      return NextResponse.json(await tokenResponse({ ...code, resource }), { headers: { "cache-control": "no-store" } });
+      const payload = await tokenResponse({ ...code, resource });
+      console.info(JSON.stringify({ level: "info", message: "oauth_token_issued", requestId, grantType: "authorization_code", ms: Date.now() - startedAt }));
+      return NextResponse.json(payload, { headers: { "cache-control": "no-store" } });
     }
     if (form.get("grant_type") === "refresh_token") {
       const raw = String(form.get("refresh_token") ?? "");
@@ -57,10 +61,13 @@ export async function POST(request: Request) {
       const resource = String(form.get("resource") ?? refresh.resource ?? mcpResource());
       if (!validMcpResource(resource) || resource !== refresh.resource) throw new Error("Resource indicator does not match the refresh token");
       await getStore(refresh.sub).consumeOAuthGrant(refresh.jti, "refresh");
-      return NextResponse.json(await tokenResponse({ ...refresh, resource }), { headers: { "cache-control": "no-store" } });
+      const payload = await tokenResponse({ ...refresh, resource });
+      console.info(JSON.stringify({ level: "info", message: "oauth_token_issued", requestId, grantType: "refresh_token", ms: Date.now() - startedAt }));
+      return NextResponse.json(payload, { headers: { "cache-control": "no-store" } });
     }
     return NextResponse.json({ error: "unsupported_grant_type" }, { status: 400 });
   } catch (error) {
+    console.error(JSON.stringify({ level: "error", message: "oauth_token_failed", requestId, error: error instanceof Error ? error.message : "Token exchange failed", ms: Date.now() - startedAt }));
     return NextResponse.json({ error: "invalid_grant", error_description: error instanceof Error ? error.message : "Token exchange failed" }, { status: 400 });
   }
 }

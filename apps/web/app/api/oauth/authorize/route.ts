@@ -73,6 +73,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const startedAt = Date.now();
+  const requestId = request.headers.get("x-vercel-id");
   if (!sameOriginWrite(request)) {
     return NextResponse.json(
       { error: "invalid_request", error_description: "Cross-origin authorization was rejected" },
@@ -116,6 +118,7 @@ export async function POST(request: Request) {
       const target = new URL(authorization.redirectUri);
       target.searchParams.set("error", "access_denied");
       target.searchParams.set("state", authorization.state);
+      console.info(JSON.stringify({ level: "info", message: "oauth_authorization_denied", requestId, client: authorization.client.clientName, redirectHost: target.host, ms: Date.now() - startedAt }));
       return NextResponse.redirect(target, 303);
     }
     if (form.get("decision") !== "approve") return formError(request, form, "invalid_decision");
@@ -137,8 +140,10 @@ export async function POST(request: Request) {
     const target = new URL(authorization.redirectUri);
     target.searchParams.set("code", code);
     target.searchParams.set("state", authorization.state);
+    console.info(JSON.stringify({ level: "info", message: "oauth_authorization_code_issued", requestId, client: authorization.client.clientName, redirectHost: target.host, ms: Date.now() - startedAt }));
     return NextResponse.redirect(target, 303);
-  } catch {
+  } catch (error) {
+    console.error(JSON.stringify({ level: "error", message: "oauth_authorization_failed", requestId, error: error instanceof Error ? error.message : "Unknown authorization failure", ms: Date.now() - startedAt }));
     return formError(request, form, "authorization_failed");
   }
 }
