@@ -153,9 +153,9 @@ Audited before implementation on 2026-07-25.
   fixed/flexible, overlap-checked, workload-checked, undone, selectively
   regenerated, and saved.
 - Code has one primary Run control, adjacent Program input, plain-language task
-  and completion context, editor-centered layout, Output/Tests/Feedback tabs,
-  local execution messaging, manual feedback only, and hidden environment
-  details.
+  and completion context, editor-centered layout, Output/AI tutor tabs, one
+  deterministic Check sample action, persistent multi-turn tutor history, local
+  execution messaging, manual feedback only, and hidden environment details.
 - Mobile navigation is inert while closed, background content is inert while
   the drawer is open, Escape restores focus to the opener, and the compact
   search control retains an accessible name.
@@ -177,11 +177,11 @@ the new columns/tables.
 
 ## Final verification
 
-- `pnpm test`: 30 files, 207 tests passed.
+- `pnpm test`: 32 files, 215 tests passed.
 - `pnpm lint`: 8 packages passed with zero warnings.
 - `pnpm typecheck`: 8 packages passed.
 - `pnpm build`: production Next.js build passed for all 8 packages.
-- Playwright: 7/7 workflows passed, including real consent → code → token → MCP,
+- Playwright: 10/10 workflows passed, including real consent → code → token → MCP,
   approve/reject/invalid-state/failed-callback paths, Research route/modal,
   Learn, editable Plan, Code execution, legacy route redirect, and mobile
   horizontal-overflow checks.

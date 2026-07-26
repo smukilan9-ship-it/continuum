@@ -11,8 +11,8 @@ per runnable language. Python and SQL can pre-load while the learner edits, so a
 normal Run does not download and initialize the runtime again. A completed worker
 is reused; Stop, timeout, startup failure, or a worker crash terminates and discards
 it. `code-execution.worker.ts` captures stdout/stderr and returns one typed result.
-Tests run only after the separate **Run tests** action. Nothing is sent to an AI
-model to produce program output.
+Sample tests run only after the separate **Check sample** action. Nothing is sent
+to an AI model to produce program output.
 
 | Language | Runtime | Actual behavior |
 | --- | --- | --- |
@@ -22,19 +22,23 @@ model to produce program output.
 | SQL | sql.js SQLite WASM | fresh in-memory DB per run, DDL/DML/query tables and row-change count |
 
 Language setup has a separate 45-second startup ceiling. User code uses a
-learner-selected 3-, 10-, or 30-second limit that begins only after the runtime
+learner-selected 5-, 10-, or 30-second limit that begins only after the runtime
 is ready. Each result records outcome, stdout, stderr, exit code, setup/execution
 duration, selected timeout, termination state,
 tables/rows for SQL, and test results. Output is capped at 64,000 characters; source
-at 50,000; stdin at 20,000. Source, input, results, history, and AI attempts persist
-in account-keyed browser local storage and survive navigation/refresh.
+at 200,000; stdin at 20,000. Imported source files are capped at 1 MB so a large
+file cannot freeze the editor. Source, input, results, run history, and the
+multi-turn tutor conversation persist in account-keyed browser local storage and
+survive navigation/refresh.
 
 ## AI boundary
 
-Program Output/Tests and AI Feedback are distinct tabs. Feedback receives a bounded
-copy of the exact runtime result only after the user submits. The centralized prompt
-envelope treats source and runtime data as content, not instructions. An AI outage
-cannot alter or erase deterministic output.
+Output and AI tutor are distinct tabs. The former Tests tab was removed; a single
+**Check sample** action runs deterministic sample tests and reports them in Output.
+The tutor receives a bounded copy of the exact runtime result and up to twelve
+bounded prior conversation messages only after the user submits. The centralized
+prompt envelope treats source, conversation, and runtime data as content, not
+instructions. An AI outage cannot alter or erase deterministic output.
 
 ## Security boundary and limitations
 

@@ -28,8 +28,9 @@ back — discarded the learner's code, topic, prompt, and coach response. The sc
 **Fixes:**
 
 - **`useCodeSession` hook** (`components/workspace/use-code-session.ts`) persists the
-  whole session — `goalId, topic, language, mode, provider, prompt, code, answer,
-  attempts` — to `localStorage` (`continuum.code-session.v1.<userId>`) on every
+  whole session — `goalId, topic, language, mode, provider, prompt, code,
+  conversation, run result/history, input, file name, and timeout` — to
+  `localStorage` (`continuum.code-session.v1.<userId>`) on every
   change, and restores it on mount via a `mergeSavedSession` merge (saved values win
   over defaults). This survives navigation, refresh, tab-switch, and errors. The pure
   merge/round-trip logic is unit-tested (`tests/code-session.test.ts`).
@@ -65,25 +66,39 @@ Language is a compact inline selector on the editor toolbar (not a always-open
 dropdown block), and labels come from the central presentation layer (`SQL`, `C++`,
 `Python & MySQL`, etc.).
 
-## Attempt history
+## Conversation and run history
 
-Each completed coach response is recorded as an attempt (topic, language, code,
-answer, timestamp) in the persisted session and shown under a **History** tab. Any
-attempt can be **restored into the editor** — comparing approaches never loses work.
+AI help is a persistent multi-turn conversation rather than a one-off answer.
+Each request may include up to twelve bounded prior messages, and the client keeps
+the latest forty messages. Completed deterministic runs are stored separately and
+can be restored from **Previous runs**. Neither history is sent automatically.
 
 ## Layout
 
-A three-pane workbench: collapsible curriculum/lesson context, the real editor, and
-tabbed Output / Tests / AI feedback / History. Errors render as a structured,
-non-alarming block and preserve source plus deterministic output.
+The default workbench is a restrained split view: the real editor on the left and
+two tabs, **Output** and **AI tutor**, on the right. The former Tests tab is gone.
+One **Check sample** action remains beside Run for activities that provide a
+deterministic sample, and its result appears in Output. Tutor actions are grouped
+as Understand, Fix & review, and Check without a surrounding mode-card. Errors
+render as a structured, non-alarming block and preserve source plus deterministic
+output.
+
+The import flow accepts Python, JavaScript, TypeScript, SQL, Java, C, C++, and Rust
+files up to 1 MB. Runnable files can be explicitly run; Java, C, C++, and Rust are
+honestly labelled editor-only. No imported file runs or reaches AI until the user
+chooses that action.
 
 ## Tests
 
 - `tests/code-session.test.ts` — default construction, restore-over-defaults,
-  exact multiline/indented round-trip, attempt-history restore, corrupt-draft safety.
+  exact multiline/indented round-trip, conversation/run-history restore,
+  legacy-answer migration, and corrupt-draft safety.
+- `tests/code-file.test.ts` — cross-language type detection, safe file naming,
+  and the 1 MB import/editor limit.
 - `tests/labels.test.ts` — the presentation layer that supplies language/status
   labels used here.
 - `tests/code-execution.test.ts` — limits, stdin, stdout/stderr, errors,
   timeout/provider outcomes, exact tests, SQL tables, and restricted-runtime source checks.
-- `e2e/continuum.spec.ts` — real JavaScript output, AI separation, checkpoint save,
-  navigation persistence, and MCP-visible read-after-write.
+- `e2e/continuum.spec.ts` — real JavaScript/Python/TypeScript output, stdin,
+  stop/error behavior, cross-language import, multi-turn AI history, checkpoint
+  save, navigation persistence, and MCP-visible read-after-write.
