@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getStore } from "@/lib/store";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
+import { evaluateQuestionAnswer } from "@/lib/question-bank";
 
 export const runtime = "nodejs";
 
@@ -16,9 +17,24 @@ const questions = [
 
 const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("diagnose"), answers: z.array(z.object({ itemId: z.string(), selectedIndex: z.number().int().min(0).max(3) })).length(3), liveAi: z.boolean().default(false) }),
-  z.object({ action: z.literal("lesson"), liveAi: z.boolean().default(false) }),
-  z.object({ action: z.literal("lesson_read") }),
+  z.object({
+    action: z.literal("lesson"),
+    liveAi: z.boolean().default(false),
+    topic: z.string().trim().min(2).max(300).optional(),
+    description: z.string().trim().max(2_000).optional(),
+    conceptId: z.string().min(3).max(200).optional(),
+  }),
+  z.object({ action: z.literal("lesson_read"), conceptId: z.string().min(3).max(200).default("concept_potential") }),
   z.object({ action: z.literal("checkpoint"), answer: z.union([z.string(), z.number()]) }),
+  z.object({ action: z.literal("ask_question"), selection: z.string().trim().min(8).max(4_000), conceptId: z.string().min(3).max(200).default("concept_potential") }),
+  z.object({
+    action: z.literal("evaluate_answer"),
+    selection: z.string().trim().min(8).max(4_000),
+    question: z.string().trim().min(8).max(2_000),
+    answer: z.string().trim().min(1).max(8_000),
+    conceptId: z.string().min(3).max(200).default("concept_potential"),
+    selfConfidence: z.number().min(0).max(1).optional(),
+  }),
 ]);
 
 function seededRoute(task: "diagnostic" | "lesson") {
@@ -61,6 +77,48 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Invalid learning action", issues: parsed.error.issues }, { status: 400 });
   const store = getStore(user.id);
   const now = new Date().toISOString();
+
+  if (parsed.data.action === "ask_question") {
+    const selection = parsed.data.selection.replace(/\s+/g, " ").trim();
+    const resolvedConceptId = parsed.data.conceptId.startsWith("concept_") ? parsed.data.conceptId : await store.ensureConcept(selection.slice(0, 180));
+    return NextResponse.json({
+      question: `What does this mean, and why does it matter: “${selection.slice(0, 420)}${selection.length > 420 ? "…" : ""}”?`,
+      conceptId: resolvedConceptId,
+      answerType: "natural_language",
+    });
+  }
+
+  if (parsed.data.action === "evaluate_answer") {
+    const evaluation = evaluateQuestionAnswer({
+      id: "lesson_selection_question",
+      prompt: parsed.data.question,
+      expectedAnswer: parsed.data.selection,
+      explanation: `A stronger answer preserves the selected idea and explains it in the learner’s own words: ${parsed.data.selection}`,
+      type: parsed.data.selection.length > 180 ? "long_answer" : "short_answer",
+      difficulty: 0.5,
+      sourceChunkIds: [],
+    }, parsed.data.answer);
+    const evidenceId = `evidence_natural_answer_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+    const mastery = updateMastery(await store.getLearningState(parsed.data.conceptId), {
+      id: evidenceId,
+      kind: "guided_practice",
+      correct: evaluation.correct,
+      score: evaluation.score,
+      completeness: evaluation.completeness,
+      difficulty: 0.5,
+      selfConfidence: parsed.data.selfConfidence,
+      occurredAt: now,
+    });
+    await store.saveLearningState(mastery);
+    await store.appendEvent({
+      type: "learning.natural.answer.evaluated",
+      summary: `${evaluation.verdict === "correct" ? "Complete" : evaluation.verdict === "incomplete" ? "Incomplete" : "Incorrect"} natural-language lesson answer recorded.`,
+      entityIds: [evidenceId, parsed.data.conceptId],
+      payload: { score: evaluation.score, verdict: evaluation.verdict, mastery },
+      goalId: await potentialGoalId(store),
+    }, now);
+    return NextResponse.json({ evaluation, mastery, evidenceId });
+  }
 
   if (parsed.data.action === "diagnose") {
     const data = parsed.data;
@@ -123,29 +181,56 @@ export async function POST(request: Request) {
   }
 
   if (parsed.data.action === "lesson") {
+    const requestedTopic = parsed.data.topic?.trim();
+    const potentialLesson = !requestedTopic || /electric potential|potential energy/i.test(requestedTopic);
     const seeded = lessonOutputSchema.parse({
-      id: "lesson_potential_contrast",
-      conceptId: "concept_potential",
-      title: "Same place. Same potential. Different energy.",
-      explanation: "Electric potential V belongs to a location in the field. Potential energy U = qV also depends on the charge placed there.",
-      checksForUnderstanding: ["At a fixed point, what changes when q doubles?"],
-      sourceChunkIds: ["chunk_physics_seed_2"],
-      evidenceState: "direct_support",
-      promptVersion: "physics-seed-v1",
-      model: "reviewed-curriculum",
+      id: potentialLesson ? "lesson_potential_contrast" : `lesson_${(parsed.data.conceptId ?? "planned_concept").replace(/^concept_/, "")}`,
+      conceptId: parsed.data.conceptId ?? (potentialLesson ? "concept_potential" : await store.ensureConcept(requestedTopic!)),
+      title: potentialLesson ? "Same place. Same potential. Different energy." : `A focused introduction to ${requestedTopic}`,
+      explanation: potentialLesson
+        ? "Electric potential V belongs to a location in the field. Potential energy U = qV also depends on the charge placed there."
+        : parsed.data.description || `Build a clear explanation of ${requestedTopic}, connect it to its prerequisite step, and test the idea without looking back.`,
+      checksForUnderstanding: [potentialLesson ? "At a fixed point, what changes when q doubles?" : `Explain ${requestedTopic} in your own words and give one example or application.`],
+      sourceChunkIds: potentialLesson ? ["chunk_physics_seed_2"] : [],
+      evidenceState: potentialLesson ? "direct_support" : "model_inference",
+      promptVersion: potentialLesson ? "physics-seed-v1" : "learning-path-v1",
+      model: potentialLesson ? "reviewed-curriculum" : "continuum-learning-path",
     });
     const live = parsed.data.liveAi ? await tryLiveAi(request, {
       taskClass: "lesson_generation",
-      prompt: "Create a concise CBSE Class 12 contrastive lesson explaining why electric potential is a field/location property while U=qV depends on the test charge. Cite only chunk_physics_seed_2.",
-      sourceLocked: true,
+      prompt: potentialLesson
+        ? "Create a concise CBSE Class 12 contrastive lesson explaining why electric potential is a field/location property while U=qV depends on the test charge. Cite only chunk_physics_seed_2."
+        : `Create a six-minute lesson on ${requestedTopic}. Stored learning-step description: ${parsed.data.description ?? "not supplied"}. Teach one concept at a time, include one example, and end with a natural-language check. State limitations if the stored context is insufficient.`,
+      sourceLocked: potentialLesson,
     }) : undefined;
     const lesson = live?.output ? lessonOutputSchema.safeParse(live.output) : undefined;
-    return NextResponse.json({ lesson: lesson?.success ? lesson.data : seeded, assistance: live?.assistance ?? seededRoute("lesson"), liveFallback: parsed.data.liveAi && !live });
+    const selected = lesson?.success ? { ...seeded, ...lesson.data, id: seeded.id, conceptId: seeded.conceptId, sourceChunkIds: seeded.sourceChunkIds, evidenceState: seeded.evidenceState, promptVersion: seeded.promptVersion, model: typeof live?.assistance === "object" ? "continuum-routed-model" : seeded.model } : seeded;
+    return NextResponse.json({
+      lesson: {
+        ...selected,
+        durationMinutes: 6,
+        objectives: potentialLesson
+          ? ["Distinguish electric potential from potential energy", "Use U = qV without confusing field and charge properties"]
+          : [`Explain the central idea in ${requestedTopic}`, "Connect it to the planned prerequisite", "Answer one check without looking back"],
+        sections: potentialLesson
+          ? [
+            { heading: "Potential belongs to a place", body: "It describes the source charges and location. At a fixed point, changing the test charge does not change V." },
+            { heading: "Energy belongs to a charge at that place", body: "U = qV. Doubling q doubles U, and a negative charge changes its sign." },
+          ]
+          : [
+            { heading: "Core idea", body: selected.explanation },
+            { heading: "Use it actively", body: `Create one concrete example of ${requestedTopic}, then explain what would change if one important condition changed.` },
+          ],
+        examples: potentialLesson ? ["At 12 V, a 3 C charge has U = 36 J; a 1 C charge at the same place has U = 12 J."] : [`Use the current learning task as a worked example: ${parsed.data.description ?? requestedTopic}.`],
+      },
+      assistance: live?.assistance ?? seededRoute("lesson"),
+      liveFallback: parsed.data.liveAi && !live,
+    });
   }
 
   if (parsed.data.action === "lesson_read") {
     const evidenceId = `evidence_lesson_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
-    const mastery = updateMastery(await store.getLearningState(), { id: evidenceId, kind: "lesson_read", occurredAt: now });
+    const mastery = updateMastery(await store.getLearningState(parsed.data.conceptId), { id: evidenceId, kind: "lesson_read", occurredAt: now });
     await store.saveLearningState(mastery);
     await store.appendEvent({ type: "learning.lesson.read", summary: "Targeted lesson read; transfer mastery was deliberately unchanged.", entityIds: [evidenceId], payload: { mastery }, goalId: await potentialGoalId(store) }, now);
     return NextResponse.json({ mastery, transferChanged: false });

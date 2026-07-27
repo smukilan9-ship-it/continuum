@@ -1,13 +1,16 @@
 "use client";
 
 import type { ResourceActivity, ResourceRecommendation } from "@continuum/schemas";
-import { ArrowLeft, ArrowRight, BookOpen, BrainCircuit, Check, CheckCircle2, ChevronRight, Clock3, ExternalLink, GraduationCap, LoaderCircle, PlayCircle, RotateCcw, Search, ShieldCheck, Sparkles, Target, Video } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, BrainCircuit, Check, CheckCircle2, ChevronRight, Clock3, ExternalLink, GraduationCap, HelpCircle, LoaderCircle, PlayCircle, RotateCcw, Search, ShieldCheck, Sparkles, Target, Video } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge, Button, Card, ConfirmationDialog, ErrorState, LoadingButton, Modal, SuccessState } from "@/components/ui";
 import { PageIntro } from "./page-intro";
 import { formatLabel, masteryLabel } from "@/lib/labels";
 import type { LearningVideo } from "@/lib/youtube";
 import { number, text, type Row, type WorkspaceState } from "./types";
+import { QuestionBankPanel } from "./question-bank-panel";
+import { AskQuestionDialog } from "./ask-question-dialog";
+import { ConceptMap, type ConceptNode } from "./concept-map";
 
 type Toast = (message: string | null) => void;
 type VerificationResult = {
@@ -21,7 +24,7 @@ type VerificationResult = {
   scheduleUpdate?: Row;
 };
 type LearnView = "home" | "lesson" | "resource";
-type NativeLesson = { id: string; conceptId: string; title: string; explanation: string; checksForUnderstanding: string[]; sourceChunkIds: string[]; evidenceState: string; model: string };
+type NativeLesson = { id: string; conceptId: string; title: string; explanation: string; checksForUnderstanding: string[]; sourceChunkIds: string[]; evidenceState: string; model: string; durationMinutes?: number; objectives?: string[]; sections?: Array<{ heading: string; body: string }>; examples?: string[] };
 type LessonCheckpoint = { correct: boolean; explanation: string; mastery: Row };
 type VideoResponse = { videos: LearningVideo[]; status: "live" | "unconfigured" | "failed"; handoffUrl: string; message?: string; note: string };
 
@@ -90,6 +93,9 @@ export function LearnScreen({ state, userId, showToast, onRefresh }: { state: Wo
   const [resumeActivityId, setResumeActivityId] = useState("");
   const [resumeRequested, setResumeRequested] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
+  const [askOpen, setAskOpen] = useState(false);
+  const [askSelection, setAskSelection] = useState("");
+  const [askConceptId, setAskConceptId] = useState("concept_potential");
   const recentActivityId = text(state.resourceActivities.find((item) => !["verified", "abandoned"].includes(text(item, "status"))), "id");
   const activityToResume = resumeActivityId || (resumeRequested ? recentActivityId : "");
   const focusLearning = state.learningStates.find((item) => text(item, "conceptId").includes("potential")) ?? state.learningStates[0];
@@ -322,15 +328,22 @@ export function LearnScreen({ state, userId, showToast, onRefresh }: { state: Wo
     setView("home");
   }
 
-  async function openLesson() {
+  function askAsQuestion(selection: string, conceptId = lesson?.conceptId ?? "concept_potential") {
+    setAskSelection(selection);
+    setAskConceptId(conceptId);
+    setAskOpen(true);
+  }
+
+  async function openLesson(node?: ConceptNode) {
     setLessonBusy(true);
     setCheckpoint(undefined);
     setCheckpointAnswer("");
     try {
-      const response = await fetch("/api/learning", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "lesson", liveAi: false }) });
+      const response = await fetch("/api/learning", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "lesson", liveAi: Boolean(node), ...(node ? { topic: node.name, description: node.description } : {}) }) });
       const body = await response.json() as { lesson?: NativeLesson; error?: string };
       if (!response.ok || !body.lesson) throw new Error(body.error ?? "The lesson could not be loaded.");
       setLesson(body.lesson);
+      setLessonRead(state.learningStates.some((item) => text(item, "conceptId") === body.lesson!.conceptId && number(item, "exposure") > 0));
       setView("lesson");
     } catch (error) { showToast(error instanceof Error ? error.message : "The lesson could not be loaded."); }
     finally { setLessonBusy(false); }
@@ -339,7 +352,7 @@ export function LearnScreen({ state, userId, showToast, onRefresh }: { state: Wo
   async function markLessonRead() {
     setLessonBusy(true);
     try {
-      const response = await fetch("/api/learning", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "lesson_read" }) });
+      const response = await fetch("/api/learning", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "lesson_read", conceptId: lesson?.conceptId ?? "concept_potential" }) });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error ?? "The lesson checkpoint could not be opened.");
       setLessonRead(true);
@@ -409,12 +422,24 @@ export function LearnScreen({ state, userId, showToast, onRefresh }: { state: Wo
 
         <section className="learning-home-section"><div className="section-heading"><div><p className="eyebrow">YOUR PATHS</p><h2>Continue from active goals</h2></div></div><div className="learning-path-grid">{state.goals.slice(0, 3).map((goal) => { const goalTasks = state.tasks.filter((task) => text(task, "goalId") === text(goal, "id") && text(task, "status") !== "done"); const next = goalTasks[0]; return <Card className="learning-path-card" key={text(goal, "id")}><span><GraduationCap size={18} /></span><div><small>{formatLabel(text(goal, "status", "active"))} path</small><h3>{text(goal, "title")}</h3><p>{next ? text(next, "title") : "No unfinished learning task"}</p></div><button disabled={!next} onClick={() => next && continueTask(next)}>Continue <ChevronRight size={15} /></button></Card>;})}</div></section>
 
+        <ConceptMap state={state} onOpenLesson={(node) => void openLesson(node)} onAskQuestion={(node) => askAsQuestion(node.description, node.id)} />
+
+        <QuestionBankPanel state={state} showToast={showToast} onRefresh={onRefresh} />
+
         <section className="learning-home-section"><div className="section-heading"><div><p className="eyebrow">VIDEO EXPLORATION</p><h2>Find a visual explanation</h2><p className="section-description">Provider results stay separate from verified curriculum progress.</p></div></div><Card className="learning-video-search"><form onSubmit={searchVideos}><label><Video size={17} /><input value={videoQuery} onChange={(event) => setVideoQuery(event.target.value)} minLength={2} maxLength={300} aria-label="Video topic" /><Button className="button-primary" disabled={videoBusy}>{videoBusy ? <LoaderCircle className="spin" size={15} /> : <Search size={15} />}{videoBusy ? "Searching…" : "Search videos"}</Button></label></form>{videos ? <><div className="video-provider-row"><span className={`provider-status ${videos.status}`}><i />YouTube: {videos.status}</span><small>{videos.note}</small></div>{videos.videos.length ? <div className="learning-video-grid">{videos.videos.map((video) => <article key={video.id}>{video.thumbnailUrl ? <span className="video-thumbnail" role="img" aria-label={`Thumbnail for ${video.title}`} style={{ backgroundImage: `url(${JSON.stringify(video.thumbnailUrl)})` }} /> : <span className="video-placeholder"><PlayCircle size={28} /></span>}<div><Badge tone={video.reviewState === "trusted_channel" ? "green" : "neutral"}>{video.reviewState === "trusted_channel" ? "Trusted channel" : "Provider result"}</Badge><h3>{video.title}</h3><p>{video.channelTitle}</p><a href={video.watchUrl} target="_blank" rel="noreferrer">Watch on YouTube <ExternalLink size={13} /></a></div></article>)}</div> : <div className="video-unconfigured"><Video size={21} /><div><strong>{videos.status === "unconfigured" ? "YouTube API key not configured" : "No embeddable results returned"}</strong><p>{videos.message ?? "Review search results directly before choosing a video."}</p></div><a className="button button-secondary" href={videos.handoffUrl} target="_blank" rel="noreferrer">Open YouTube search <ExternalLink size={14} /></a></div>}</> : <div className="video-search-empty"><PlayCircle size={23} /><p>Search uses YouTube’s official API when configured. Results do not raise mastery until you return with evidence.</p></div>}</Card></section>
 
         {state.resourceActivities.length ? <section className="learning-home-section"><div className="section-heading"><div><p className="eyebrow">RECENT LEARNING</p><h2>Evidence-producing activity</h2></div></div><div className="recent-learning-strip">{state.resourceActivities.slice(0, 4).map((item) => <Card key={text(item, "id")}><span><CheckCircle2 size={16} /></span><div><strong>{formatLabel(text(item, "status", "started"))}</strong><p>{text(item, "resourceId", "Guided resource activity")}</p></div><small>{item.startedAt ? new Date(String(item.startedAt)).toLocaleDateString() : ""}</small></Card>)}</div></section> : null}
       </div> : null}
 
-      {view === "lesson" && lesson ? <Card className="native-lesson-screen"><header><button onClick={() => setView("home")}><ArrowRight size={15} />Learning home</button><Badge tone="green">Reviewed curriculum</Badge></header><div className="lesson-title-block"><div className="learn-card-label"><BookOpen size={15} />TARGETED MICRO-LESSON</div><h2>{lesson.title}</h2><p>{lesson.explanation}</p></div><div className="lesson-contrast-grid"><section><span>V</span><h3>Potential belongs to a place</h3><p>It describes the source charges and location. At a fixed point, changing the test charge does not change V.</p></section><section><span>U</span><h3>Energy belongs to a charge at that place</h3><p>U = qV. Doubling q doubles U, and a negative charge changes its sign.</p></section></div><div className="lesson-proof"><ShieldCheck size={18} /><div><strong>Source-locked lesson</strong><p>{lesson.evidenceState === "direct_support" ? "Directly supported" : formatLabel(lesson.evidenceState)} · {lesson.sourceChunkIds.join(", ")} · {lesson.model}</p></div></div><div className="lesson-understanding"><h3>Check for understanding</h3><p>{lesson.checksForUnderstanding[0]}</p>{!lessonRead ? <Button className="button-primary" disabled={lessonBusy} onClick={() => void markLessonRead()}><Check size={15} />I can explain the contrast</Button> : <div className="lesson-checkpoint"><label>Unseen check: using k = 9×10⁹, what is V at 0.75 m from a +2 nC point charge?<div><input value={checkpointAnswer} onChange={(event) => setCheckpointAnswer(event.target.value)} inputMode="decimal" placeholder="Answer in volts" /><Button className="button-primary" disabled={lessonBusy || !checkpointAnswer.trim()} onClick={() => void checkLesson()}>{lessonBusy ? "Checking…" : "Check answer"}</Button></div></label>{checkpoint ? <div className={checkpoint.correct ? "checkpoint-result success" : "checkpoint-result retry"}>{checkpoint.correct ? <CheckCircle2 size={19} /> : <RotateCcw size={19} />}<div><strong>{checkpoint.correct ? "Transfer checkpoint passed" : "Try the relationship again"}</strong><p>{checkpoint.explanation}</p></div></div> : null}</div>}</div></Card> : null}
+      {view === "lesson" && lesson ? <Card className="native-lesson-screen">
+        <header><button onClick={() => setView("home")}><ArrowLeft size={15} />Back to Learn</button><div><Badge tone={lesson.evidenceState === "direct_support" ? "green" : "neutral"}>{lesson.evidenceState === "direct_support" ? "Reviewed curriculum" : "Generated from your path"}</Badge><span><Clock3 size={13} />{lesson.durationMinutes ?? 6} minutes</span></div></header>
+        <div className="lesson-title-block"><div className="learn-card-label"><BookOpen size={15} />TARGETED MICRO-LESSON</div><h2>{lesson.title}</h2><p>{lesson.explanation}</p></div>
+        {lesson.objectives?.length ? <section className="lesson-objectives"><strong>By the end, you should be able to</strong><ul>{lesson.objectives.map((objective) => <li key={objective}>{objective}</li>)}</ul></section> : null}
+        <div className="lesson-contrast-grid">{(lesson.sections ?? []).map((section, index) => <section key={section.heading}><span>{index + 1}</span><h3>{section.heading}</h3><p>{section.body}</p><Button className="button-secondary" onClick={() => askAsQuestion(section.body, lesson.conceptId)}><HelpCircle size={14} />Ask as Question</Button></section>)}</div>
+        {lesson.examples?.length ? <section className="lesson-examples"><strong>Example</strong>{lesson.examples.map((example) => <p key={example}>{example}</p>)}</section> : null}
+        <div className="lesson-proof"><ShieldCheck size={18} /><div><strong>{lesson.evidenceState === "direct_support" ? "Source-locked lesson" : "Context-limited lesson"}</strong><p>{lesson.evidenceState === "direct_support" ? "Directly supported" : formatLabel(lesson.evidenceState)}{lesson.sourceChunkIds.length ? ` · ${lesson.sourceChunkIds.join(", ")}` : ""} · {lesson.model}</p></div></div>
+        <div className="lesson-understanding"><h3>Check for understanding</h3><p>{lesson.checksForUnderstanding[0]}</p>{!lessonRead ? <div className="lesson-primary-check"><Button className="button-primary" disabled={lessonBusy} onClick={() => void markLessonRead()}><Check size={15} />I completed the lesson</Button><Button className="button-secondary" onClick={() => askAsQuestion(lesson.checksForUnderstanding[0] ?? lesson.explanation, lesson.conceptId)}><HelpCircle size={14} />Answer this question</Button></div> : lesson.conceptId.includes("potential") ? <div className="lesson-checkpoint"><label>Unseen check: using k = 9×10⁹, what is V at 0.75 m from a +2 nC point charge?<div><input value={checkpointAnswer} onChange={(event) => setCheckpointAnswer(event.target.value)} inputMode="decimal" placeholder="Answer in volts" /><Button className="button-primary" disabled={lessonBusy || !checkpointAnswer.trim()} onClick={() => void checkLesson()}>{lessonBusy ? "Checking…" : "Check answer"}</Button></div></label>{checkpoint ? <div className={checkpoint.correct ? "checkpoint-result success" : "checkpoint-result retry"}>{checkpoint.correct ? <CheckCircle2 size={19} /> : <RotateCcw size={19} />}<div><strong>{checkpoint.correct ? "Transfer checkpoint passed" : "Try the relationship again"}</strong><p>{checkpoint.explanation}</p></div></div> : null}</div> : <div className="lesson-generic-check"><CheckCircle2 size={18} /><div><strong>Lesson progress saved</strong><p>Now answer in your own words. Reading alone does not increase transfer mastery.</p></div><Button className="button-primary" onClick={() => askAsQuestion(lesson.checksForUnderstanding[0] ?? lesson.explanation, lesson.conceptId)}>Answer now<ArrowRight size={14} /></Button></div>}</div>
+      </Card> : null}
 
       {view === "resource" || recommendation ? <div className="handoff-steps" aria-label="Resource workflow"><span className={!recommendation ? "active" : "done"}><i>1</i>Define the need</span><span className={recommendation && !activity ? "active" : activity ? "done" : ""}><i>2</i>Choose and start</span><span className={activity?.status === "started" ? "active" : activity?.returnedAt ? "done" : ""}><i>3</i>Return with evidence</span><span className={["returned", "needs_review"].includes(activity?.status ?? "") ? "active" : activity?.status === "verified" ? "done" : ""}><i>4</i>Verify progress</span></div> : null}
 
@@ -484,6 +509,7 @@ export function LearnScreen({ state, userId, showToast, onRefresh }: { state: Wo
         </div>
       </Modal>
       <ConfirmationDialog open={confirmGoalChange} onOpenChange={setConfirmGoalChange} title="Change learning goal?" description="This resets the current recommendation, return notes, and unsaved verification answer. Saved activity history remains in Continuum." confirmLabel="Change learning goal" onConfirm={() => { setConfirmGoalChange(false); changeLearningGoal(); }} />
+      <AskQuestionDialog selection={askSelection} conceptId={askConceptId} open={askOpen} onOpenChange={setAskOpen} onRefresh={onRefresh} />
     </div>
   );
 }

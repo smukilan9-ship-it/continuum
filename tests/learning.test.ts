@@ -34,6 +34,13 @@ describe("adaptive learning", () => {
     expect(next.status).toBe("misconception_detected");
   });
 
+  it("does not grant mastery from one correct answer and discounts hinted evidence", () => {
+    const unhinted = updateMastery(state, { id: "evidence_unseen_3", kind: "assessment", unseen: true, correct: true, score: .9, completeness: .9, difficulty: .8, occurredAt: "2026-07-18T09:20:00+05:30" });
+    const hinted = updateMastery(state, { id: "evidence_unseen_4", kind: "assessment", unseen: true, correct: true, score: .9, completeness: .9, difficulty: .8, hintUsed: true, occurredAt: "2026-07-18T09:20:00+05:30" });
+    expect(unhinted.status).not.toBe("mastered");
+    expect(unhinted.transfer).toBeGreaterThan(hinted.transfer);
+  });
+
   it("recognizes potential-energy language", () => {
     expect(diagnosePotentialMisconception("It changes because qV and charge changes").detected).toBe(true);
   });
