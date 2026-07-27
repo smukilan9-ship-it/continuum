@@ -3,11 +3,12 @@
 import { ArrowRight, Eye, EyeOff, PlayCircle, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { PASSWORD_HELP, PASSWORD_MIN_LENGTH } from "@/lib/password-policy";
 
 type Mode = "login" | "register";
 
-export function LoginForm({ returnTo, demoMode, registrationEnabled, googleSignInEnabled, demoAvailable, authError }: { returnTo?: string; demoMode: boolean; registrationEnabled: boolean; googleSignInEnabled: boolean; demoAvailable: boolean; authError?: string }) {
+export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailable, authError }: { returnTo?: string; demoMode: boolean; registrationEnabled: boolean; demoAvailable: boolean; authError?: string }) {
   const [mode, setMode] = useState<Mode>("login");
   const [error, setError] = useState<string | null>(authError ?? null);
   const [busy, setBusy] = useState<null | "form" | "demo">(null);
@@ -21,7 +22,15 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, googleSignI
     const form = new FormData(event.currentTarget);
     const body = mode === "login"
       ? { email: form.get("email"), password: form.get("password") }
-      : { email: form.get("email"), password: form.get("password"), displayName: form.get("displayName"), educationLevel: form.get("educationLevel"), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
+      : {
+          email: form.get("email"),
+          password: form.get("password"),
+          passwordConfirmation: form.get("passwordConfirmation"),
+          displayName: form.get("displayName"),
+          educationLevel: form.get("educationLevel"),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          termsAccepted: form.get("termsAccepted") === "on",
+        };
     try {
       const response = await fetch(`/api/auth/${mode}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const payload = await response.json() as { error?: string };
@@ -78,13 +87,7 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, googleSignI
           </button>
         ) : null}
 
-        {googleSignInEnabled ? (
-          <>
-            <a className="google-signin" href={`/api/auth/google/start?returnTo=${encodeURIComponent(destination)}`} onClick={(event) => { event.preventDefault(); const target = new URL(event.currentTarget.href); target.searchParams.set("timezone", Intl.DateTimeFormat().resolvedOptions().timeZone); window.location.assign(target); }}><span aria-hidden="true">G</span>Continue with Google</a>
-          </>
-        ) : null}
-
-        {(demoAvailable || googleSignInEnabled) ? <div className="auth-divider"><span>or use {mode === "login" ? "email" : "email & password"}</span></div> : null}
+        {demoAvailable ? <div className="auth-divider"><span>or use {mode === "login" ? "email" : "email & password"}</span></div> : null}
 
         {registrationEnabled ? (
           <div className="auth-tabs" role="tablist">
@@ -108,6 +111,14 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, googleSignI
             </span>
             {mode === "register" ? <small className="field-hint">{PASSWORD_HELP}</small> : null}
           </label>
+          {mode === "register" ? <>
+            <label>Confirm password
+              <span className="password-field">
+                <input name="passwordConfirmation" type={showPassword ? "text" : "password"} minLength={PASSWORD_MIN_LENGTH} required autoComplete="new-password" />
+              </span>
+            </label>
+            <label className="auth-terms"><input name="termsAccepted" type="checkbox" required />I agree to the Privacy and account-retention terms.</label>
+          </> : <Link className="forgot-password-link" href={"/forgot-password" as Route}>Forgot password?</Link>}
           {error && <p className="auth-error" role="alert">{error}</p>}
           <button className="button button-primary button-large" disabled={busy !== null}>{busy === "form" ? "Please wait…" : mode === "login" ? "Sign in" : "Create private workspace"}<ArrowRight size={17} /></button>
         </form>
