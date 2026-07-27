@@ -23,7 +23,7 @@ and the demo-account path.
 2. **Next.js → Postgres:** application authorization must preserve tenant scope;
    database credentials remain server-side.
 3. **Next.js → providers:** bounded queries/prompts leave Continuum for OpenAlex,
-   Crossref, YouTube, Featherless, Google identity services, or Zotero.
+   Crossref, YouTube, Featherless, or Zotero.
 4. **Imported content → retrieval/AI:** PDFs, Markdown, abstracts, citations,
    transcripts, and Obsidian notes remain untrusted data, never policy.
 5. **App → browser workers:** submitted code crosses into disposable Web

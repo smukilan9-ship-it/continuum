@@ -34,7 +34,7 @@ and `build` (all green).
 - **Auth** — login page renders; `demo`/`demo123` form login lands on Today via
   normal auth; **"Try the demo"** one-click (`/api/auth/demo`) returns the Mukilan
   session; show/hide password toggles the field type; an invalid password returns
-  `401 "Email or password is incorrect"`; registration rejects a 5-char password
+  `401 "Username or password is incorrect"`; registration rejects a 5-char password
   (`400`) and accepts a 6-char password (`201`).
 - **Demo data present** — Mukilan (CBSE Class 12) with **4 goals** (SAT 42%,
   SQL/MySQL 58%, OASIS 71%, exoplanet), **15 milestones**, **13 tasks** (done /
@@ -375,7 +375,7 @@ Provider health (live): `groq healthy (15 models)`, `gemini healthy
   credentials (now named `FEATHERLESS_API_KEY_PRIMARY` and
   `FEATHERLESS_API_KEY_SECONDARY`), `GEMINI_API_KEY_1..10` +
   `GEMINI_DATA_USE_ACKNOWLEDGED=true`, `MCP_JWT_SIGNING_SECRET`.
-- For integrations: Google OAuth client, Zotero API key/OAuth, a local Ollama
+- For integrations: Zotero API key, a local Ollama
   runtime, an Obsidian vault + plugin token. None are required for the core
   fresh-user + AI flow.
 

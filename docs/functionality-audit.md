@@ -15,7 +15,7 @@ freshly registered account (not the demo fixture), except where noted.
 | Login | `/login` | `/api/auth/login` → scrypt verify + lockout | **WORKS** | 200 + session cookie |
 | Session | — | `/api/auth/session` → `getSession` | **WORKS** | ~100 ms read, no write-on-read |
 | Logout | sidebar | `/api/auth/logout` → `revokeSession` | **WORKS (code)** | revokes token hash |
-| Google OpenID sign-in | `/login` | `/api/auth/google/*` | **UNVERIFIABLE** | needs `GOOGLE_CLIENT_ID/SECRET` |
+| Account recovery | Future work | managed verified recovery flow | **DEFERRED** | hackathon accounts use username/password only; users must retain their password |
 | New-user empty states | all screens | SSR snapshot | **WORKS** | verified in browser (fresh account) |
 | Public registration gate | — | `publicRegistrationEnabled` | **WORKS (code)** | off in prod unless enabled |
 

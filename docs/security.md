@@ -20,8 +20,8 @@ No design makes credentials impossible to compromise. Use least-privilege keys, 
 - Cookies are HttpOnly, SameSite=Lax, path-scoped, and Secure in production.
 - Login failures are counted and can trigger a temporary lock.
 - Registration, login, AI, MCP, and other sensitive routes use PostgreSQL-backed rate limits where appropriate.
-- Public registration is closed by default in production until the operator explicitly enables it with an account-verification and recovery process.
-- Google sign-in uses an exact callback, encrypted and expiring state, PKCE S256, a verified Google email, durable provider-subject identity mapping, and the same revocable HttpOnly session layer. It does not grant Calendar access.
+- Public username/password registration is open for the hackathon and remains protected by persistent rate limits and temporary login lockouts.
+- Email verification and self-service password recovery are intentionally deferred. Users are told to retain their password; a production launch should add verified recovery through a managed identity or transactional-email service before broad public use.
 - Browser writes require the request origin to match the application origin in production.
 - Return paths reject protocol-relative and backslash-based redirects.
 

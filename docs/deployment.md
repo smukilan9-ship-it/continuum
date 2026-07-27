@@ -28,7 +28,7 @@ For local work, put values in `.env.local`, which is ignored. For a hosted deplo
 
 Minimum production values are documented in `.env.example`. Generate independent high-entropy values for `MCP_JWT_SIGNING_SECRET` and `SESSION_PRIVACY_SALT`, plus a 32-byte base64url or 64-hex `INTEGRATION_CREDENTIAL_ENCRYPTION_KEY` for delegated connection credentials. Do not reuse provider keys across environments. The exact local and Vercel locations, provider instructions, and first-party links are in [integration setup](integrations.md).
 
-Password registration is closed by default in production. Enable `PUBLIC_REGISTRATION_ENABLED=true` only after adding the intended email-verification, recovery, abuse-monitoring, and user-support process. A configured Google OAuth web client enables the separate verified Google sign-in path without enabling password registration.
+Hackathon deployments use open native username/password registration by default. Set `PUBLIC_REGISTRATION_ENABLED=false` to close account creation. Email verification and self-service recovery are post-hackathon work; no email provider is required by the current release.
 
 ## Featherless
 

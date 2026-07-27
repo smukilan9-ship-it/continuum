@@ -88,7 +88,7 @@ underlying transport** (see §6).
 ## 5. Security and privacy risks
 
 - **Per-user Google authentication.** Each Continuum user would have to authenticate
-  their **own** Google account, and the only mechanisms are interactive Google login or
+  their **own** account, and the only mechanisms are interactive personal-account access or
   handing over browser cookies/session state. Continuum storing or brokering those
   cookies/tokens is a serious credential-custody and privacy liability.
 - **Session/cookie custody.** Auth artifacts (cookies, CSRF token, session id, any

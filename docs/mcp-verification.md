@@ -30,6 +30,10 @@ Production uses OAuth, not the demo token:
 - Flow: the host performs dynamic client registration → authorization-code +
   PKCE → receives only the scopes the user approved. Revoke under
   **Connections** in the app.
+- Claude currently registers `https://claude.ai/api/mcp/auth_callback`.
+  `https://claude.com/api/mcp/auth_callback` is the documented successor.
+  Bare `https://claude.ai` or `https://claude.com` values are not callback
+  URIs and must not be substituted for these exact paths.
 
 ## Protocol results
 
@@ -86,14 +90,17 @@ Both surfaces resolve `getStore(userId)` to the same `NeonStore` /
 ## Security properties confirmed
 - No token → `401` with a correct `WWW-Authenticate: Bearer ... resource_metadata=...`.
 - Tools are filtered by granted scope before registration.
-- Origin allowlist (`serviceOrigin`, `APP_BASE_URL`, `claude.ai`, plus
+- Origin allowlist (`serviceOrigin`, `APP_BASE_URL`, `claude.ai`,
+  `claude.com`, plus
   `MCP_ALLOWED_ORIGINS`); disallowed origins get `403`.
 - Per-`{user,client}` rate limiting; token issuer/audience/resource
   validation and immediate revocation checks (`oauthGrantUnavailable`).
 - Every tool executes against user-scoped repository queries.
 
-## Not verified here
-- A full OAuth browser handshake from the Claude desktop/web client (requires
-  a deployed HTTPS origin and the Claude app). The endpoint is standards-based
-  and the discovery documents are served; only the account-side click-through
-  is outstanding.
+## OAuth callback verification
+
+The consent approval is exercised in a Chromium browser against a real
+callback listener. Continuum preserves OAuth `state`, issues a PKCE-bound code,
+and completes the cross-origin 303 callback hop. The OAuth consent routes use a
+route-scoped CSP that permits registered HTTPS callbacks (and loopback
+callbacks for development); the rest of the app retains `form-action 'self'`.

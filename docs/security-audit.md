@@ -131,3 +131,26 @@ work and the need for independent/desktop verification.
 See `security-threat-model.md`, `security-remediation.md`, and
 `security-code-execution.md` for boundaries, remediation IDs, and sandbox
 non-guarantees.
+
+## 2026-07-26 delta
+
+- Added user-scoped encrypted BYOK for Featherless, Groq, and Gemini. Keys are
+  validated only against fixed official origins and loaded into a
+  request-local provider environment.
+- Removed answer keys from initial Learn snapshots and all practice responses.
+  Keys are returned only after the owned answer is submitted.
+- Provider isolation now clears every non-allowed key before an independent
+  verifier call; router fallback cannot collapse Model A and Model B onto the
+  same provider.
+- TXT/PDF/DOCX ingestion validates extension, MIME/content signatures, size,
+  and treats extracted document instructions as untrusted. DOCX extraction uses
+  `mammoth` server-side.
+- Assistant session/message reads and writes are user-scoped; durable memory is
+  a separate, reviewable action and can be edited, excluded, or deleted.
+- Tracked-code secret-pattern scan found zero credential/private-key patterns;
+  `.env.local` is ignored and only `.env.example` is tracked.
+- `pnpm audit` could not be used for the final delta because the registry audit
+  endpoint returned a gzip body as invalid JSON twice. As an independent
+  release check, all 427 packages in the installed web production dependency
+  closure were queried against OSV; zero advisories were returned. This does
+  not cover development-only packages.

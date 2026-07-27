@@ -24,19 +24,6 @@ For production, open **Vercel Dashboard → continuum → Settings → Environme
 
 Official guide: [Claude remote MCP custom connectors](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
 
-## Google sign-in
-
-Operator setup is required once for optional account sign-in.
-
-1. In [Google Cloud credentials](https://console.cloud.google.com/apis/credentials), create an OAuth 2.0 **Web application** client for the Continuum deployment.
-2. Configure the OAuth consent screen for `openid email profile`.
-3. Add the exact authorized redirect URI:
-   - `https://<continuum-domain>/api/auth/google/callback`
-4. Store the client values only as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` server-side. Also configure a 32-byte `INTEGRATION_CREDENTIAL_ENCRYPTION_KEY`.
-5. On the login screen, **Continue with Google** requests only OpenID profile/email scopes and accepts only a verified Google email. Continuum planning uses its own editable schedule data.
-
-Official reference: [Google OAuth for web server apps](https://developers.google.com/identity/protocols/oauth2/web-server).
-
 ## Zotero
 
 Zotero's Web API supports private-library access through user-created keys. Continuum deliberately asks for a dedicated read-only key instead of requesting write permission.

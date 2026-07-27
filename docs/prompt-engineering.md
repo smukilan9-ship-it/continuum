@@ -11,6 +11,12 @@ registry. It does not contain an autonomous “prompt agent.”
   learning, code help, MCP specialist output, and citation verification.
 - `apps/web/app/api/code/route.ts`, `api/ai/route.ts`, and `api/mcp/route.ts`
   select a contract and insert route-specific variables.
+- `apps/web/app/api/assistant/route.ts` retrieves a focus-ranked context pack,
+  streams the answer, and prepares—but does not automatically save—a structured
+  session-memory proposal.
+- `apps/web/app/api/question-banks/route.ts` isolates uploaded passages as the
+  grading source and, when ambiguity warrants it, sends the same bounded
+  evidence independently to two provider-isolated evaluators.
 - `packages/ai/src/providers.ts` appends the structured-JSON instruction and
   sends the resulting system/prompt pair to the selected provider.
 
@@ -55,6 +61,9 @@ marked explicitly. The gateway separately enforces an estimated total-token cap.
 | Lesson generation | Produce concise explanation and checks | `lesson_generation`; general reasoning | Learner context and source lock | Zod schema: title, explanation, 1–6 checks | Same structured fallback; source-locked claims must stay in evidence |
 | MCP specialist | Bounded specialist result | Caller-selected supported task class | OAuth-scope-bounded retrieved context. The model itself receives no arbitrary tools | Zod schema: answer, evidence IDs, limitations, confidence | If high-stakes verification is requested without a second provider, the request fails closed |
 | Citation verifier | Independently assess a proposed result | `citation_entailment`; verifier model on a different provider | Proposed result plus source/evidence identifiers | Zod schema: supported, reason, confidence | Rejects overstated support; no guarantee if supplied evidence itself is incomplete |
+| Workspace Assistant | Answer one workspace-focused request | `conversational_support`; automatic healthy route | Current user request plus a token-bounded `load_context` result and relevant durable memories | Markdown stream; route/model headers for UI status | No arbitrary tools; no unrelated workspace dump; raw chat is not durable memory by default |
+| Assistant memory preparation | Produce a reviewable session checkpoint | `summarization`; structured route with deterministic extractive fallback | The current account-scoped session only | Zod summary, decisions, unresolved questions, created tasks, important facts, linked IDs | Save requires a separate explicit action; user can edit, exclude, or delete |
+| Uploaded answer grading | Grade only against the uploaded bank and passages | Deterministic evaluator plus up to two separately allowlisted `citation_entailment` routes | Question, learner answer, editable reference answer, exact source passages | Zod score/verdict/points/improved answer/explanation/confidence | Uploaded instructions are untrusted; source rules reconcile disagreement; agreement is never described as proof |
 | Research query rewriting | Deterministic `planScholarlyQuery()` in `scholarly.ts`, not a prompt | No model | Raw query only | Parsed DOI/year/quoted phrase/author, conservative synonym additions | Dictionary expansion is intentionally small; it may miss domain synonyms |
 | Study plan | Deterministic schedule solver, not a prompt | No model | Availability, tasks, commitments, deadlines | Editable draft data | Feasibility warnings are deterministic; there is no hidden model rationale |
 
@@ -70,6 +79,12 @@ history.
 Research retrieval and OpenAlex search happen outside the model. Retrieved text
 is evidence, never a tool instruction. Continuum does not invent an abstract
 when OpenAlex supplies none.
+
+Question-bank editing is the only view that receives the answer key. The
+practice API and initial Learn snapshot strip `expectedAnswer`, explanations,
+and accepted-answer material. The answer route looks up the owned bank on the
+server, evaluates there, and returns the key only after submission as part of
+the correction.
 
 ## Structured outputs and retry prompts
 
@@ -95,4 +110,3 @@ model infallible. Source-locked and citation-critical outputs still need schema
 validation and, where requested, an independent provider check. Free-text code
 feedback is educational advice; the browser runner's actual stdout, stderr, exit
 code, and duration remain the execution authority.
-

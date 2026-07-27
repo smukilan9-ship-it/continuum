@@ -9,8 +9,13 @@ The authoritative implementation is split across:
 - `packages/ai/src/groq.ts` and `packages/ai/src/health.ts` — catalog validation and circuit breakers.
 - `apps/web/lib/ai-gateway.ts` — authentication-adjacent quotas, token limits, shared budget, caching, request leases, safe errors, and usage logging.
 
-The browser never sends or receives a provider credential. It calls authenticated
-Continuum API routes; those routes call the gateway on the server.
+The browser never receives a provider credential. A user may submit a
+Featherless, Groq, or Gemini key through the authenticated Connections flow;
+the server validates it against a fixed official origin and encrypts it before
+storage. For that user's later request, `gatewayEnvironment()` opens only the
+matching encrypted credential server-side and overlays it on an isolated
+request environment. It is not written to `process.env`, returned to the
+browser, logged, or reused for another user.
 
 ## Routing inputs actually used
 
@@ -29,7 +34,28 @@ user model picker. Privacy affects provider availability: Gemini is excluded
 unless `GEMINI_DATA_USE_ACKNOWLEDGED=true`.
 
 The current router does **not** score a free-form “user-selected mode,” and it
-does not let a user override a model ID.
+does not let a user override a model ID. BYOK chooses the credential boundary,
+not the model ID; task policy and the provider's configured/discovered model
+catalog still determine the model.
+
+## Current model IDs and override precedence
+
+- Featherless first honors the task-specific `FEATHERLESS_*_MODEL` override,
+  then a healthy live catalogue result when the endpoint is available, then
+  the reviewed fallback: `Qwen/Qwen2.5-7B-Instruct` for fast extraction,
+  classification, summarisation, and misconception work;
+  `Qwen/Qwen2.5-Coder-32B-Instruct` for code; and
+  `Qwen/Qwen2.5-72B-Instruct` for reasoning and verification.
+- Groq defaults are `llama-3.1-8b-instant` (fast),
+  `llama-3.3-70b-versatile` (general), `qwen/qwen3.6-27b` (reasoning),
+  `openai/gpt-oss-120b` (code), and `openai/gpt-oss-20b` (verification).
+  Schema-bound calls use `GROQ_STRUCTURED_MODEL` or the first enabled reviewed
+  GPT-OSS structured model.
+- Gemini honors `GEMINI_MODEL` only when it is live and suitable; otherwise it
+  chooses a healthy generation-capable model from the runtime catalogue.
+- Explicitly enabled Vercel AI Gateway uses `AI_GATEWAY_GENERAL_MODEL` or
+  `google/gemini-3.5-flash`, with configured fallbacks or
+  `openai/gpt-5.4` then `anthropic/claude-sonnet-4.6`.
 
 ## Routing table
 
@@ -39,14 +65,16 @@ every deployment has that provider.
 
 | Product task | Task class / primary | Backup and condition | Tools / memory / retrieved documents | Timeout and attempts | User override |
 |---|---|---|---|---|---|
-| General chat or MCP specialist answer | `conversational_support`; Featherless `Qwen/Qwen2.5-72B-Instruct` | Gemini, Groq, then explicitly enabled Vercel AI Gateway for structured calls | MCP tool execution remains in the host. Relevant Continuum context is included only by the calling route | Gateway deadline 30 s by default. One attempt per route | No |
+| General chat or MCP specialist answer | `conversational_support`; Featherless reasoning override/catalogue, curated `Qwen/Qwen2.5-72B-Instruct` fallback | Gemini, Groq, then explicitly enabled Vercel AI Gateway for structured calls | MCP tool execution remains in the host. Relevant Continuum context is included only by the calling route | Gateway deadline 30 s by default. One attempt per route | No |
+| Workspace Assistant | `conversational_support`; the user's healthy BYOK route when configured, otherwise the normal Featherless-first policy | Next configured healthy provider | `load_context` plus focus-ranked account-scoped memory, not a workspace dump. Full chat is session history; only an explicitly reviewed compact memory becomes durable retrieval context | One streaming attempt; stable busy/unavailable response on failure | User can stop output and inspect/edit/exclude/delete proposed memory |
 | Research search | No model. OpenAlex HTTP API, optionally Crossref | Crossref only when selected; no model fallback | Search filters only; no memory | OpenAlex request: 8 s per attempt, up to 3 bounded attempts for 429/5xx/timeouts | Source/filter selection only |
 | Research synthesis | `research_synthesis`; Featherless reasoning model | Gemini, Groq reasoning, AI Gateway when configured | Bounded retrieved context; no direct model tools | One attempt per provider within the structured deadline | No |
 | Paper summarisation | `summarization`; Featherless 7B fast model | Groq fast, Gemini, AI Gateway | Caller-supplied/retrieved paper content | Safe structured calls may retry once on the other healthy Featherless key | No |
 | Citation extraction | `extraction`; Featherless 7B fast model | Groq structured-capable model, Gemini, AI Gateway | Source content is labelled untrusted | Schema validated with Zod; provider fallback on malformed JSON | No |
 | Citation verification | `citation_entailment`; Featherless 72B verifier | A separately configured provider is required for an independent MCP verification request | Exact proposed result and evidence identifiers | High-stakes calls do not repeat the same expensive request; one attempt per route | No |
+| Uploaded question-bank grading | Deterministic source-term coverage is always authoritative; two independent `citation_entailment` providers are added only for ambiguous or important answers | If fewer than two independent routes work, the result explicitly says `single_model_plus_source_rules` or `source_rules_only` | The uploaded passages and editable answer key only. Answer keys are absent from practice and initial workspace snapshots | Each verifier receives an allowlist containing exactly one provider; all other credentials are removed from that call's environment | No external verification toggle yet |
 | Run code | **No model**; browser Web Worker/WASM runtime | None | No memory, retrieval, or network | Language startup has a separate 45 s ceiling; user code has a 5/10/30 s selected limit | User selects only the run-time limit |
-| Explain, review, or debug code | `code_reasoning`; Featherless Coder 32B | Gemini, Groq code model, AI Gateway for structured paths | Exact code, actual run result, and a bounded academic context pack | Streaming request deadline 30 s; no automatic repeat on failure | Provider may be Continuum or the user's local Ollama |
+| Explain, review, or debug code | `code_reasoning`; Featherless code override/catalogue, curated `Qwen/Qwen2.5-Coder-32B-Instruct` fallback | Gemini, Groq code model, AI Gateway for structured paths | Exact code, actual run result, and a bounded academic context pack | Streaming request deadline 30 s; no automatic repeat on failure | Provider may be Continuum or the user's local Ollama |
 | Fast inline code completion | Not implemented | None | None | No background model request occurs | No |
 | Mathematical reasoning | `mathematical_reasoning`; Featherless reasoning model | Gemini, Groq reasoning, AI Gateway | Context only when supplied by caller | One attempt per route in structured flow | No |
 | Study-plan generation | `schedule_optimization`; deterministic constraint solver | None | Tasks, availability, fixed commitments, deadlines | No model timeout or model cost | The user edits the draft |
@@ -96,6 +124,10 @@ flowchart TD
   safe results are cached per user/feature/prompt for five minutes by default.
 - Every structured loop is finite: a de-duplicated provider list, bounded
   attempts per provider, and a wall-clock deadline prevent fallback cycles.
+- `allowedProviders` is an execution boundary, not only a router hint. The
+  request-scoped environment clears every non-allowed credential before
+  generation, so the two question-bank verifiers cannot silently fall back to
+  each other.
 - Tokens/grants and safe-request hashes prevent duplicate OAuth consumption and
   duplicate cache-safe generation. Streaming is not automatically retried,
   because replaying a partial response could duplicate output and billing.
@@ -108,3 +140,14 @@ shared tokens/day, and a $25 shared monthly estimate. `AI_EMERGENCY_CUTOFF=true`
 stops all model work. Successful calls log user, feature, task class, provider,
 model, input/output tokens, estimated cost, verification state, and fallback
 state in `model_routes` and `model_usage`.
+
+## Local Ollama
+
+Ollama never routes through the public Continuum backend. The browser accepts
+only loopback `http(s)` origins, probes `/api/tags`, selects an installed model
+under the 8 GB safety limit, then runs a small streamed `/api/chat` request.
+The connection can be saved only after streamed text is observed. The UI
+records first-text and total latency and distinguishes not-running,
+browser/CORS blocking, timeout, incompatible endpoint, unavailable model, and
+invalid-response states. The selected URL and model stay in that browser's
+local storage. Code execution itself remains model-free.
