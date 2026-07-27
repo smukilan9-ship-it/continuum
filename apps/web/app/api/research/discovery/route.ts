@@ -11,7 +11,7 @@ import {
   ScholarlyProviderError,
   type NormalizedScholarlyWork,
 } from "@/lib/scholarly";
-import { getUserProviderSecret } from "@/lib/provider-credentials";
+import { getOpenAlexApiKeyForUser } from "@/lib/provider-credentials";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -82,8 +82,6 @@ export async function GET(request: Request) {
   const parsed = querySchema.safeParse(Object.fromEntries(url.searchParams));
   if (!parsed.success || (parsed.data?.fromYear && parsed.data?.toYear && parsed.data.fromYear > parsed.data.toYear)) return NextResponse.json({ error: "Check the search query and date range." }, { status: 400 });
   if (!parsed.data.q && !parsed.data.relation) return NextResponse.json({ error: "Enter a search query." }, { status: 400 });
-  // Provider configuration is per-user. Never let one student's provider
-  // result or connection status populate another student's in-memory cache.
   const cacheKey = `${user.id}:${JSON.stringify(parsed.data)}`;
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return NextResponse.json(cached.payload, { headers: { "x-continuum-cache": "hit" } });
@@ -104,8 +102,8 @@ export async function GET(request: Request) {
     topicId: parsed.data.topicId,
     language: parsed.data.language,
   };
-  const userOpenAlex = await getUserProviderSecret(user.id, "openalex").catch(() => undefined);
-  const openalex = new OpenAlexProvider(userOpenAlex?.secret ?? process.env.OPENALEX_API_KEY);
+  const openAlexApiKey = await getOpenAlexApiKeyForUser(user.id);
+  const openalex = new OpenAlexProvider(openAlexApiKey);
   if (parsed.data.relation) {
     if (!parsed.data.workId && parsed.data.relation !== "references") return NextResponse.json({ error: "A valid OpenAlex work is required." }, { status: 400 });
     try {
@@ -117,7 +115,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ results, providers: [{ provider: "openalex", status: "live" }], attribution: ["OpenAlex"] }, { headers: { "cache-control": "private, max-age=0" } });
     } catch (error) {
       const message = error instanceof ScholarlyProviderError ? error.message : "OpenAlex relation lookup failed";
-      return NextResponse.json({ error: message }, { status: 502 });
+      return NextResponse.json({ error: message }, { status: error instanceof ScholarlyProviderError && error.code === "unconfigured" ? 503 : 502 });
     }
   }
   if (parsed.data.entityType) {
@@ -126,7 +124,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ entities, attribution: ["OpenAlex"] }, { headers: { "cache-control": "private, max-age=0" } });
     } catch (error) {
       const message = error instanceof ScholarlyProviderError ? error.message : "OpenAlex entity lookup failed";
-      return NextResponse.json({ error: message }, { status: 502 });
+      return NextResponse.json({ error: message }, { status: error instanceof ScholarlyProviderError && error.code === "unconfigured" ? 503 : 502 });
     }
   }
   const providers = {

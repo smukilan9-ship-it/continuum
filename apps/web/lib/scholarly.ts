@@ -247,7 +247,7 @@ export class OpenAlexProvider {
   constructor(private readonly apiKey: string | undefined, private readonly fetcher: ScholarlyFetch = fetch) {}
 
   async searchPage(input: ScholarlySearchInput): Promise<ScholarlySearchPage> {
-    if (!this.apiKey?.trim()) throw new ScholarlyProviderError(this.id, "OpenAlex needs an OPENALEX_API_KEY", "unconfigured");
+    if (!this.apiKey?.trim()) throw new ScholarlyProviderError(this.id, "Connect an OpenAlex API key in Connections to use scholarly search.", "unconfigured");
     const retrievedAt = new Date().toISOString();
     const query = input.query.trim();
     const doi = normalizeDoi(query);
@@ -293,7 +293,7 @@ export class OpenAlexProvider {
   }
 
   async related(workId: string, limit = 12) {
-    if (!this.apiKey?.trim()) throw new ScholarlyProviderError(this.id, "OpenAlex needs an OPENALEX_API_KEY", "unconfigured");
+    if (!this.apiKey?.trim()) throw new ScholarlyProviderError(this.id, "Connect an OpenAlex API key in Connections to use scholarly search.", "unconfigured");
     const url = new URL("https://api.openalex.org/works");
     url.searchParams.set("api_key", this.apiKey.trim());
     url.searchParams.set("filter", `related_to:${workId.replace(/^https?:\/\/openalex\.org\//, "")}`);
@@ -314,7 +314,7 @@ export class OpenAlexProvider {
   }
 
   private async filteredWorks(filter: string, limit: number) {
-    if (!this.apiKey?.trim()) throw new ScholarlyProviderError(this.id, "OpenAlex needs an OPENALEX_API_KEY", "unconfigured");
+    if (!this.apiKey?.trim()) throw new ScholarlyProviderError(this.id, "Connect an OpenAlex API key in Connections to use scholarly search.", "unconfigured");
     const url = new URL("https://api.openalex.org/works");
     url.searchParams.set("api_key", this.apiKey.trim());
     url.searchParams.set("filter", filter);
@@ -325,7 +325,7 @@ export class OpenAlexProvider {
   }
 
   async searchEntities(type: OpenAlexEntity["type"], query: string, limit = 8): Promise<OpenAlexEntity[]> {
-    if (!this.apiKey?.trim()) throw new ScholarlyProviderError(this.id, "OpenAlex needs an OPENALEX_API_KEY", "unconfigured");
+    if (!this.apiKey?.trim()) throw new ScholarlyProviderError(this.id, "Connect an OpenAlex API key in Connections to use scholarly search.", "unconfigured");
     const plural = ({ author: "authors", institution: "institutions", source: "sources", topic: "topics" } as const)[type];
     const url = new URL(`https://api.openalex.org/${plural}`);
     url.searchParams.set("api_key", this.apiKey.trim());
