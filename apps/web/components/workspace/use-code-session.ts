@@ -36,6 +36,13 @@ export type CodeChatMessage = {
   mode?: string;
 };
 
+export type CodeWorkspaceFile = {
+  id: string;
+  name: string;
+  language: string;
+  content: string;
+};
+
 export type CodeSession = {
   fileName: string;
   goalId: string;
@@ -55,6 +62,11 @@ export type CodeSession = {
   attempts: CodeAttempt[];
   updatedAt: number;
   timeoutMs: number;
+  files: CodeWorkspaceFile[];
+  activeFileId: string;
+  panel: "console" | "io" | "assistant" | "tests";
+  panelWidth: number;
+  panelCollapsed: boolean;
 };
 
 const VERSION = "v1";
@@ -79,6 +91,11 @@ export function makeDefaultSession(defaults: Partial<CodeSession>): CodeSession 
     attempts: [],
     updatedAt: Date.now(),
     timeoutMs: 5_000,
+    files: [],
+    activeFileId: "",
+    panel: "console",
+    panelWidth: 410,
+    panelCollapsed: false,
     ...defaults,
   };
 }
@@ -102,6 +119,12 @@ export function mergeSavedSession(current: CodeSession, savedJson: string | null
           : current.conversation,
       tests: Array.isArray(parsed.tests) ? parsed.tests : current.tests,
       runtimeHistory: Array.isArray(parsed.runtimeHistory) ? parsed.runtimeHistory : current.runtimeHistory,
+      files: Array.isArray(parsed.files) && parsed.files.length
+        ? parsed.files
+        : [{ id: "file_main", name: parsed.fileName ?? current.fileName, language: parsed.language ?? current.language, content: parsed.code ?? current.code }],
+      activeFileId: parsed.activeFileId || "file_main",
+      panel: ["console", "io", "assistant", "tests"].includes(String(parsed.panel)) ? parsed.panel as CodeSession["panel"] : current.panel,
+      panelWidth: Number.isFinite(parsed.panelWidth) ? Math.max(300, Math.min(620, Number(parsed.panelWidth))) : current.panelWidth,
     };
   } catch {
     return current; // corrupt draft → keep defaults
@@ -114,6 +137,7 @@ export function useCodeSession(userId: string, defaults: Partial<CodeSession>) {
   // we never clobber a saved session with defaults before it loads.
   const [session, setSession] = useState<CodeSession>(() => makeDefaultSession(defaults));
   const [restored, setRestored] = useState(false);
+  const [remoteReady, setRemoteReady] = useState(false);
   const key = storageKey(userId);
   const defaultsRef = useRef(defaults);
   defaultsRef.current = defaults;
@@ -136,6 +160,34 @@ export function useCodeSession(userId: string, defaults: Partial<CodeSession>) {
       /* storage full / unavailable — keep working in memory */
     }
   }, [session, restored, key]);
+
+  useEffect(() => {
+    if (!restored) return;
+    let cancelled = false;
+    void fetch("/api/code/workspace", { cache: "no-store" })
+      .then(async (response) => response.ok ? response.json() as Promise<{ state?: Partial<CodeSession> | null }> : { state: null })
+      .then((payload) => {
+        if (cancelled || !payload.state) return;
+        setSession((current) => Number(payload.state?.updatedAt ?? 0) > current.updatedAt
+          ? mergeSavedSession(current, JSON.stringify(payload.state))
+          : current);
+      })
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setRemoteReady(true); });
+    return () => { cancelled = true; };
+  }, [restored]);
+
+  useEffect(() => {
+    if (!remoteReady) return;
+    const timeout = window.setTimeout(() => {
+      void fetch("/api/code/workspace", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(session),
+      }).catch(() => undefined);
+    }, 1_200);
+    return () => window.clearTimeout(timeout);
+  }, [remoteReady, session]);
 
   const update = useCallback((patch: Partial<CodeSession> | ((current: CodeSession) => Partial<CodeSession>)) => {
     setSession((current) => ({ ...current, ...(typeof patch === "function" ? patch(current) : patch), updatedAt: Date.now() }));

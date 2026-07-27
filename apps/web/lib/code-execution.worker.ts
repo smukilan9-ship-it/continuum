@@ -112,6 +112,7 @@ const process = Object.freeze({
   stderr: Object.freeze({ write: (value) => __stderr.push(String(value)) }),
   env: Object.freeze({}),
 });
+void (async () => {
 try {
   await (async () => {
     "use strict";
@@ -121,11 +122,12 @@ ${executable}
 } catch (error) {
   __report({ outcome: "runtime_error", stdout: __stdout.join(""), stderr: __stderr.join("") + __safeText(error), exitCode: 1 });
 }
+})();
 `;
   const objectUrl = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
   try {
     return await new Promise<RunPiece>((resolve) => {
-      const runner = new NativeWorker(objectUrl, { type: "module", name: `continuum-${language}-run` });
+      const runner = new NativeWorker(objectUrl, { name: `continuum-${language}-run` });
       runner.onmessage = (event: MessageEvent<RunPiece>) => {
         runner.terminate();
         resolve({

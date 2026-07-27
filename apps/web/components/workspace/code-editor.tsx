@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 
 // A real code editor (CodeMirror 6) with syntax highlighting, line numbers,
 // auto-indent, bracket completion, Tab-to-indent, and undo/redo.
@@ -26,6 +26,7 @@ export function CodeEditor({
   editable = true,
   minHeight = 260,
   ariaLabel = "Code editor",
+  focusLine,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -34,8 +35,10 @@ export function CodeEditor({
   editable?: boolean;
   minHeight?: number;
   ariaLabel?: string;
+  focusLine?: number;
 }) {
   const [mod, setMod] = useState<CodeMirrorModule | null>(null);
+  const viewRef = useRef<{ state: { doc: { lines: number; line: (line: number) => { from: number } } }; dispatch: (value: unknown) => void; focus: () => void } | undefined>(undefined);
 
   useEffect(() => {
     let alive = true;
@@ -90,6 +93,15 @@ export function CodeEditor({
 
   const extensions = useMemo(() => (mod ? mod.extensionsFor(language) : []), [mod, language]);
 
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !focusLine) return;
+    const bounded = Math.max(1, Math.min(view.state.doc.lines, focusLine));
+    const from = view.state.doc.line(bounded).from;
+    view.dispatch({ selection: { anchor: from }, scrollIntoView: true });
+    view.focus();
+  }, [focusLine, value]);
+
   if (!mod) {
     return (
       <textarea
@@ -114,6 +126,7 @@ export function CodeEditor({
         editable={editable}
         placeholder={placeholder}
         extensions={extensions}
+        onCreateEditor={(view: typeof viewRef.current) => { viewRef.current = view; }}
         minHeight={`${minHeight}px`}
         basicSetup={{
           lineNumbers: true,
