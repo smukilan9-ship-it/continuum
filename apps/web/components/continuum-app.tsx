@@ -10,11 +10,15 @@ import {
   Code2,
   Database,
   FlaskConical,
+  Library,
   Goal,
   Link2,
   LogOut,
   Menu,
+  MessageCircle,
+  Network,
   Search,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -39,6 +43,7 @@ const navGroups: NavGroup[] = [
     label: "Workspace",
     items: [
       { id: "today", label: "Today", icon: CalendarDays },
+      { id: "assistant", label: "Assistant", icon: MessageCircle },
       { id: "goals", label: "Plan", icon: Goal },
       { id: "learn", label: "Learn", icon: BookOpen },
       { id: "code", label: "Code", icon: Code2 },
@@ -49,16 +54,21 @@ const navGroups: NavGroup[] = [
     label: "Library",
     items: [
       { id: "memory", label: "Memory", icon: Database },
+      { id: "zotero", label: "Zotero", icon: Library },
+      { id: "openalex", label: "OpenAlex", icon: Network },
       { id: "activity", label: "Review", icon: Activity },
     ],
   },
   {
     label: "Account",
-    items: [{ id: "integrations", label: "Connections", icon: Link2 }],
+    items: [
+      { id: "integrations", label: "Connections", icon: Link2 },
+      { id: "account", label: "Account & Security", icon: ShieldCheck },
+    ],
   },
 ];
 
-const mobileItems = navGroups[0]!.items.filter((item) => item.id !== "research");
+const mobileItems = navGroups[0]!.items.filter((item) => ["today", "assistant", "learn", "code"].includes(item.id));
 
 const IntegrationsScreen = dynamic(() => import("@/components/integrations-screen").then((module) => module.IntegrationsScreen), { loading: () => <ScreenLoading /> });
 
@@ -233,7 +243,7 @@ export function ContinuumApp({ user, initialState, view, serverNow }: { user: Au
         <button className="command-hint" onClick={() => setCommandOpen(true)}><Command size={16} /><span>Jump to anything</span><kbd>⌘K</kbd></button>
         <div className="profile-card">
           <div className="avatar">{initials(user.displayName)}</div>
-          <div><strong>{user.displayName}</strong><span>{user.educationLevel ?? user.email}</span></div>
+          <button className="profile-details" onClick={() => navigate("account")}><strong>{user.displayName}</strong><span>{user.educationLevel ?? user.email}</span></button>
           <button className="profile-signout" onClick={() => void signOut()} aria-label="Sign out"><LogOut size={16} /></button>
         </div>
       </aside>
@@ -262,7 +272,7 @@ export function ContinuumApp({ user, initialState, view, serverNow }: { user: Au
           const Icon = item.icon;
           return <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={currentView === item.id ? "active" : ""} aria-current={currentView === item.id ? "page" : undefined} onClick={linkHandler(item.id)}><Icon size={19} /><span>{item.label}</span></Link>;
         })}
-        <button className={["research", "memory", "integrations", "activity"].includes(currentView) ? "active" : ""} onClick={() => setMobileNav(true)}><Menu size={19} /><span>More</span></button>
+        <button className={["goals", "research", "openalex", "zotero", "memory", "integrations", "account", "activity"].includes(currentView) ? "active" : ""} onClick={() => setMobileNav(true)}><Menu size={19} /><span>More</span></button>
       </nav>
 
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} state={state} onNavigate={navigate} />
