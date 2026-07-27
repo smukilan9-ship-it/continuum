@@ -8,7 +8,7 @@ const sessionDurationMs = 30 * 24 * 60 * 60_000;
 const dummyPasswordHash = Buffer.alloc(64).toString("base64url");
 const dummyPasswordSalt = "continuum-timing-equalization";
 
-function hash(value: string) {
+export function authTokenHash(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
@@ -75,10 +75,11 @@ export async function createAppSession(userId: string, request: Request) {
   await repo.createSession({
     id: `session_${randomUUID().replaceAll("-", "").slice(0, 24)}`,
     userId,
-    tokenHash: hash(token),
+    tokenHash: authTokenHash(token),
     expiresAt: new Date(Date.now() + sessionDurationMs).toISOString(),
-    userAgentHash: hash(userAgent),
-    ipHash: hash(`${privacySalt()}:${address}`),
+    userAgent: userAgent.normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 300),
+    userAgentHash: authTokenHash(userAgent),
+    ipHash: authTokenHash(`${privacySalt()}:${address}`),
   });
   return token;
 }
@@ -98,7 +99,7 @@ export async function getRequestUser(request: Request): Promise<AuthUser | undef
   }
   const token = tokenFromCookieHeader(request.headers.get("cookie"));
   if (!token) return undefined;
-  return new NeonRepository().getSession(hash(decodeURIComponent(token)));
+  return new NeonRepository().getSession(authTokenHash(decodeURIComponent(token)));
 }
 
 export async function getServerUser(): Promise<AuthUser | undefined> {
@@ -107,21 +108,27 @@ export async function getServerUser(): Promise<AuthUser | undefined> {
     return { id: DEMO_USER_ID, email: "maya@continuum.demo", displayName: "Maya Singh", timezone: "Asia/Kolkata", educationLevel: "CBSE Class 12" };
   }
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  return token ? new NeonRepository().getSession(hash(token)) : undefined;
+  return token ? new NeonRepository().getSession(authTokenHash(token)) : undefined;
 }
 
 export async function revokeAppSession(request: Request) {
   if (!process.env.DATABASE_URL) return;
   const token = tokenFromCookieHeader(request.headers.get("cookie"));
-  if (token) await new NeonRepository().revokeSession(hash(decodeURIComponent(token)));
+  if (token) await new NeonRepository().revokeSession(authTokenHash(decodeURIComponent(token)));
 }
 
 export async function enforceRateLimit(request: Request, namespace: string, limit: number, windowMs: number, discriminator = "") {
   const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(100_000, Math.floor(limit))) : 60;
   const safeWindow = Number.isFinite(windowMs) ? Math.max(1_000, Math.min(30 * 24 * 60 * 60_000, Math.floor(windowMs))) : 60_000;
   if (!process.env.DATABASE_URL) return { allowed: true, count: 0, resetAt: new Date(Date.now() + safeWindow).toISOString() };
-  const addressHash = hash(`${privacySalt()}:${clientAddress(request)}`);
-  return new NeonRepository().consumeRateLimit(`${namespace}:${addressHash}:${hash(discriminator.toLowerCase())}`, safeLimit, safeWindow);
+  const addressHash = authTokenHash(`${privacySalt()}:${clientAddress(request)}`);
+  return new NeonRepository().consumeRateLimit(`${namespace}:${addressHash}:${authTokenHash(discriminator.toLowerCase())}`, safeLimit, safeWindow);
+}
+
+export async function currentSession(request: Request) {
+  if (!process.env.DATABASE_URL) return undefined;
+  const token = tokenFromCookieHeader(request.headers.get("cookie"));
+  return token ? new NeonRepository().sessionByTokenHash(authTokenHash(decodeURIComponent(token))) : undefined;
 }
 
 export function appUserId(user: AuthUser | undefined) {
