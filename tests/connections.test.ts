@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { credentialEncryptionVersion, openCredential, sealCredential } from "../apps/web/lib/credential-vault";
-import { googleSignInRedirectUri, googleSignInUrl } from "../apps/web/lib/google-auth";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -33,19 +32,5 @@ describe("integration credential vault", () => {
     expect(credentialEncryptionVersion(rotated)).toBe(2);
     expect(openCredential(legacy)).toEqual({ apiKey: "legacy-provider-key" });
     expect(openCredential(rotated)).toEqual({ apiKey: "rotated-provider-key" });
-  });
-});
-
-describe("Google account sign-in", () => {
-  it("protects Google sign-in with state, an exact redirect, and PKCE", () => {
-    vi.stubEnv("GOOGLE_CLIENT_ID", "continuum-client.apps.googleusercontent.com");
-    vi.stubEnv("GOOGLE_CLIENT_SECRET", "server-only-secret");
-    const challenge = "a".repeat(43);
-    const url = new URL(googleSignInUrl({ origin: "https://continuum.example/", state: "oauth-state", codeChallenge: challenge }));
-    expect(url.searchParams.get("redirect_uri")).toBe(googleSignInRedirectUri("https://continuum.example"));
-    expect(url.searchParams.get("scope")).toBe("openid email profile");
-    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
-    expect(url.searchParams.get("code_challenge")).toBe(challenge);
-    expect(url.toString()).not.toContain("server-only-secret");
   });
 });

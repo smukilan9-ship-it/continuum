@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Check, ChevronDown, Clipboard, Download, ExternalLink, Eye, EyeOff, KeyRound, Laptop, Library, Link2, LoaderCircle, RefreshCw, ShieldCheck, Unplug, X } from "lucide-react";
+import { AlertTriangle, BookOpen, Check, ChevronDown, Clipboard, Download, ExternalLink, Eye, EyeOff, KeyRound, Laptop, Library, Link2, LoaderCircle, Pause, Play, RefreshCw, ShieldCheck, Unplug, Video, X } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Badge, Button, LoadingButton, Modal } from "@/components/ui";
 
@@ -11,26 +11,24 @@ type Status = {
   obsidian: { available: boolean; tokens: Array<{ id: string; name: string; scopes: string[]; lastUsedAt?: string; expiresAt?: string; createdAt: string }> };
 };
 
-type CredentialProvider = "openalex" | "youtube";
-type CredentialRecord = {
-  provider: CredentialProvider;
+type Toast = (message: string | null) => void;
+type ObsidianDashboard = {
+  paused: boolean;
+  pausedAt?: string;
+  records: Array<{ sync_id: string; record_id: string; record_type: string; title: string; path: string; last_synced_at?: string; blocked_at?: string; updated_at: string }>;
+  operations: Array<{ id: string; sync_id: string; operation_type: string; status: string; attempt_count: number; latest_error?: string; bridge_acknowledged_at?: string; created_at: string; updated_at: string }>;
+  conflicts: Array<{ id: string; sync_id: string; status: string; server_content: string; local_content: string; server_path: string; local_path: string; created_at: string }>;
+};
+type ServiceCredential = {
+  provider: "openalex" | "youtube";
   name: string;
-  purpose: string;
-  privacy: string;
-  docs: string;
-  status?: "connected" | "degraded" | "invalid" | "revoked";
-  masked?: string;
+  status: "connected" | "degraded" | "invalid";
+  masked: string;
   lastValidatedAt?: string;
   lastUsedAt?: string;
   reconfigurationRequired?: boolean;
   problem?: string;
 };
-type CredentialPayload = {
-  providers: Array<Omit<CredentialRecord, "status" | "masked" | "lastValidatedAt" | "lastUsedAt">>;
-  configured: CredentialRecord[];
-};
-
-type Toast = (message: string | null) => void;
 
 const links = {
   claude: "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp",
@@ -42,6 +40,11 @@ const links = {
   obsidianSecurity: "https://obsidian.md/help/Extending%2BObsidian/Plugin%2Bsecurity",
   ollama: "https://ollama.com/download",
   ollamaApi: "https://docs.ollama.com/api/introduction",
+  openAlexKey: "https://openalex.org/settings/api",
+  openAlexAuth: "https://developers.openalex.org/guides/authentication",
+  youtubeConsole: "https://console.cloud.google.com/apis/credentials",
+  youtubeEnable: "https://console.cloud.google.com/apis/library/youtube.googleapis.com",
+  youtubeDocs: "https://developers.google.com/youtube/v3/getting-started",
 };
 
 function ConnectionCard({ id, icon, title, status, connected, description, children }: { id?: string; icon: ReactNode; title: string; status: string; connected?: boolean; description: string; children: ReactNode }) {
@@ -71,112 +74,13 @@ function dateLabel(value?: string) {
   return value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Not synced yet";
 }
 
-function ProviderCredentialRow({
-  provider,
-  configured,
-  busy,
-  onAction,
-}: {
-  provider: Omit<CredentialRecord, "status" | "masked" | "lastValidatedAt" | "lastUsedAt">;
-  configured?: CredentialRecord;
-  busy: string;
-  onAction: (action: "validate" | "configure" | "test" | "disconnect", provider: CredentialProvider, secret?: string, currentPassword?: string) => Promise<{ ok: boolean; message: string }>;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [secret, setSecret] = useState("");
-  const [password, setPassword] = useState("");
-  const [showSecret, setShowSecret] = useState(false);
-  const [step, setStep] = useState<1 | 2>(1);
-  const [testState, setTestState] = useState<{ ok: boolean; message: string }>();
-  const working = busy === `credential-${provider.provider}`;
-  const connected = configured?.status === "connected";
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const result = await onAction("configure", provider.provider, secret, configured ? password : undefined);
-    if (result.ok) {
-      setSecret("");
-      setPassword("");
-      setExpanded(false);
-      setTestState(undefined);
-      setStep(1);
-    }
-  }
-
-  async function testNewSecret() {
-    const result = await onAction("validate", provider.provider, secret);
-    setTestState(result);
-  }
-
-  return (
-    <article className="settings-row">
-      <div className="settings-row-copy">
-        <div className="settings-row-title">
-          <h3>{provider.name}</h3>
-          <Badge tone={connected ? "green" : configured?.status === "invalid" ? "red" : "neutral"}>
-            {configured?.status === "connected" ? "Connected" : configured?.status === "degraded" ? "Needs attention" : configured?.status === "invalid" ? "Invalid" : "Not configured"}
-          </Badge>
-        </div>
-        <p>{provider.purpose}</p>
-        <small>{provider.privacy} <a href={provider.docs} target="_blank" rel="noreferrer">Official docs<ExternalLink size={11} /></a></small>
-        {configured ? <div className="credential-facts"><span>{configured.masked}</span><span>Checked {dateLabel(configured.lastValidatedAt)}</span>{configured.lastUsedAt ? <span>Used {dateLabel(configured.lastUsedAt)}</span> : null}</div> : null}
-        {configured?.problem ? <p className="field-error" role="alert">{configured.problem}</p> : null}
-      </div>
-      <div className="settings-row-actions">
-        {configured ? <Button className="button-secondary" disabled={working} onClick={() => void onAction("test", provider.provider)}>{working ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}Test</Button> : null}
-        <Button className={configured ? "button-quiet" : "button-primary"} disabled={working} onClick={() => { setStep(1); setTestState(undefined); setExpanded(true); }}>{configured ? "Replace" : "Configure"}</Button>
-      </div>
-      <Modal
-        open={expanded}
-        onOpenChange={(open) => { setExpanded(open); if (!open) { setTestState(undefined); setStep(1); } }}
-        title={`${configured ? "Replace" : "Connect"} ${provider.name}`}
-        description={`Continuum uses this key only to ${provider.purpose.charAt(0).toLowerCase()}${provider.purpose.slice(1)}`}
-        dirty={Boolean(secret || password)}
-        dirtyMessage="Close without saving this connection? The value you entered will be discarded."
-        footer={step === 1
-          ? <><Button className="button-secondary" type="button" onClick={() => setExpanded(false)}>Cancel</Button><Button className="button-primary" type="button" onClick={() => setStep(2)}>Continue</Button></>
-          : <><Button className="button-secondary" type="button" disabled={working} onClick={() => setStep(1)}>Back</Button><LoadingButton form={`credential-${provider.provider}`} className="button-primary" loading={working} loadingLabel="Saving…" disabled={!testState?.ok}>{configured ? "Save replacement" : "Save connection"}</LoadingButton></>}
-      >
-        {step === 1 ? <div className="guided-config">
-          <div className="guided-step">Step 1 of 2</div>
-          <h3>Get a dedicated {provider.name} API key</h3>
-          <p><strong>Why it is needed:</strong> {provider.purpose}</p>
-          <ol>{provider.provider === "openalex"
-            ? <><li>Open the official OpenAlex developer portal.</li><li>Create or sign in to an OpenAlex account.</li><li>Create a key for Continuum and copy it.</li></>
-            : <><li>Open Google Cloud’s YouTube Data API setup guide.</li><li>Create a project and enable YouTube Data API v3.</li><li>Create a restricted API key and copy it.</li></>}</ol>
-          <a className="button button-secondary" href={provider.docs} target="_blank" rel="noreferrer">Open official setup guide <ExternalLink size={13} /></a>
-          <p className="privacy-note">{provider.privacy} The key is submitted over HTTPS, encrypted before storage, never returned by the API, and can be disconnected here.</p>
-        </div> : <form id={`credential-${provider.provider}`} className="guided-config" onSubmit={(event) => void save(event)}>
-          <div className="guided-step">Step 2 of 2</div>
-          <label htmlFor={`credential-secret-${provider.provider}`}>API key</label>
-          <div className="secret-field"><input id={`credential-secret-${provider.provider}`} autoFocus type={showSecret ? "text" : "password"} autoComplete="off" required minLength={8} value={secret} onChange={(event) => { setSecret(event.target.value); setTestState(undefined); }} placeholder={provider.provider === "openalex" ? "Example: your OpenAlex API key" : "Example: AIza…"} /><button type="button" aria-label={showSecret ? "Hide API key" : "Show API key"} onClick={() => setShowSecret((shown) => !shown)}>{showSecret ? <EyeOff size={16} /> : <Eye size={16} />}</button></div>
-          {configured ? <label>Current Continuum password<input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label> : null}
-          <Button className="button-secondary" type="button" disabled={working || secret.trim().length < 8} onClick={() => void testNewSecret()}>{working ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}Test connection</Button>
-          {testState ? <div className={testState.ok ? "config-test-success" : "config-test-error"} role="status"><strong>{testState.ok ? "Connection successful" : "Connection failed"}</strong><span>{testState.message}</span></div> : null}
-          {configured ? <Button type="button" className="button-quiet danger" disabled={working || !password} onClick={async () => { if (window.confirm(`Disconnect ${provider.name}?`)) { const done = await onAction("disconnect", provider.provider, undefined, password); if (done.ok) setExpanded(false); } }}>Disconnect {provider.name}</Button> : null}
-        </form>}
-      </Modal>
-    </article>
-  );
-}
-
-function PublicProviderRow({ name, status, purpose, privacy, href, action }: { name: string; status: string; purpose: string; privacy: string; href: string; action: string }) {
-  return (
-    <article className="settings-row settings-row-static">
-      <div className="settings-row-copy">
-        <div className="settings-row-title"><h3>{name}</h3><Badge tone="neutral">{status}</Badge></div>
-        <p>{purpose}</p>
-        <small>{privacy}</small>
-      </div>
-      <a className="button button-secondary" href={href} target="_blank" rel="noreferrer">{action}<ExternalLink size={13} /></a>
-    </article>
-  );
+function isSafariBrowser() {
+  if (typeof navigator === "undefined") return false;
+  return /Safari/i.test(navigator.userAgent) && !/(Chrome|Chromium|CriOS|Edg|OPR)/i.test(navigator.userAgent);
 }
 
 export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
   const [status, setStatus] = useState<Status>();
-  const [credentials, setCredentials] = useState<CredentialPayload>();
-  const [credentialError, setCredentialError] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const [zoteroKey, setZoteroKey] = useState("");
@@ -186,18 +90,40 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
   const [showZoteroKey, setShowZoteroKey] = useState(false);
   const [obsidianOpen, setObsidianOpen] = useState(false);
   const [obsidianToken, setObsidianToken] = useState("");
+  const [obsidianDashboard, setObsidianDashboard] = useState<ObsidianDashboard>();
   const [ollamaUrl, setOllamaUrl] = useState("http://127.0.0.1:11434");
-  const [ollamaState, setOllamaState] = useState<{ reachable: boolean; models: Array<{ name: string; size: number }> }>();
+  const [ollamaState, setOllamaState] = useState<{
+    reachable: boolean;
+    testPassed: boolean;
+    models: Array<{ name: string; size: number }>;
+    latencyMs?: number;
+    firstTokenMs?: number;
+    testedModel?: string;
+    code?: "not_running" | "connection_blocked" | "request_timed_out" | "incompatible_endpoint" | "model_unavailable" | "invalid_response";
+    message?: string;
+  }>();
   const [ollamaModel, setOllamaModel] = useState("");
   const [ollamaOpen, setOllamaOpen] = useState(false);
   const [claudeOpen, setClaudeOpen] = useState(false);
   const [claudeTest, setClaudeTest] = useState<{ ok: boolean; message: string }>();
+  const [openAlexCredential, setOpenAlexCredential] = useState<ServiceCredential>();
+  const [openAlexOpen, setOpenAlexOpen] = useState(false);
+  const [openAlexKey, setOpenAlexKey] = useState("");
+  const [openAlexPassword, setOpenAlexPassword] = useState("");
+  const [showOpenAlexKey, setShowOpenAlexKey] = useState(false);
+  const [openAlexTest, setOpenAlexTest] = useState<{ ok: boolean; message: string }>();
+  const [youtubeCredential, setYouTubeCredential] = useState<ServiceCredential>();
+  const [youtubeOpen, setYouTubeOpen] = useState(false);
+  const [youtubeKey, setYouTubeKey] = useState("");
+  const [youtubePassword, setYouTubePassword] = useState("");
+  const [showYouTubeKey, setShowYouTubeKey] = useState(false);
+  const [youtubeTest, setYouTubeTest] = useState<{ ok: boolean; message: string }>();
 
   const refresh = useCallback(async () => {
     setError("");
-    setCredentialError("");
-    const [connectionsResult, credentialsResult] = await Promise.allSettled([
+    const [connectionsResult, obsidianResult, credentialsResult] = await Promise.allSettled([
       fetch("/api/integrations", { cache: "no-store" }),
+      fetch("/api/integrations/obsidian", { cache: "no-store" }),
       fetch("/api/integrations/credentials", { cache: "no-store" }),
     ]);
     if (connectionsResult.status === "fulfilled") {
@@ -209,15 +135,14 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
         setError("Connections are temporarily unavailable. Provider settings remain safe and usable.");
       }
     } else setError("Connections are unavailable");
-    if (credentialsResult.status === "fulfilled") {
-      try {
-        const payload = await credentialsResult.value.json() as CredentialPayload & { error?: string };
-        if (credentialsResult.value.ok) setCredentials(payload);
-        else setCredentialError(payload.error ?? "Provider settings are unavailable");
-      } catch {
-        setCredentialError("Provider settings returned an invalid response. Try again.");
-      }
-    } else setCredentialError("Provider settings are unavailable");
+    if (obsidianResult.status === "fulfilled" && obsidianResult.value.ok) {
+      setObsidianDashboard(await obsidianResult.value.json() as ObsidianDashboard);
+    }
+    if (credentialsResult.status === "fulfilled" && credentialsResult.value.ok) {
+      const payload = await credentialsResult.value.json() as { configured?: ServiceCredential[] };
+      setOpenAlexCredential(payload.configured?.find((credential) => credential.provider === "openalex"));
+      setYouTubeCredential(payload.configured?.find((credential) => credential.provider === "youtube"));
+    }
   }, []);
 
   useEffect(() => {
@@ -261,6 +186,11 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
     finally { setBusy(""); }
   }
 
+  async function obsidianAction(body: Record<string, unknown>, success: string) {
+    const result = await action("/api/integrations/obsidian", body, `obsidian-${String(body.action)}`);
+    if (result) showToast(success);
+  }
+
   async function connectZotero(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const result = await action("/api/connections/zotero", { action: "connect", apiKey: zoteroKey }, "zotero-connect");
@@ -296,24 +226,108 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
 
   async function testOllama() {
     setBusy("ollama");
+    const startedAt = performance.now();
     try {
       const url = new URL(ollamaUrl);
       if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) throw new Error("Only a local Ollama address is allowed");
-      const response = await fetch(new URL("/api/tags", url), { signal: AbortSignal.timeout(5_000) });
-      if (!response.ok) throw new Error(`Ollama returned ${response.status}`);
+      if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("Use an http:// or https:// local Ollama address");
+      const response = await fetch(new URL("/api/tags", url), { signal: AbortSignal.timeout(6_000) });
+      if (response.status === 404) {
+        setOllamaState({ reachable: true, testPassed: false, models: [], code: "incompatible_endpoint", message: "This server does not expose Ollama’s /api/tags endpoint. Use the Ollama API address, usually http://127.0.0.1:11434." });
+        return;
+      }
+      if (!response.ok) throw new Error(`Ollama returned HTTP ${response.status} while listing models`);
       const payload = await response.json() as { models?: Array<{ name: string; size?: number }> };
       const models = (payload.models ?? []).map((model) => ({ name: model.name, size: model.size ?? 0 }));
-      setOllamaState({ reachable: true, models });
       const current = models.find((model) => model.name === ollamaModel && model.size <= 8 * 1024 ** 3);
       const recommended = [...models].filter((model) => !model.size || model.size <= 8 * 1024 ** 3).sort((left, right) => left.size - right.size)[0];
-      setOllamaModel(current?.name ?? recommended?.name ?? models[0]?.name ?? "");
-      showToast(models.length ? `Ollama responded with ${models.length} local model${models.length === 1 ? "" : "s"}. Save to use this setup.` : "Ollama is reachable. Install a model before saving this setup.");
-    } catch (cause) { setOllamaState({ reachable: false, models: [] }); showToast(cause instanceof Error ? cause.message : "Ollama is unavailable"); }
+      const selectedModel = current?.name ?? recommended?.name;
+      setOllamaModel(selectedModel ?? models[0]?.name ?? "");
+      if (!models.length) {
+        setOllamaState({ reachable: true, testPassed: false, models, code: "model_unavailable", message: "Ollama is running, but no model is installed. Install a small model, then test again." });
+        return;
+      }
+      if (!selectedModel) {
+        setOllamaState({ reachable: true, testPassed: false, models, code: "model_unavailable", message: "The installed models are over Continuum’s 8 GB local-safety limit. Install or select a smaller model." });
+        return;
+      }
+
+      const testStartedAt = performance.now();
+      const testResponse = await fetch(new URL("/api/chat", url), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        signal: AbortSignal.timeout(20_000),
+        body: JSON.stringify({
+          model: selectedModel,
+          stream: true,
+          think: false,
+          options: { temperature: 0, num_ctx: 1024, num_predict: 8 },
+          messages: [{ role: "user", content: "Reply with READY only." }],
+        }),
+      });
+      if (testResponse.status === 404) {
+        setOllamaState({ reachable: true, testPassed: false, models, code: "incompatible_endpoint", message: "Model listing works, but /api/chat is unavailable. Update Ollama and confirm this is its native API address." });
+        return;
+      }
+      if (!testResponse.ok || !testResponse.body) {
+        const modelMissing = testResponse.status === 400 || testResponse.status === 404;
+        setOllamaState({
+          reachable: true,
+          testPassed: false,
+          models,
+          code: modelMissing ? "model_unavailable" : "invalid_response",
+          message: modelMissing ? `Ollama could not load ${selectedModel}. Run the model once in Ollama, then test again.` : `Ollama returned HTTP ${testResponse.status} for the test request.`,
+        });
+        return;
+      }
+      const reader = testResponse.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let output = "";
+      let firstTokenMs: number | undefined;
+      while (true) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value, { stream: !done });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const packet = JSON.parse(line) as { message?: { content?: string }; error?: string };
+          if (packet.error) throw new Error(packet.error);
+          if (packet.message?.content) {
+            firstTokenMs ??= Math.round(performance.now() - testStartedAt);
+            output += packet.message.content;
+          }
+        }
+        if (done) break;
+      }
+      if (!output.trim()) {
+        setOllamaState({ reachable: true, testPassed: false, models, code: "invalid_response", message: "Ollama streamed a response, but it contained no text. Try another installed model." });
+        return;
+      }
+      const latencyMs = Math.round(performance.now() - testStartedAt);
+      setOllamaState({ reachable: true, testPassed: true, models, latencyMs, firstTokenMs, testedModel: selectedModel, message: `Streaming test passed with ${selectedModel}.` });
+      showToast(`Local AI is ready. The streaming test completed in ${(latencyMs / 1_000).toFixed(1)} seconds.`);
+    } catch (cause) {
+      const elapsed = performance.now() - startedAt;
+      const timedOut = cause instanceof DOMException && (cause.name === "TimeoutError" || cause.name === "AbortError");
+      const blocked = cause instanceof TypeError;
+      const code = timedOut ? "request_timed_out" : blocked ? "connection_blocked" : elapsed < 1_500 ? "not_running" : "invalid_response";
+      const message = timedOut
+        ? "Ollama was reached but did not answer in 20 seconds. Start the selected model once in Ollama or choose a smaller model."
+        : blocked
+          ? isSafariBrowser()
+            ? "Safari blocks an HTTPS Continuum page from calling Ollama’s HTTP loopback API. Ollama may be healthy; open Continuum in Chrome or Edge for local AI, then test again there."
+            : "The browser blocked or could not reach the local API. Confirm Ollama is running, allow Continuum’s Local Network Access site permission, and include this exact Continuum origin in OLLAMA_ORIGINS."
+          : cause instanceof Error ? cause.message : "Ollama is unavailable";
+      setOllamaState({ reachable: false, testPassed: false, models: [], code, message });
+      showToast(message);
+    }
     finally { setBusy(""); }
   }
 
   function saveOllama() {
-    if (!ollamaState?.reachable || !ollamaModel) return;
+    if (!ollamaState?.testPassed || ollamaState.testedModel !== ollamaModel) return;
     const url = new URL(ollamaUrl);
     window.localStorage.setItem("continuum_ollama_url", url.origin);
     window.localStorage.setItem("continuum_ollama_model", ollamaModel);
@@ -340,35 +354,164 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
     } finally { setBusy(""); }
   }
 
-  async function credentialAction(actionName: "validate" | "configure" | "test" | "disconnect", provider: CredentialProvider, secret?: string, currentPassword?: string) {
-    const key = `credential-${provider}`;
-    setBusy(key);
+  async function testOpenAlex() {
+    setBusy("openalex-test");
+    setOpenAlexTest(undefined);
     try {
       const response = await fetch("/api/integrations/credentials", {
-        method: actionName === "disconnect" ? "DELETE" : "POST",
+        method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(actionName === "disconnect"
-          ? { provider, currentPassword }
-          : actionName === "configure"
-            ? { action: "configure", provider, secret, currentPassword }
-            : actionName === "validate"
-              ? { action: "validate", provider, secret }
-              : { action: "test", provider }),
+        body: JSON.stringify({ action: "validate", provider: "openalex", secret: openAlexKey }),
       });
-      const payload = await response.json() as { error?: string; status?: string; message?: string };
-      if (!response.ok) return { ok: false, message: payload.error ?? "Continuum could not complete this connection check." };
-      const message = payload.message ?? (actionName === "validate" ? "The provider accepted this key. It has not been saved yet." : actionName === "test" ? `Provider health: ${payload.status ?? "connected"}.` : actionName === "disconnect" ? "Provider credential disconnected." : "Provider credential validated and encrypted.");
-      showToast(message);
-      if (actionName !== "validate") await refresh();
-      return { ok: true, message };
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "The provider setting could not be updated";
-      showToast(message);
-      return { ok: false, message };
+      const payload = await response.json() as { error?: string; message?: string };
+      const result = response.ok
+        ? { ok: true, message: payload.message ?? "OpenAlex accepted this API key. It has not been saved yet." }
+        : { ok: false, message: payload.error ?? "OpenAlex rejected this API key." };
+      setOpenAlexTest(result);
+    } catch {
+      setOpenAlexTest({ ok: false, message: "Continuum could not reach OpenAlex. Check your connection and try again." });
     } finally {
       setBusy("");
     }
   }
+
+  async function connectOpenAlex(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("openalex-connect");
+    try {
+      const response = await fetch("/api/integrations/credentials", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "configure",
+          provider: "openalex",
+          secret: openAlexKey,
+          ...(openAlexCredential ? { currentPassword: openAlexPassword } : {}),
+        }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "The OpenAlex key could not be saved.");
+      setOpenAlexKey("");
+      setOpenAlexPassword("");
+      setOpenAlexTest(undefined);
+      setOpenAlexOpen(false);
+      await refresh();
+      showToast(openAlexCredential ? "OpenAlex API key replaced." : "OpenAlex connected. Scholarly search is ready.");
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : "The OpenAlex key could not be saved.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function disconnectOpenAlex() {
+    if (!openAlexPassword) {
+      showToast("Enter your current Continuum password before disconnecting OpenAlex.");
+      return;
+    }
+    if (!window.confirm("Disconnect OpenAlex? Saved papers and entities stay in Continuum, but live scholarly search will use the deployment key only if one is available.")) return;
+    setBusy("openalex-disconnect");
+    try {
+      const response = await fetch("/api/integrations/credentials", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: "openalex", currentPassword: openAlexPassword }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "OpenAlex could not be disconnected.");
+      setOpenAlexCredential(undefined);
+      setOpenAlexPassword("");
+      setOpenAlexKey("");
+      setOpenAlexTest(undefined);
+      setOpenAlexOpen(false);
+      showToast("OpenAlex disconnected. Saved research was not deleted.");
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : "OpenAlex could not be disconnected.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function testYouTube() {
+    setBusy("youtube-test");
+    setYouTubeTest(undefined);
+    try {
+      const response = await fetch("/api/integrations/credentials", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "validate", provider: "youtube", secret: youtubeKey }),
+      });
+      const payload = await response.json() as { error?: string; message?: string };
+      setYouTubeTest(response.ok
+        ? { ok: true, message: payload.message ?? "YouTube accepted this API key. It has not been saved yet." }
+        : { ok: false, message: payload.error ?? "YouTube rejected this API key. Confirm the YouTube Data API v3 is enabled." });
+    } catch {
+      setYouTubeTest({ ok: false, message: "Continuum could not reach YouTube. Check your connection and try again." });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function connectYouTube(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("youtube-connect");
+    try {
+      const response = await fetch("/api/integrations/credentials", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "configure",
+          provider: "youtube",
+          secret: youtubeKey,
+          ...(youtubeCredential ? { currentPassword: youtubePassword } : {}),
+        }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "The YouTube API key could not be saved.");
+      setYouTubeKey("");
+      setYouTubePassword("");
+      setYouTubeTest(undefined);
+      setYouTubeOpen(false);
+      await refresh();
+      showToast(youtubeCredential ? "YouTube Data API key replaced." : "YouTube connected. Learning-video search is ready.");
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : "The YouTube API key could not be saved.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function disconnectYouTube() {
+    if (!youtubePassword) {
+      showToast("Enter your current Continuum password before disconnecting YouTube.");
+      return;
+    }
+    if (!window.confirm("Disconnect the YouTube Data API? Saved learning progress stays in Continuum, but live video search will use the deployment key only if one is available.")) return;
+    setBusy("youtube-disconnect");
+    try {
+      const response = await fetch("/api/integrations/credentials", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: "youtube", currentPassword: youtubePassword }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "YouTube could not be disconnected.");
+      setYouTubeCredential(undefined);
+      setYouTubePassword("");
+      setYouTubeKey("");
+      setYouTubeTest(undefined);
+      setYouTubeOpen(false);
+      showToast("YouTube disconnected. Learning progress was not deleted.");
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : "YouTube could not be disconnected.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const openObsidianConflicts = obsidianDashboard?.conflicts.filter((conflict) => conflict.status === "open") ?? [];
+  const pendingObsidianOperations = obsidianDashboard?.operations.filter((operation) => ["pending", "syncing", "retry", "error"].includes(operation.status)) ?? [];
+  const acknowledgedObsidianOperations = obsidianDashboard?.operations.filter((operation) => operation.status === "completed" && operation.bridge_acknowledged_at) ?? [];
 
   return (
     <div className="screen connections-screen">
@@ -377,23 +520,6 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
         <Button className="button-secondary" onClick={() => void refresh()} disabled={busy === "refresh"}><RefreshCw size={15} />Refresh</Button>
       </header>
       {error ? <div className="inline-alert" role="alert"><Unplug size={17} /><span>{error}</span><button onClick={() => void refresh()}>Try again</button></div> : null}
-
-      <section className="connection-section provider-settings" aria-labelledby="providers-title">
-        <div className="section-heading"><div><p className="eyebrow">RESEARCH PROVIDERS</p><h2 id="providers-title">Optional discovery connections</h2></div><p>Continuum AI is included with your account. These optional keys only add metadata or video-search access and are never used for model access.</p></div>
-        {credentialError ? <div className="inline-alert" role="alert"><Unplug size={17} /><span>{credentialError}</span><button onClick={() => void refresh()}>Try again</button></div> : null}
-
-        <div className="settings-group">
-          <div className="settings-group-label"><span>Research</span><small>Discovery and citation data</small></div>
-          {credentials?.providers.filter((provider) => provider.provider === "openalex").map((provider) => <ProviderCredentialRow key={provider.provider} provider={provider} configured={credentials.configured.find((item) => item.provider === provider.provider)} busy={busy} onAction={credentialAction} />)}
-          <PublicProviderRow name="Crossref" status="Public · no key needed" purpose="Verified DOI metadata and citation lookups through the public REST API." privacy="Research terms and identifiers are sent to Crossref only when you search." href="https://www.crossref.org/documentation/retrieve-metadata/rest-api/" action="API policy" />
-        </div>
-
-        <div className="settings-group">
-          <div className="settings-group-label"><span>Learning resources</span><small>Real, attributable material</small></div>
-          {credentials?.providers.filter((provider) => provider.provider === "youtube").map((provider) => <ProviderCredentialRow key={provider.provider} provider={provider} configured={credentials.configured.find((item) => item.provider === provider.provider)} busy={busy} onAction={credentialAction} />)}
-          <PublicProviderRow name="PhET Interactive Simulations" status="Verified curated registry" purpose="Open subject-matched simulations from PhET's maintained public catalog." privacy="Continuum stores the verified destination and attribution, not a fabricated API connection." href="https://phet.colorado.edu/en/simulations/browse" action="Browse PhET" />
-        </div>
-      </section>
 
       <section className="connection-section" aria-labelledby="assistants-title">
         <div className="section-heading"><div><p className="eyebrow">DEVELOPER & ASSISTANTS</p><h2 id="assistants-title">One memory, wherever you work</h2></div><p>Claude retrieves only the relevant context it requests. It never receives a raw history dump.</p></div>
@@ -408,6 +534,32 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
       <section className="connection-section" aria-labelledby="study-tools-title">
         <div className="section-heading"><div><p className="eyebrow">PRODUCTIVITY</p><h2 id="study-tools-title">Sources and notes</h2></div><p>Continuum’s planner uses its own editable schedule. These optional tools add research and note context.</p></div>
         <div className="connection-list">
+          <ConnectionCard
+            icon={<Library size={20} />}
+            title="OpenAlex"
+            status={openAlexCredential?.status === "connected" ? "Connected" : openAlexCredential?.status === "degraded" ? "Needs a check" : openAlexCredential ? "Replace key" : "Not connected"}
+            connected={openAlexCredential?.status === "connected"}
+            description="Search the public scholarly graph across works, authors, institutions, sources, topics, references, citations, and related works."
+          >
+            {openAlexCredential ? <div className="connected-summary"><strong>{openAlexCredential.masked}</strong><span>{openAlexCredential.problem ?? `Last checked: ${dateLabel(openAlexCredential.lastValidatedAt)}`}</span>{openAlexCredential.lastUsedAt ? <small>Last used: {dateLabel(openAlexCredential.lastUsedAt)}</small> : null}</div> : <p className="connection-note">OpenAlex requires one free API key for production requests. No OAuth, client secret, or callback URL is involved.</p>}
+            <div className="permission-line"><ShieldCheck size={15} /><span>Encrypted at rest · used only for OpenAlex requests · never returned to the browser</span></div>
+            <div className="connection-actions"><Button className="button-primary" onClick={() => { setOpenAlexTest(undefined); setOpenAlexOpen(true); }}><KeyRound size={15} />{openAlexCredential ? "Manage API key" : "Connect OpenAlex"}</Button></div>
+            <Guide title="Create an OpenAlex API key" steps={["Open your OpenAlex account settings and create or copy your free API key.", "Paste the single key into Continuum. No OAuth app, client secret, scope selection, or redirect URL is needed.", "Test the key live, then save it encrypted to your Continuum account.", "Continuum uses it only when you search or navigate OpenAlex scholarly data."]} official={[{ label: "OpenAlex API key settings", href: links.openAlexKey }, { label: "Official authentication guide", href: links.openAlexAuth }]} />
+          </ConnectionCard>
+
+          <ConnectionCard
+            icon={<Video size={20} />}
+            title="YouTube Data API"
+            status={youtubeCredential?.status === "connected" ? "Connected" : youtubeCredential?.status === "degraded" ? "Needs a check" : youtubeCredential ? "Replace key" : "Not connected"}
+            connected={youtubeCredential?.status === "connected"}
+            description="Search public, embeddable learning videos from Learn using your own YouTube Data API quota."
+          >
+            {youtubeCredential ? <div className="connected-summary"><strong>{youtubeCredential.masked}</strong><span>{youtubeCredential.problem ?? `Last checked: ${dateLabel(youtubeCredential.lastValidatedAt)}`}</span>{youtubeCredential.lastUsedAt ? <small>Last used: {dateLabel(youtubeCredential.lastUsedAt)}</small> : null}</div> : <p className="connection-note">Public video search uses one API key. OAuth is not needed because Continuum does not access your YouTube account, subscriptions, playlists, or private data.</p>}
+            <div className="permission-line"><ShieldCheck size={15} /><span>Public search only · encrypted at rest · no YouTube account access</span></div>
+            <div className="connection-actions"><Button className="button-primary" onClick={() => { setYouTubeTest(undefined); setYouTubeOpen(true); }}><KeyRound size={15} />{youtubeCredential ? "Manage API key" : "Connect YouTube"}</Button></div>
+            <Guide title="Create a restricted YouTube API key" steps={["Create or select a Google Cloud project.", "Enable YouTube Data API v3 for that project.", "Create an API key under APIs & Services → Credentials.", "Restrict the key to YouTube Data API v3, then paste and test it here. Do not create an OAuth client for Continuum’s public search."]} official={[{ label: "Enable YouTube Data API v3", href: links.youtubeEnable }, { label: "Open API credentials", href: links.youtubeConsole }, { label: "Official getting-started guide", href: links.youtubeDocs }]} />
+          </ConnectionCard>
+
           <ConnectionCard icon={<Library size={20} />} title="Zotero" status={status?.zotero.connected ? "Connected" : "Not connected"} connected={status?.zotero.connected} description="Index citation metadata and abstracts from your private Zotero library so research retrieval can find the right paper again.">
             {status?.zotero.connected ? <><div className="connected-summary"><strong>{status.zotero.username ?? "Private Zotero library"}</strong><span>Last sync: {dateLabel(status.zotero.lastSyncAt)}</span></div><div className="connection-actions"><Button className="button-primary" disabled={busy === "zotero-sync"} onClick={async () => { const result = await action("/api/connections/zotero", { action: "sync" }, "zotero-sync"); if (result) showToast(result.hasMore ? `${result.indexed ?? 0} items indexed. ${result.remaining ?? 0} remain; sync again to continue.` : `Zotero sync complete: ${result.indexed ?? 0} changed items indexed.`); }}>{busy === "zotero-sync" ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}Sync library</Button><Button className="button-quiet danger" onClick={async () => { if (window.confirm("Disconnect Zotero? Already indexed source metadata stays in Continuum until you delete it from Research.")) await action("/api/connections/zotero", { action: "disconnect" }, "zotero-disconnect"); }}>Disconnect</Button></div></> : null}
             {!status?.zotero.connected ? <div className="connection-actions"><Button className="button-primary" disabled={!status?.zotero.available} onClick={() => { setZoteroStep(1); setZoteroTest(undefined); setZoteroOpen(true); }}><KeyRound size={15} />Connect Zotero</Button></div> : null}
@@ -421,8 +573,30 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
             <Guide title="Continue in NotebookLM" steps={["Download the source pack. It contains projects, decisions, indexed-source titles, and recent verified outcomes—not your passwords or provider settings.", "Open NotebookLM and create or choose a notebook.", "Add the Markdown source pack as a source.", "Return to Continuum to record verified progress and keep your schedule current."]} official={[{ label: "Open NotebookLM", href: links.notebooklm }, { label: "Official NotebookLM help", href: links.notebookHelp }]} />
           </ConnectionCard>
 
-          <ConnectionCard icon={<BookOpen size={20} />} title="Obsidian" status={status?.obsidian.tokens.length ? "Token active" : "Optional"} connected={Boolean(status?.obsidian.tokens.length)} description="Sync a folder you choose from a local Obsidian vault. Ordinary notes remain under your control.">
-            <div className="connection-actions"><Button className="button-primary" disabled={!status?.obsidian.available || busy === "obsidian"} onClick={() => setObsidianOpen(true)}><KeyRound size={15} />Set up Obsidian</Button></div>
+          <ConnectionCard icon={<BookOpen size={20} />} title="Obsidian" status={obsidianDashboard?.paused ? "Paused" : openObsidianConflicts.length ? "Needs review" : status?.obsidian.tokens.length ? "Connected" : "Optional"} connected={Boolean(status?.obsidian.tokens.length) && !openObsidianConflicts.length} description="Conflict-aware, two-way Markdown sync through the local Continuum Sync plugin. Ordinary notes remain under your control.">
+            <div className="connection-actions">
+              <Button className="button-primary" disabled={!status?.obsidian.available || busy === "obsidian"} onClick={() => setObsidianOpen(true)}><KeyRound size={15} />Set up Obsidian</Button>
+              {status?.obsidian.tokens.length ? <Button className="button-secondary" disabled={busy.startsWith("obsidian-")} onClick={() => void obsidianAction({ action: "set_paused", paused: !obsidianDashboard?.paused }, obsidianDashboard?.paused ? "Obsidian sync resumed. Queued changes remain durable." : "Obsidian sync paused. Queued changes will wait.")}>{obsidianDashboard?.paused ? <Play size={14} /> : <Pause size={14} />}{obsidianDashboard?.paused ? "Resume sync" : "Pause sync"}</Button> : null}
+              {pendingObsidianOperations.some((operation) => ["retry", "error", "syncing"].includes(operation.status)) ? <Button className="button-secondary" disabled={busy.startsWith("obsidian-")} onClick={() => void obsidianAction({ action: "retry" }, "Failed Obsidian writes are ready to retry.")}><RefreshCw size={14} />Retry failed</Button> : null}
+            </div>
+            {obsidianDashboard ? <div className="obsidian-sync-health" aria-label="Obsidian sync health">
+              <span><strong>{obsidianDashboard.records.length}</strong> tracked notes</span>
+              <span><strong>{pendingObsidianOperations.length}</strong> pending</span>
+              <span><strong>{acknowledgedObsidianOperations.length}</strong> acknowledged</span>
+              <span className={openObsidianConflicts.length ? "warning" : ""}><strong>{openObsidianConflicts.length}</strong> conflicts</span>
+            </div> : null}
+            {openObsidianConflicts.map((conflict) => {
+              const record = obsidianDashboard?.records.find((candidate) => candidate.sync_id === conflict.sync_id);
+              return <article className="obsidian-conflict" key={conflict.id}>
+                <div><AlertTriangle size={17} /><span><strong>{record?.title ?? "Synchronized note needs review"}</strong><small>Continuum and Obsidian both changed after their common base.</small></span></div>
+                <details><summary>Compare versions</summary><div className="obsidian-conflict-compare"><section><strong>Continuum · {conflict.server_path}</strong><pre>{conflict.server_content}</pre></section><section><strong>Obsidian · {conflict.local_path}</strong><pre>{conflict.local_content}</pre></section></div></details>
+                <div className="connection-actions"><Button className="button-secondary" disabled={busy.startsWith("obsidian-")} onClick={() => void obsidianAction({ action: "resolve_conflict", conflictId: conflict.id, resolution: "use_continuum" }, "Continuum’s version was queued for the vault.")}>Use Continuum</Button><Button className="button-secondary" disabled={busy.startsWith("obsidian-")} onClick={() => void obsidianAction({ action: "resolve_conflict", conflictId: conflict.id, resolution: "use_obsidian" }, "Obsidian’s version was accepted.")}>Use Obsidian</Button><Button className="button-secondary" disabled={busy.startsWith("obsidian-")} onClick={() => void obsidianAction({ action: "resolve_conflict", conflictId: conflict.id, resolution: "duplicate_both" }, "Both versions were preserved as separate notes.")}>Keep both</Button></div>
+              </article>;
+            })}
+            {obsidianDashboard?.operations.length ? <details className="connection-guide obsidian-activity"><summary><span>Recent sync activity</span><ChevronDown size={16} /></summary><div>{obsidianDashboard.operations.slice(0, 12).map((operation) => {
+              const record = obsidianDashboard.records.find((candidate) => candidate.sync_id === operation.sync_id);
+              return <div className="obsidian-operation" key={operation.id}><span><strong>{record?.title ?? operation.operation_type}</strong><small>{operation.operation_type} · {dateLabel(operation.updated_at)}</small></span><Badge tone={operation.status === "completed" ? "green" : operation.status === "conflict" || operation.latest_error ? "orange" : "neutral"}>{operation.status === "completed" && operation.bridge_acknowledged_at ? "acknowledged" : operation.status}</Badge>{operation.latest_error ? <p>{operation.latest_error}</p> : null}</div>;
+            })}</div></details> : null}
             {status?.obsidian.tokens.map((token) => <div className="connected-account" key={token.id}><div><strong>{token.name}</strong><span>Selected documents · memory updates</span><small>{token.lastUsedAt ? `Last used ${dateLabel(token.lastUsedAt)}` : `Created ${dateLabel(token.createdAt)}`}</small></div><button onClick={async () => { if (window.confirm(`Revoke ${token.name}?`)) await action("/api/integrations", { action: "revoke_integration_token", tokenId: token.id }, token.id); }}>Revoke</button></div>)}
             <Guide title="Install Continuum Sync" steps={["Install the Continuum Sync plugin files into your chosen vault's .obsidian/plugins/continuum-sync folder.", "Review and enable it under Settings → Community plugins.", "Create a token here and paste it into the plugin's secret prompt.", "Choose one folder and run a manual sync before enabling any automatic sync."]} official={[{ label: "Official Obsidian plugin guide", href: links.obsidian }, { label: "Official plugin security guide", href: links.obsidianSecurity }]} />
           </ConnectionCard>
@@ -431,12 +605,74 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
 
       <section className="connection-section" aria-labelledby="local-title">
         <div className="section-heading"><div><p className="eyebrow">LOCAL AI</p><h2 id="local-title">Keep coding help on this computer</h2></div><p>Ollama is optional. Its URL and selected model stay in this browser.</p></div>
-        <ConnectionCard icon={<Laptop size={20} />} title="Ollama" status={ollamaState?.reachable ? "Available locally" : "Optional"} connected={ollamaState?.reachable} description="Use a model running on your own computer from the Code workspace.">
+        <ConnectionCard icon={<Laptop size={20} />} title="Ollama" status={ollamaState?.testPassed ? "Streaming verified" : ollamaState?.reachable ? "Setup incomplete" : "Optional"} connected={ollamaState?.testPassed} description="Use a model running on your own computer from the Code workspace.">
           <div className="connection-actions"><Button className="button-primary" onClick={() => setOllamaOpen(true)}><Laptop size={15} />Choose local AI</Button></div>
           {ollamaState?.models.length ? <p className="connection-note"><strong>Installed:</strong> {ollamaState.models.slice(0, 6).map((model) => model.name).join(" · ")}</p> : null}
-          <Guide title="Set up Ollama" steps={["Install Ollama from its official download page.", "Use Ollama's official CLI to install at least one code-capable model, then start Ollama.", "If your browser blocks the local request, allow only your Continuum origin in OLLAMA_ORIGINS.", "Test the connection here, then choose Ollama in the Code workspace."]} official={[{ label: "Official Ollama download", href: links.ollama }, { label: "Official Ollama API guide", href: links.ollamaApi }]} />
+          <Guide title="Set up Ollama" steps={["Install Ollama from its official download page.", "Use Ollama's official CLI to install at least one code-capable model, then start Ollama.", "Allow only your Continuum origin in OLLAMA_ORIGINS.", "Use Chrome or Edge for local AI and allow Continuum’s Local Network Access site permission. Safari blocks a secure website from calling Ollama’s HTTP loopback API.", "Test the connection here, then choose Ollama in the Code workspace."]} official={[{ label: "Official Ollama download", href: links.ollama }, { label: "Official Ollama API guide", href: links.ollamaApi }]} />
         </ConnectionCard>
       </section>
+      <Modal
+        open={openAlexOpen}
+        onOpenChange={(open) => {
+          setOpenAlexOpen(open);
+          if (!open) {
+            setOpenAlexKey("");
+            setOpenAlexPassword("");
+            setOpenAlexTest(undefined);
+          }
+        }}
+        title={openAlexCredential ? "Manage your OpenAlex key" : "Connect OpenAlex"}
+        description="One free API key enables live scholarly search. OpenAlex does not require OAuth or a client secret for this integration."
+        dirty={Boolean(openAlexKey || openAlexPassword)}
+        dirtyMessage="Close without saving? The OpenAlex key and password you entered will be discarded."
+        footer={<>
+          {openAlexCredential ? <Button className="button-quiet danger" type="button" disabled={busy.startsWith("openalex-")} onClick={() => void disconnectOpenAlex()}>Disconnect</Button> : null}
+          <Button className="button-secondary" type="button" onClick={() => setOpenAlexOpen(false)}>Cancel</Button>
+          <LoadingButton className="button-primary" form="openalex-connect-form" loading={busy === "openalex-connect"} loadingLabel="Saving…" disabled={!openAlexTest?.ok || Boolean(openAlexCredential && !openAlexPassword)}>Save key</LoadingButton>
+        </>}
+      >
+        <form id="openalex-connect-form" className="guided-config" onSubmit={(event) => void connectOpenAlex(event)}>
+          <p><strong>What is sent:</strong> only public scholarly queries, identifiers, filters, and pagination parameters. Your Continuum password, memories, and private notes are never sent to OpenAlex.</p>
+          <a className="button button-secondary" href={links.openAlexKey} target="_blank" rel="noreferrer">Get an OpenAlex API key <ExternalLink size={13} /></a>
+          <label htmlFor="openalex-api-key">{openAlexCredential ? "Replacement OpenAlex API key" : "OpenAlex API key"}</label>
+          <div className="secret-field"><input id="openalex-api-key" autoFocus type={showOpenAlexKey ? "text" : "password"} autoComplete="off" required minLength={8} maxLength={2000} value={openAlexKey} onChange={(event) => { setOpenAlexKey(event.target.value); setOpenAlexTest(undefined); }} placeholder="Paste your OpenAlex API key" /><button type="button" aria-label={showOpenAlexKey ? "Hide OpenAlex key" : "Show OpenAlex key"} onClick={() => setShowOpenAlexKey((shown) => !shown)}>{showOpenAlexKey ? <EyeOff size={16} /> : <Eye size={16} />}</button></div>
+          <Button className="button-secondary" type="button" disabled={busy === "openalex-test" || openAlexKey.trim().length < 8} onClick={() => void testOpenAlex()}>{busy === "openalex-test" ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}{busy === "openalex-test" ? "Testing…" : "Test connection"}</Button>
+          {openAlexTest ? <div className={openAlexTest.ok ? "config-test-success" : "config-test-error"} role="status"><strong>{openAlexTest.ok ? "Connection successful" : "Connection failed"}</strong><span>{openAlexTest.message}</span></div> : null}
+          {openAlexCredential ? <label htmlFor="openalex-current-password">Current Continuum password<input id="openalex-current-password" type="password" autoComplete="current-password" required value={openAlexPassword} onChange={(event) => setOpenAlexPassword(event.target.value)} /><small>Required to replace or disconnect an existing secret.</small></label> : null}
+          <p className="privacy-note">After saving, Continuum shows only the final four characters. The full key is encrypted before database storage and is never included in exports.</p>
+        </form>
+      </Modal>
+      <Modal
+        open={youtubeOpen}
+        onOpenChange={(open) => {
+          setYouTubeOpen(open);
+          if (!open) {
+            setYouTubeKey("");
+            setYouTubePassword("");
+            setYouTubeTest(undefined);
+          }
+        }}
+        title={youtubeCredential ? "Manage your YouTube API key" : "Connect YouTube video search"}
+        description="A YouTube Data API key enables public learning-video search. OAuth is unnecessary because Continuum never accesses your YouTube account."
+        dirty={Boolean(youtubeKey || youtubePassword)}
+        dirtyMessage="Close without saving? The YouTube key and password you entered will be discarded."
+        footer={<>
+          {youtubeCredential ? <Button className="button-quiet danger" type="button" disabled={busy.startsWith("youtube-")} onClick={() => void disconnectYouTube()}>Disconnect</Button> : null}
+          <Button className="button-secondary" type="button" onClick={() => setYouTubeOpen(false)}>Cancel</Button>
+          <LoadingButton className="button-primary" form="youtube-connect-form" loading={busy === "youtube-connect"} loadingLabel="Saving…" disabled={!youtubeTest?.ok || Boolean(youtubeCredential && !youtubePassword)}>Save key</LoadingButton>
+        </>}
+      >
+        <form id="youtube-connect-form" className="guided-config" onSubmit={(event) => void connectYouTube(event)}>
+          <p><strong>What is sent:</strong> only your public learning-video search terms and filters. Continuum does not read your watch history, subscriptions, playlists, uploads, or private account data.</p>
+          <div className="modal-inline-actions"><a className="button button-secondary" href={links.youtubeEnable} target="_blank" rel="noreferrer">Enable the API <ExternalLink size={13} /></a><a className="button button-secondary" href={links.youtubeConsole} target="_blank" rel="noreferrer">Create API key <ExternalLink size={13} /></a></div>
+          <label htmlFor="youtube-api-key">{youtubeCredential ? "Replacement YouTube API key" : "YouTube Data API key"}</label>
+          <div className="secret-field"><input id="youtube-api-key" autoFocus type={showYouTubeKey ? "text" : "password"} autoComplete="off" required minLength={8} maxLength={2000} value={youtubeKey} onChange={(event) => { setYouTubeKey(event.target.value); setYouTubeTest(undefined); }} placeholder="Paste your restricted YouTube API key" /><button type="button" aria-label={showYouTubeKey ? "Hide YouTube key" : "Show YouTube key"} onClick={() => setShowYouTubeKey((shown) => !shown)}>{showYouTubeKey ? <EyeOff size={16} /> : <Eye size={16} />}</button></div>
+          <Button className="button-secondary" type="button" disabled={busy === "youtube-test" || youtubeKey.trim().length < 8} onClick={() => void testYouTube()}>{busy === "youtube-test" ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}{busy === "youtube-test" ? "Testing…" : "Test connection"}</Button>
+          {youtubeTest ? <div className={youtubeTest.ok ? "config-test-success" : "config-test-error"} role="status"><strong>{youtubeTest.ok ? "Connection successful" : "Connection failed"}</strong><span>{youtubeTest.message}</span></div> : null}
+          {youtubeCredential ? <label htmlFor="youtube-current-password">Current Continuum password<input id="youtube-current-password" type="password" autoComplete="current-password" required value={youtubePassword} onChange={(event) => setYouTubePassword(event.target.value)} /><small>Required to replace or disconnect an existing secret.</small></label> : null}
+          <p className="privacy-note">Restrict this key to YouTube Data API v3 in Google Cloud. Continuum encrypts it before storage, shows only its final four characters, and excludes it from account exports.</p>
+        </form>
+      </Modal>
       <Modal
         open={zoteroOpen}
         onOpenChange={(open) => { setZoteroOpen(open); if (!open) { setZoteroStep(1); setZoteroTest(undefined); } }}
@@ -483,16 +719,16 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
         onOpenChange={setOllamaOpen}
         title="Choose local AI for coding help"
         description="Ollama is optional and affects AI help only. Running code in Continuum does not use Ollama or any other model."
-        footer={<><Button className="button-secondary" type="button" onClick={() => setOllamaOpen(false)}>Cancel</Button><Button className="button-primary" type="button" disabled={!ollamaState?.reachable || !ollamaModel || Boolean(ollamaState.models.find((model) => model.name === ollamaModel && model.size > 8 * 1024 ** 3))} onClick={saveOllama}>Save local AI</Button></>}
+        footer={<><Button className="button-secondary" type="button" onClick={() => setOllamaOpen(false)}>Cancel</Button><Button className="button-primary" type="button" disabled={!ollamaState?.testPassed || ollamaState.testedModel !== ollamaModel || Boolean(ollamaState.models.find((model) => model.name === ollamaModel && model.size > 8 * 1024 ** 3))} onClick={saveOllama}>Save local AI</Button></>}
       >
         <div className="guided-config">
           <p><strong>Why it is needed:</strong> This address lets the Code tab request optional explanations from a model running on your computer.</p>
-          <ol><li>Install Ollama from the official download page.</li><li>Install at least one code-capable model and start Ollama.</li><li>If the browser blocks the request, allow only your Continuum origin in <code>OLLAMA_ORIGINS</code>.</li><li>Enter the local address and test it before saving.</li></ol>
+          <ol><li>Install Ollama from the official download page.</li><li>Install at least one code-capable model and start Ollama.</li><li>Allow only your Continuum origin in <code>OLLAMA_ORIGINS</code>.</li><li>Use Chrome or Edge for local AI and allow Continuum’s Local Network Access site permission. Safari blocks the secure Continuum page from calling Ollama’s HTTP loopback API.</li><li>Enter the local address and test it before saving.</li></ol>
           <a className="button button-secondary" href={links.ollama} target="_blank" rel="noreferrer">Download Ollama <ExternalLink size={13} /></a>
           <label>Local Ollama address<input autoFocus inputMode="url" value={ollamaUrl} onChange={(event) => { setOllamaUrl(event.target.value); setOllamaState(undefined); }} placeholder="Example: http://127.0.0.1:11434" /></label>
           <Button className="button-secondary" type="button" disabled={busy === "ollama"} onClick={() => void testOllama()}>{busy === "ollama" ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}{busy === "ollama" ? "Testing…" : "Test connection"}</Button>
-          {ollamaState?.reachable && ollamaState.models.length ? <label>Model<select value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)}>{ollamaState.models.map((model) => <option key={model.name} value={model.name}>{model.name} · {model.size ? `${(model.size / 1024 ** 3).toFixed(1)} GB` : "size unknown"}</option>)}</select><small>For a 16 GB Mac, choose a model below 8 GB. Continuum caps local requests to an 8K context so the computer remains responsive.</small></label> : null}
-          {ollamaState ? <div className={ollamaState.reachable && ollamaState.models.length ? "config-test-success" : "config-test-error"} role="status"><strong>{ollamaState.reachable && ollamaState.models.length ? "Local AI is ready" : "Setup is incomplete"}</strong><span>{ollamaState.reachable ? (ollamaState.models.length ? `Found ${ollamaState.models.slice(0, 4).map((model) => model.name).join(", ")}.` : "Ollama responded, but no model is installed. Install a model, then test again.") : "Continuum could not reach this local address. Confirm Ollama is running and the address is correct."}</span></div> : null}
+          {ollamaState?.reachable && ollamaState.models.length ? <label>Model<select value={ollamaModel} onChange={(event) => { setOllamaModel(event.target.value); setOllamaState((current) => current ? { ...current, testPassed: current.testedModel === event.target.value } : current); }}>{ollamaState.models.map((model) => <option key={model.name} value={model.name}>{model.name} · {model.size ? `${(model.size / 1024 ** 3).toFixed(1)} GB` : "size unknown"}</option>)}</select><small>For a 16 GB Mac, choose a model below 8 GB. If you change models, test again before saving. Continuum caps local requests to an 8K context so the computer remains responsive.</small></label> : null}
+          {ollamaState ? <div className={ollamaState.testPassed ? "config-test-success" : "config-test-error"} role="status"><strong>{ollamaState.testPassed ? "Local AI is ready" : "Setup is incomplete"}</strong><span>{ollamaState.message ?? "Test the local API before saving."}{ollamaState.testPassed && ollamaState.latencyMs ? ` First text: ${((ollamaState.firstTokenMs ?? ollamaState.latencyMs) / 1_000).toFixed(1)}s · complete: ${(ollamaState.latencyMs / 1_000).toFixed(1)}s.` : ""}</span></div> : null}
           {ollamaState?.models.find((model) => model.name === ollamaModel && model.size > 8 * 1024 ** 3) ? <div className="config-test-error" role="alert"><strong>This model is too large for reliable local help</strong><span>Choose a model under 8 GB. Larger weights can force macOS to swap memory and make the whole computer appear frozen.</span></div> : null}
           <p className="privacy-note">The address and selected model are stored only in this browser. Code still runs in Continuum’s isolated browser runtime; local AI is called only when you explicitly request AI help.</p>
         </div>

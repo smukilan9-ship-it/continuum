@@ -1,7 +1,10 @@
 import { NeonRepository } from "@continuum/db";
 import { credentialEncryptionVersion, openCredential, sealCredential } from "@/lib/credential-vault";
 
-export const credentialProviders = ["openalex", "youtube"] as const;
+// Personal provider credentials are encrypted, user-scoped connections. Model
+// credentials are used only in explicit BYOK mode; service credentials are used
+// only by the corresponding connected integration.
+export const credentialProviders = ["featherless", "groq", "gemini", "openalex", "youtube"] as const;
 export type CredentialProvider = typeof credentialProviders[number];
 export type CredentialHealthStatus = "connected" | "degraded" | "invalid";
 
@@ -19,18 +22,42 @@ export const credentialProviderMetadata: Record<CredentialProvider, {
   purpose: string;
   privacy: string;
   docs: string;
+  category: "model" | "scholarly" | "video";
 }> = {
+  featherless: {
+    name: "Featherless",
+    purpose: "Run Assistant, lesson, document, and coding requests with your own Featherless allowance.",
+    privacy: "Only the request you explicitly send and its selected Continuum context are sent to Featherless.",
+    docs: "https://featherless.ai/docs",
+    category: "model",
+  },
+  groq: {
+    name: "Groq",
+    purpose: "Run supported fast model tasks with your own Groq account.",
+    privacy: "Only the request you explicitly send and its selected Continuum context are sent to Groq.",
+    docs: "https://console.groq.com/docs/quickstart",
+    category: "model",
+  },
+  gemini: {
+    name: "Google Gemini",
+    purpose: "Run supported reasoning and document-analysis requests with your own Gemini API key.",
+    privacy: "Only the request you explicitly send and its selected Continuum context are sent to Google Gemini.",
+    docs: "https://ai.google.dev/gemini-api/docs/api-key",
+    category: "model",
+  },
   openalex: {
     name: "OpenAlex",
-    purpose: "Search and rank scholarly works, authors, topics, and citation signals.",
-    privacy: "Search terms and filters are sent to OpenAlex.",
-    docs: "https://developers.openalex.org/api-reference/authentication",
+    purpose: "Search works, authors, institutions, sources, topics, citations, references, and related scholarship with your own OpenAlex allowance.",
+    privacy: "OpenAlex receives only the public scholarly searches, identifiers, and filters you submit. Continuum never sends your password, private memory, or notes.",
+    docs: "https://developers.openalex.org/guides/authentication",
+    category: "scholarly",
   },
   youtube: {
     name: "YouTube Data API",
-    purpose: "Retrieve real learning-video metadata before Continuum ranks it.",
-    privacy: "Learning queries are sent to Google; the key is used server-side only.",
+    purpose: "Search for public, embeddable learning videos from the Learn workspace with your own YouTube Data API allowance.",
+    privacy: "YouTube receives only the learning-video search terms and public result filters you submit. Continuum never sends your password, private memory, or notes.",
     docs: "https://developers.google.com/youtube/v3/getting-started",
+    category: "video",
   },
 };
 
@@ -45,17 +72,36 @@ export type SealedProviderCredential = {
 };
 
 function providerRequest(provider: CredentialProvider, secret: string): { url: URL; init: RequestInit } {
+  if (provider === "featherless") {
+    return {
+      url: new URL("https://api.featherless.ai/v1/plan"),
+      init: { headers: { accept: "application/json", authorization: `Bearer ${secret}` } },
+    };
+  }
+  if (provider === "groq") {
+    return {
+      url: new URL("https://api.groq.com/openai/v1/models"),
+      init: { headers: { accept: "application/json", authorization: `Bearer ${secret}` } },
+    };
+  }
+  if (provider === "gemini") {
+    const url = new URL("https://generativelanguage.googleapis.com/v1beta/models");
+    url.searchParams.set("key", secret);
+    return { url, init: { headers: { accept: "application/json" } } };
+  }
   if (provider === "openalex") {
-    const url = new URL("https://api.openalex.org/rate-limit");
+    const url = new URL("https://api.openalex.org/works");
     url.searchParams.set("api_key", secret);
-    return { url, init: { headers: { accept: "application/json" } } satisfies RequestInit };
+    url.searchParams.set("per_page", "1");
+    url.searchParams.set("select", "id");
+    return { url, init: { headers: { accept: "application/json" } } };
   }
   if (provider === "youtube") {
     const url = new URL("https://www.googleapis.com/youtube/v3/videos");
+    url.searchParams.set("key", secret);
     url.searchParams.set("part", "id");
     url.searchParams.set("id", "dQw4w9WgXcQ");
-    url.searchParams.set("key", secret);
-    return { url, init: { headers: { accept: "application/json" } } satisfies RequestInit };
+    return { url, init: { headers: { accept: "application/json" } } };
   }
   throw new Error("Unsupported provider");
 }
@@ -133,6 +179,16 @@ export async function getUserProviderSecret(userId: string, provider: Credential
     if (error instanceof ProviderCredentialUnavailableError) return undefined;
     throw error;
   }
+}
+
+export async function getOpenAlexApiKeyForUser(userId: string) {
+  const personal = await getUserProviderSecret(userId, "openalex");
+  return personal?.secret ?? process.env.OPENALEX_API_KEY?.trim();
+}
+
+export async function getYouTubeApiKeyForUser(userId: string) {
+  const personal = await getUserProviderSecret(userId, "youtube");
+  return personal?.secret ?? process.env.YOUTUBE_API_KEY?.trim();
 }
 
 export function providerCredentialEnvelope(provider: CredentialProvider, secret: string, status: CredentialHealthStatus = "connected", checkedAt = new Date().toISOString(), lastUsedAt?: string) {
