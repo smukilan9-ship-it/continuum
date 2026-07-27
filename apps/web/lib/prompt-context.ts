@@ -1,4 +1,4 @@
-export type PromptSurface = "learning" | "code" | "research" | "specialist";
+export type PromptSurface = "learning" | "code" | "research" | "assistant" | "specialist";
 
 export interface AcademicPromptInput {
   surface: PromptSurface;
@@ -41,6 +41,11 @@ const surfacePolicy: Record<PromptSurface, string[]> = {
     "Separate sourced evidence, interpretation, and inference. Preserve provenance and interpretation limits.",
     "For OASIS, serial-section spatial association is not same-cell co-expression; never collapse that distinction.",
     "Do not invent papers, citations, measurements, claims, or source support.",
+  ],
+  assistant: [
+    "Help the user learn, build, research, or organize from the supplied Continuum context.",
+    "Treat current workspace records as context, not permission to change them. Describe proposed changes and ask for confirmation before consequential writes.",
+    "When a request depends on a document or source not present in the selected context, say what is missing.",
   ],
   specialist: [
     "Return a bounded specialist result and state material limitations.",
