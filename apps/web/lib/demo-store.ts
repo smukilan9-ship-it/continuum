@@ -26,6 +26,7 @@ export interface DemoSource {
 export interface DemoStore {
   events: DemoEvent[];
   tasks: Array<Record<string, unknown>>;
+  taskDependencies: Array<Record<string, unknown>>;
   notes: Array<Record<string, unknown>>;
   decisions: Array<Record<string, unknown>>;
   claims: Array<Record<string, unknown>>;
@@ -37,6 +38,11 @@ export interface DemoStore {
   memoryChunks: Array<{ id: string; kind: string; content: string; projectId?: string; goalId?: string; occurredAt: string; importance: number; tokenEstimate: number; sourceEventIds: string[]; score?: number; metadata: Record<string, unknown> }>;
   receipts: Array<Record<string, unknown>>;
   resourceActivities: Array<Record<string, unknown>>;
+  questionBanks: Array<Record<string, unknown>>;
+  imageExtractions: Array<Record<string, unknown>>;
+  questionBankAttempts: Array<Record<string, unknown>>;
+  assistantSessions: Array<Record<string, unknown>>;
+  assistantMessages: Array<Record<string, unknown>>;
   proposals: Array<Record<string, unknown>>;
   schedule: Array<Record<string, unknown>>;
   learningState: MasteryState;
@@ -51,6 +57,7 @@ declare global {
 export const demoStore: DemoStore = globalThis.__continuumDemoStore ?? {
   events: [],
   tasks: [],
+  taskDependencies: [],
   notes: [],
   decisions: [],
   claims: [],
@@ -62,6 +69,11 @@ export const demoStore: DemoStore = globalThis.__continuumDemoStore ?? {
   memoryChunks: [],
   receipts: [],
   resourceActivities: [],
+  questionBanks: [],
+  imageExtractions: [],
+  questionBankAttempts: [],
+  assistantSessions: [],
+  assistantMessages: [],
   proposals: [],
   schedule: [],
   learningState: {
@@ -80,7 +92,13 @@ export const demoStore: DemoStore = globalThis.__continuumDemoStore ?? {
 
 // Hot-reloaded development stores may predate newly added collections.
 demoStore.papers ??= [];
+demoStore.taskDependencies ??= [];
 demoStore.claims ??= [];
+demoStore.questionBanks ??= [];
+demoStore.imageExtractions ??= [];
+demoStore.questionBankAttempts ??= [];
+demoStore.assistantSessions ??= [];
+demoStore.assistantMessages ??= [];
 
 if (process.env.NODE_ENV !== "production") globalThis.__continuumDemoStore = demoStore;
 

@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   const rate = await enforceRateLimit(request, "state-read", Number(process.env.STATE_READS_PER_MINUTE ?? 120), 60_000, user.id);
   if (!rate.allowed) return NextResponse.json({ error: "State read rate limit exceeded", resetAt: rate.resetAt }, { status: 429, headers: { "retry-after": "60" } });
   const view = new URL(request.url).searchParams.get("view") ?? "today";
-  const allowedViews = new Set(["today", "goals", "learn", "research", "memory", "activity", "integrations", "code"]);
+  const allowedViews = new Set(["today", "assistant", "goals", "learn", "research", "openalex", "zotero", "memory", "activity", "integrations", "account", "code"]);
   if (!allowedViews.has(view)) return NextResponse.json({ error: "Unknown workspace view" }, { status: 400 });
   const store = getStore(user.id);
   return NextResponse.json({ data: await store.workspace(view), freshness: new Date().toISOString() }, { headers: { "cache-control": "private, no-store" } });

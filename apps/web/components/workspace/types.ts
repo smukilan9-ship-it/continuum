@@ -3,6 +3,7 @@ export type Row = Record<string, unknown>;
 export type WorkspaceState = {
   goals: Row[];
   tasks: Row[];
+  taskDependencies: Row[];
   projects: Row[];
   decisions: Row[];
   claims: Row[];
@@ -15,6 +16,8 @@ export type WorkspaceState = {
   events: Row[];
   proposals: Row[];
   resourceActivities: Row[];
+  questionBanks: Row[];
+  assistantSessions: Row[];
   schedule: Row[];
   modelRoutes: Row[];
   calendarConstraints: Row[];
@@ -23,6 +26,7 @@ export type WorkspaceState = {
 const keys: Array<keyof WorkspaceState> = [
   "goals",
   "tasks",
+  "taskDependencies",
   "projects",
   "decisions",
   "claims",
@@ -35,6 +39,8 @@ const keys: Array<keyof WorkspaceState> = [
   "events",
   "proposals",
   "resourceActivities",
+  "questionBanks",
+  "assistantSessions",
   "schedule",
   "modelRoutes",
   "calendarConstraints",

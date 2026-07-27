@@ -1,10 +1,13 @@
+import { randomUUID } from "node:crypto";
 import { and, asc, cosineDistance, desc, eq, gt, ilike, inArray, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import type { MasteryState, MemoryEvent, OutcomeReceipt, ResourceActivity, ResourceRegistryEntry } from "@continuum/schemas";
 import { getDatabase } from "./client";
 import {
   auditLog,
   aiRequestLeases,
-  authIdentities,
+  assistantMessages,
+  assistantSessions,
+  authTokens,
   artifacts,
   appSessions,
   calendarConstraints,
@@ -15,6 +18,7 @@ import {
   curriculumNodes,
   entitySummaries,
   goals,
+  imageExtractions,
   integrationTokens,
   integrations,
   learningStates,
@@ -29,10 +33,13 @@ import {
   oauthClients,
   oauthGrants,
   papers,
+  passwordHistory,
   profiles,
   taskDependencies,
   projectDecisions,
   projects,
+  questionBankAttempts,
+  questionBanks,
   rateLimitBuckets,
   resourceActivities,
   resourceRegistry,
@@ -70,6 +77,20 @@ function publicSourceMetadata(source: typeof sources.$inferSelect) {
   return metadata;
 }
 
+function publicQuestionBankSummary(bank: typeof questionBanks.$inferSelect) {
+  return {
+    ...bank,
+    questions: bank.questions.map((question) => ({
+      id: question.id,
+      prompt: question.prompt,
+      type: question.type,
+      choices: question.choices,
+      difficulty: question.difficulty,
+      sourceChunkIds: question.sourceChunkIds,
+    })),
+  };
+}
+
 export type SourceChunkWrite = {
   id: string;
   sourceId: string;
@@ -102,6 +123,83 @@ export type PaperWrite = {
   year?: number;
 };
 
+export type QuestionBankQuestion = {
+  id: string;
+  prompt: string;
+  expectedAnswer: string;
+  explanation: string;
+  type:
+    | "short_answer"
+    | "long_answer"
+    | "multiple_choice"
+    | "multiple_select"
+    | "true_false"
+    | "fill_blank"
+    | "assertion_reason"
+    | "matching"
+    | "case_study"
+    | "passage"
+    | "calculation"
+    | "diagram_labeling"
+    | "table"
+    | "flashcard";
+  choices?: string[];
+  difficulty: number;
+  sourceChunkIds: string[];
+  confidence?: number;
+  answerKeyProvenance?: "extracted_from_source" | "user_provided" | "model_inferred" | "not_available";
+  reviewRequired?: boolean;
+  sourceRegion?: { page: number; x: number; y: number; width: number; height: number };
+  diagramAsset?: { extractionId: string; page: number; x: number; y: number; width: number; height: number; alt?: string };
+};
+
+export type ImageExtractionWrite = {
+  id: string;
+  userId: string;
+  contentHash: string;
+  sourceId?: string;
+  status: string;
+  structure: Record<string, unknown>;
+  assetPaths: string[];
+  injectionDetected?: boolean;
+  error?: string;
+};
+
+export type QuestionBankWrite = {
+  id: string;
+  userId: string;
+  sourceId: string;
+  conceptId?: string;
+  title: string;
+  status: string;
+  mode: string;
+  questions: QuestionBankQuestion[];
+  injectionDetected?: boolean;
+};
+
+export type QuestionBankAttemptWrite = {
+  id: string;
+  userId: string;
+  questionBankId: string;
+  mode: string;
+  answers: Array<Record<string, unknown>>;
+  evaluations: Array<Record<string, unknown>>;
+  score: number;
+  currentIndex: number;
+  completedAt?: string;
+};
+
+export type AssistantSessionMemory = {
+  summary?: string;
+  decisions?: string[];
+  unresolvedQuestions?: string[];
+  createdTasks?: string[];
+  importantFacts?: string[];
+  linkedEntityIds?: string[];
+  memoryExcluded?: boolean;
+  status?: "active" | "saved" | "archived";
+};
+
 export type StoredSourceChunk = {
   id: string;
   sourceId: string;
@@ -129,7 +227,7 @@ export type StoredMemoryChunk = {
   metadata: Record<string, unknown>;
 };
 
-export type AuthUser = { id: string; email: string; displayName: string; timezone: string; educationLevel?: string };
+export type AuthUser = { id: string; email: string; displayName: string; timezone: string; educationLevel?: string; emailVerified?: boolean };
 
 export class NeonRepository {
   private readonly db = getDatabase();
@@ -321,8 +419,8 @@ export class NeonRepository {
   async getWorkspaceSnapshot(userId: string, view: string) {
     await this.ensureDemoSeed();
     const empty = {
-      events: [], goals: [], tasks: [], milestones: [], projects: [], decisions: [], claims: [], notes: [], sources: [], papers: [],
-      learningStates: [], memoryRecords: [], receipts: [], resourceActivities: [], proposals: [],
+      events: [], goals: [], tasks: [], taskDependencies: [], milestones: [], projects: [], decisions: [], claims: [], notes: [], sources: [], papers: [],
+      learningStates: [], memoryRecords: [], receipts: [], resourceActivities: [], questionBanks: [], assistantSessions: [], proposals: [],
       schedule: [], calendarConstraints: [], modelRoutes: [],
     };
     const userMilestones = () => this.db.select({ milestone: milestones }).from(milestones).innerJoin(goals, eq(milestones.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(goals.deleted, false), eq(milestones.deleted, false))).orderBy(asc(milestones.order));
@@ -339,7 +437,7 @@ export class NeonRepository {
       occurredAt: event.occurredAt.toISOString(),
     }));
 
-    if (view === "integrations") return empty;
+    if (view === "integrations" || view === "account" || view === "zotero" || view === "openalex") return empty;
     if (view === "today") {
       const [goalRows, taskRows, milestoneRows, projectRows, receiptRows, activityRows, scheduleRows, constraintRows] = await Promise.all([
         userGoals(), userTasks(), userMilestones(), userProjects(), userReceipts(4),
@@ -357,13 +455,24 @@ export class NeonRepository {
       return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), milestones: milestoneRows.map(({ milestone }) => milestone), schedule: scheduleRows, calendarConstraints: constraintRows };
     }
     if (view === "learn") {
-      const [goalRows, taskRows, masteryRows, activityRows, receiptRows] = await Promise.all([
+      const [goalRows, taskRows, dependencyRows, masteryRows, activityRows, questionBankRows, receiptRows] = await Promise.all([
         userGoals(), userTasks(),
+        this.listTaskDependencies(userId),
         this.db.select().from(learningStates).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false))),
         this.db.select().from(resourceActivities).where(eq(resourceActivities.userId, userId)).orderBy(desc(resourceActivities.startedAt)).limit(20),
+        this.db.select().from(questionBanks).where(and(eq(questionBanks.userId, userId), eq(questionBanks.deleted, false))).orderBy(desc(questionBanks.updatedAt)).limit(20),
         userReceipts(5),
       ]);
-      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), learningStates: masteryRows, resourceActivities: activityRows, receipts: receiptRows };
+      return {
+        ...empty,
+        goals: goalRows,
+        tasks: taskRows.map(({ task }) => task),
+        taskDependencies: dependencyRows,
+        learningStates: masteryRows,
+        resourceActivities: activityRows,
+        questionBanks: questionBankRows.map(publicQuestionBankSummary),
+        receipts: receiptRows,
+      };
     }
     if (view === "research") {
       const [goalRows, taskRows, projectRows, decisionRows, claimRows, noteRows, sourceRows, paperRows] = await Promise.all([
@@ -406,6 +515,27 @@ export class NeonRepository {
         userReceipts(5),
       ]);
       return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), projects: projectRows, learningStates: masteryRows, receipts: receiptRows };
+    }
+    if (view === "assistant") {
+      const [goalRows, taskRows, projectRows, masteryRows, sourceRows, paperRows, receiptRows, sessionRows] = await Promise.all([
+        userGoals(), userTasks(), userProjects(),
+        this.db.select().from(learningStates).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false))),
+        this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).orderBy(desc(sources.updatedAt)).limit(30),
+        this.db.select({ paper: papers }).from(papers).innerJoin(projects, eq(papers.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(papers.deleted, false))).orderBy(desc(papers.updatedAt)).limit(30),
+        userReceipts(10),
+        this.db.select().from(assistantSessions).where(and(eq(assistantSessions.userId, userId), eq(assistantSessions.deleted, false))).orderBy(desc(assistantSessions.lastMessageAt)).limit(40),
+      ]);
+      return {
+        ...empty,
+        goals: goalRows,
+        tasks: taskRows.map(({ task }) => task),
+        projects: projectRows,
+        learningStates: masteryRows,
+        sources: sourceRows.map(publicSourceMetadata),
+        papers: paperRows.map(({ paper }) => paper),
+        receipts: receiptRows,
+        assistantSessions: sessionRows,
+      };
     }
     return empty;
   }
@@ -691,6 +821,274 @@ export class NeonRepository {
       target: [learningStates.userId, learningStates.conceptId],
       set: values,
     });
+  }
+
+  async saveQuestionBank(input: QuestionBankWrite) {
+    await this.ensureDemoSeed();
+    const [ownedSource] = await this.db.select({ id: sources.id }).from(sources).where(and(
+      eq(sources.id, input.sourceId),
+      eq(sources.userId, input.userId),
+      eq(sources.deleted, false),
+    )).limit(1);
+    if (!ownedSource) throw new Error("Source not found or not accessible");
+    if (input.conceptId) {
+      const [concept] = await this.db.select({ id: concepts.id }).from(concepts).where(eq(concepts.id, input.conceptId)).limit(1);
+      if (!concept) throw new Error("Learning concept was not found");
+    }
+    const now = new Date();
+    const values = {
+      id: input.id,
+      userId: input.userId,
+      sourceId: input.sourceId,
+      conceptId: input.conceptId ?? null,
+      title: input.title,
+      status: input.status,
+      mode: input.mode,
+      questions: input.questions,
+      injectionDetected: input.injectionDetected ?? false,
+      deleted: false,
+      updatedAt: now,
+    };
+    const [saved] = await this.db.insert(questionBanks).values(values).onConflictDoUpdate({
+      target: questionBanks.id,
+      set: { ...values, version: sql`${questionBanks.version} + 1` },
+    }).returning();
+    return saved;
+  }
+
+  async listQuestionBanks(userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    return this.db.select().from(questionBanks).where(and(
+      eq(questionBanks.userId, userId),
+      eq(questionBanks.deleted, false),
+    )).orderBy(desc(questionBanks.updatedAt)).limit(50);
+  }
+
+  async getQuestionBank(questionBankId: string, userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    const [bank] = await this.db.select().from(questionBanks).where(and(
+      eq(questionBanks.id, questionBankId),
+      eq(questionBanks.userId, userId),
+      eq(questionBanks.deleted, false),
+    )).limit(1);
+    if (!bank) return undefined;
+    const attempts = await this.db.select().from(questionBankAttempts).where(and(
+      eq(questionBankAttempts.questionBankId, questionBankId),
+      eq(questionBankAttempts.userId, userId),
+    )).orderBy(desc(questionBankAttempts.updatedAt)).limit(20);
+    return { ...bank, attempts };
+  }
+
+  async saveQuestionBankAttempt(input: QuestionBankAttemptWrite) {
+    await this.ensureDemoSeed();
+    return this.db.transaction(async (tx) => {
+      const [ownedBank] = await tx.select({ id: questionBanks.id }).from(questionBanks).where(and(
+        eq(questionBanks.id, input.questionBankId),
+        eq(questionBanks.userId, input.userId),
+        eq(questionBanks.deleted, false),
+      )).limit(1);
+      if (!ownedBank) throw new Error("Question bank not found or not accessible");
+      const now = new Date();
+      const values = {
+        id: input.id,
+        questionBankId: input.questionBankId,
+        userId: input.userId,
+        mode: input.mode,
+        answers: input.answers,
+        evaluations: input.evaluations,
+        score: input.score,
+        currentIndex: input.currentIndex,
+        completedAt: input.completedAt ? new Date(input.completedAt) : null,
+        updatedAt: now,
+      };
+      const [attempt] = await tx.insert(questionBankAttempts).values(values).onConflictDoUpdate({
+        target: questionBankAttempts.id,
+        set: { ...values, version: sql`${questionBankAttempts.version} + 1` },
+      }).returning();
+      await tx.update(questionBanks).set({
+        status: input.completedAt ? "completed" : "in_progress",
+        mode: input.mode,
+        updatedAt: now,
+        version: sql`${questionBanks.version} + 1`,
+      }).where(eq(questionBanks.id, input.questionBankId));
+      return attempt;
+    });
+  }
+
+  async getImageExtractionByHash(contentHash: string, userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    const [extraction] = await this.db.select().from(imageExtractions).where(and(
+      eq(imageExtractions.userId, userId),
+      eq(imageExtractions.contentHash, contentHash),
+    )).limit(1);
+    return extraction;
+  }
+
+  async getImageExtraction(extractionId: string, userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    const [extraction] = await this.db.select().from(imageExtractions).where(and(
+      eq(imageExtractions.id, extractionId),
+      eq(imageExtractions.userId, userId),
+    )).limit(1);
+    return extraction;
+  }
+
+  async saveImageExtraction(input: ImageExtractionWrite) {
+    await this.ensureDemoSeed();
+    const now = new Date();
+    const values = {
+      id: input.id,
+      userId: input.userId,
+      contentHash: input.contentHash,
+      sourceId: input.sourceId ?? null,
+      status: input.status,
+      structure: input.structure,
+      assetPaths: input.assetPaths,
+      injectionDetected: input.injectionDetected ?? false,
+      error: input.error ?? null,
+      updatedAt: now,
+    };
+    const [saved] = await this.db.insert(imageExtractions).values(values).onConflictDoUpdate({
+      target: [imageExtractions.userId, imageExtractions.contentHash],
+      set: {
+        sourceId: values.sourceId,
+        status: values.status,
+        structure: values.structure,
+        assetPaths: values.assetPaths,
+        injectionDetected: values.injectionDetected,
+        error: values.error,
+        updatedAt: now,
+      },
+    }).returning();
+    return saved;
+  }
+
+  async createAssistantSession(input: { id: string; userId: string; title: string }) {
+    await this.ensureDemoSeed();
+    const [session] = await this.db.insert(assistantSessions).values({
+      id: input.id,
+      userId: input.userId,
+      title: input.title,
+    }).returning();
+    return session;
+  }
+
+  async listAssistantSessions(userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    return this.db.select().from(assistantSessions).where(and(
+      eq(assistantSessions.userId, userId),
+      eq(assistantSessions.deleted, false),
+    )).orderBy(desc(assistantSessions.pinned), desc(assistantSessions.lastMessageAt)).limit(80);
+  }
+
+  async getAssistantSession(sessionId: string, userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    const [session] = await this.db.select().from(assistantSessions).where(and(
+      eq(assistantSessions.id, sessionId),
+      eq(assistantSessions.userId, userId),
+      eq(assistantSessions.deleted, false),
+    )).limit(1);
+    if (!session) return undefined;
+    const messages = await this.db.select().from(assistantMessages).where(and(
+      eq(assistantMessages.sessionId, sessionId),
+      eq(assistantMessages.userId, userId),
+    )).orderBy(asc(assistantMessages.createdAt)).limit(200);
+    return { ...session, messages };
+  }
+
+  async appendAssistantMessage(input: {
+    id: string;
+    sessionId: string;
+    userId: string;
+    role: "user" | "assistant";
+    content: string;
+    provider?: string;
+    model?: string;
+    metadata?: Record<string, unknown>;
+  }) {
+    await this.ensureDemoSeed();
+    return this.db.transaction(async (tx) => {
+      const [session] = await tx.select({ id: assistantSessions.id, title: assistantSessions.title }).from(assistantSessions).where(and(
+        eq(assistantSessions.id, input.sessionId),
+        eq(assistantSessions.userId, input.userId),
+        eq(assistantSessions.deleted, false),
+      )).limit(1);
+      if (!session) throw new Error("Assistant session not found or not accessible");
+      const now = new Date();
+      const [message] = await tx.insert(assistantMessages).values({
+        ...input,
+        provider: input.provider ?? null,
+        model: input.model ?? null,
+        metadata: input.metadata ?? {},
+      }).returning();
+      await tx.update(assistantSessions).set({
+        lastMessageAt: now,
+        updatedAt: now,
+        version: sql`${assistantSessions.version} + 1`,
+        ...(session.title === "New conversation" && input.role === "user" ? { title: input.content.trim().replace(/\s+/g, " ").slice(0, 72) } : {}),
+      }).where(eq(assistantSessions.id, input.sessionId));
+      return message;
+    });
+  }
+
+  async updateAssistantSession(sessionId: string, userId: string, input: {
+    title?: string;
+    pinned?: boolean;
+    archived?: boolean;
+    groupLabel?: string | null;
+    contextSettings?: Record<string, unknown>;
+  }) {
+    const rows = await this.db.update(assistantSessions).set({
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.pinned !== undefined ? { pinned: input.pinned } : {}),
+      ...(input.archived !== undefined ? { archived: input.archived } : {}),
+      ...(input.groupLabel !== undefined ? { groupLabel: input.groupLabel } : {}),
+      ...(input.contextSettings !== undefined ? { contextSettings: input.contextSettings } : {}),
+      updatedAt: new Date(),
+      version: sql`${assistantSessions.version} + 1`,
+    }).where(and(
+      eq(assistantSessions.id, sessionId),
+      eq(assistantSessions.userId, userId),
+      eq(assistantSessions.deleted, false),
+    )).returning();
+    return rows[0];
+  }
+
+  async updateAssistantSessionMemory(sessionId: string, userId: string, memory: AssistantSessionMemory) {
+    await this.ensureDemoSeed();
+    const now = new Date();
+    const rows = await this.db.update(assistantSessions).set({
+      ...(memory.summary !== undefined ? { summary: memory.summary } : {}),
+      ...(memory.decisions !== undefined ? { decisions: memory.decisions } : {}),
+      ...(memory.unresolvedQuestions !== undefined ? { unresolvedQuestions: memory.unresolvedQuestions } : {}),
+      ...(memory.createdTasks !== undefined ? { createdTasks: memory.createdTasks } : {}),
+      ...(memory.importantFacts !== undefined ? { importantFacts: memory.importantFacts } : {}),
+      ...(memory.linkedEntityIds !== undefined ? { linkedEntityIds: memory.linkedEntityIds } : {}),
+      ...(memory.memoryExcluded !== undefined ? { memoryExcluded: memory.memoryExcluded } : {}),
+      ...(memory.status !== undefined ? { status: memory.status } : {}),
+      updatedAt: now,
+      version: sql`${assistantSessions.version} + 1`,
+    }).where(and(
+      eq(assistantSessions.id, sessionId),
+      eq(assistantSessions.userId, userId),
+      eq(assistantSessions.deleted, false),
+    )).returning();
+    return rows[0];
+  }
+
+  async deleteAssistantSession(sessionId: string, userId: string) {
+    await this.ensureDemoSeed();
+    const rows = await this.db.update(assistantSessions).set({
+      deleted: true,
+      memoryExcluded: true,
+      updatedAt: new Date(),
+      version: sql`${assistantSessions.version} + 1`,
+    }).where(and(
+      eq(assistantSessions.id, sessionId),
+      eq(assistantSessions.userId, userId),
+      eq(assistantSessions.deleted, false),
+    )).returning({ id: assistantSessions.id });
+    return Boolean(rows.length);
   }
 
   async ensureConcept(id: string, title: string) {
@@ -1249,24 +1647,7 @@ export class NeonRepository {
       await tx.insert(profiles).values({ id: `profile_${input.id.replace(/^user_/, "")}`, userId: input.id, displayName: input.displayName, timezone: input.timezone, educationLevel: input.educationLevel, preferences: { explanationStyle: "intuition_before_derivation", memoryWrites: true } });
       await tx.insert(userCredentials).values({ userId: input.id, passwordHash: input.passwordHash, passwordSalt: input.passwordSalt });
     });
-    return { id: input.id, email: input.email.toLowerCase(), displayName: input.displayName, timezone: input.timezone, ...(input.educationLevel ? { educationLevel: input.educationLevel } : {}) } satisfies AuthUser;
-  }
-
-  async resolveOrCreateOAuthUser(input: { id: string; identityId: string; provider: string; subject: string; email: string; displayName: string; timezone: string }) {
-    return this.db.transaction(async (tx) => {
-      const existingIdentity = await tx.select({ user: users, profile: profiles }).from(authIdentities).innerJoin(users, eq(authIdentities.userId, users.id)).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(authIdentities.provider, input.provider), eq(authIdentities.subject, input.subject), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
-      if (existingIdentity[0]) return { id: existingIdentity[0].user.id, email: existingIdentity[0].user.email, displayName: existingIdentity[0].profile.displayName, timezone: existingIdentity[0].profile.timezone, ...(existingIdentity[0].profile.educationLevel ? { educationLevel: existingIdentity[0].profile.educationLevel } : {}) } satisfies AuthUser;
-
-      const normalizedEmail = input.email.toLowerCase();
-      const inserted = await tx.insert(users).values({ id: input.id, email: normalizedEmail }).onConflictDoNothing({ target: users.email }).returning({ id: users.id });
-      if (inserted[0]) await tx.insert(profiles).values({ id: `profile_${input.id.replace(/^user_/, "")}`, userId: input.id, displayName: input.displayName, timezone: input.timezone, preferences: { explanationStyle: "intuition_before_derivation", memoryWrites: true } });
-      const [account] = await tx.select({ user: users, profile: profiles }).from(users).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(users.email, normalizedEmail), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
-      if (!account) throw new Error("Verified account could not be created");
-      await tx.insert(authIdentities).values({ id: input.identityId, userId: account.user.id, provider: input.provider, subject: input.subject, email: normalizedEmail }).onConflictDoNothing();
-      const [resolved] = await tx.select({ user: users, profile: profiles }).from(authIdentities).innerJoin(users, eq(authIdentities.userId, users.id)).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(authIdentities.provider, input.provider), eq(authIdentities.subject, input.subject), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
-      if (!resolved) throw new Error("Verified identity could not be linked");
-      return { id: resolved.user.id, email: resolved.user.email, displayName: resolved.profile.displayName, timezone: resolved.profile.timezone, ...(resolved.profile.educationLevel ? { educationLevel: resolved.profile.educationLevel } : {}) } satisfies AuthUser;
-    });
+    return { id: input.id, email: input.email.toLowerCase(), displayName: input.displayName, timezone: input.timezone, ...(input.educationLevel ? { educationLevel: input.educationLevel } : {}), emailVerified: false } satisfies AuthUser;
   }
 
   async findUserForLogin(email: string) {
@@ -1277,7 +1658,7 @@ export class NeonRepository {
   async getUser(userId: string): Promise<AuthUser | undefined> {
     const [row] = await this.db.select({ user: users, profile: profiles }).from(users).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(users.id, userId), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
     if (!row) return undefined;
-    return { id: row.user.id, email: row.user.email, displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}) };
+    return { id: row.user.id, email: row.user.email, displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}), emailVerified: Boolean(row.user.emailVerifiedAt) };
   }
 
   async updateLoginFailure(userId: string, succeeded: boolean) {
@@ -1289,18 +1670,174 @@ export class NeonRepository {
     if ((row?.attempts ?? 0) >= 5) await this.db.update(userCredentials).set({ lockedUntil: new Date(Date.now() + 15 * 60_000) }).where(eq(userCredentials.userId, userId));
   }
 
-  async createSession(input: { id: string; userId: string; tokenHash: string; expiresAt: string; userAgentHash?: string; ipHash?: string }) {
+  async createSession(input: { id: string; userId: string; tokenHash: string; expiresAt: string; userAgent?: string; userAgentHash?: string; ipHash?: string }) {
     await this.db.insert(appSessions).values({ ...input, expiresAt: new Date(input.expiresAt) });
   }
 
   async getSession(tokenHash: string) {
     const [row] = await this.db.select({ session: appSessions, user: users, profile: profiles }).from(appSessions).innerJoin(users, eq(appSessions.userId, users.id)).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(appSessions.tokenHash, tokenHash), isNull(appSessions.revokedAt), gt(appSessions.expiresAt, new Date()), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
     if (!row) return undefined;
-    return { id: row.user.id, email: row.user.email, displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}) } satisfies AuthUser;
+    if (Date.now() - row.session.lastSeenAt.getTime() > 5 * 60_000) {
+      void this.db.update(appSessions).set({ lastSeenAt: new Date() }).where(eq(appSessions.id, row.session.id));
+    }
+    return { id: row.user.id, email: row.user.email, displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}), emailVerified: Boolean(row.user.emailVerifiedAt) } satisfies AuthUser;
   }
 
   async revokeSession(tokenHash: string) {
     await this.db.update(appSessions).set({ revokedAt: new Date() }).where(eq(appSessions.tokenHash, tokenHash));
+  }
+
+  async findUserForRecovery(email: string) {
+    const [row] = await this.db.select({ user: users, profile: profiles, credential: userCredentials })
+      .from(users)
+      .innerJoin(profiles, eq(profiles.userId, users.id))
+      .leftJoin(userCredentials, eq(userCredentials.userId, users.id))
+      .where(and(eq(users.email, email.toLowerCase()), eq(users.deleted, false), eq(profiles.deleted, false)))
+      .limit(1);
+    return row;
+  }
+
+  async createAuthToken(input: { id: string; userId: string; purpose: string; tokenHash: string; expiresAt: string; metadata?: Record<string, unknown> }) {
+    const now = new Date();
+    await this.db.transaction(async (tx) => {
+      await tx.update(authTokens).set({ consumedAt: now }).where(and(
+        eq(authTokens.userId, input.userId),
+        eq(authTokens.purpose, input.purpose),
+        isNull(authTokens.consumedAt),
+      ));
+      await tx.insert(authTokens).values({
+        ...input,
+        expiresAt: new Date(input.expiresAt),
+        metadata: input.metadata ?? {},
+      });
+    });
+  }
+
+  async consumeAuthToken(tokenHash: string, purposes: string[]) {
+    return this.db.transaction(async (tx) => {
+      const [token] = await tx.select().from(authTokens).where(and(
+        eq(authTokens.tokenHash, tokenHash),
+        inArray(authTokens.purpose, purposes),
+        isNull(authTokens.consumedAt),
+        gt(authTokens.expiresAt, new Date()),
+      )).limit(1);
+      if (!token) return undefined;
+      const consumed = await tx.update(authTokens).set({ consumedAt: new Date() }).where(and(
+        eq(authTokens.id, token.id),
+        isNull(authTokens.consumedAt),
+      )).returning({ id: authTokens.id });
+      return consumed[0] ? token : undefined;
+    });
+  }
+
+  async inspectAuthToken(tokenHash: string, purposes: string[]) {
+    const [token] = await this.db.select({
+      id: authTokens.id,
+      userId: authTokens.userId,
+      purpose: authTokens.purpose,
+      expiresAt: authTokens.expiresAt,
+      consumedAt: authTokens.consumedAt,
+      email: users.email,
+    }).from(authTokens).innerJoin(users, eq(authTokens.userId, users.id)).where(and(
+      eq(authTokens.tokenHash, tokenHash),
+      inArray(authTokens.purpose, purposes),
+      eq(users.deleted, false),
+    )).limit(1);
+    return token;
+  }
+
+  async verifyEmail(userId: string) {
+    const rows = await this.db.update(users).set({ emailVerifiedAt: new Date(), updatedAt: new Date(), version: sql`${users.version} + 1` })
+      .where(and(eq(users.id, userId), eq(users.deleted, false)))
+      .returning({ id: users.id });
+    return Boolean(rows.length);
+  }
+
+  async replacePassword(input: { userId: string; passwordHash: string; passwordSalt: string; keepSessionId?: string }) {
+    await this.db.transaction(async (tx) => {
+      const [current] = await tx.select().from(userCredentials).where(eq(userCredentials.userId, input.userId)).limit(1);
+      if (current) {
+        await tx.insert(passwordHistory).values({
+          id: `password_history_${randomUUID().replaceAll("-", "").slice(0, 24)}`,
+          userId: input.userId,
+          passwordHash: current.passwordHash,
+          passwordSalt: current.passwordSalt,
+        });
+        await tx.update(userCredentials).set({
+          passwordHash: input.passwordHash,
+          passwordSalt: input.passwordSalt,
+          passwordVersion: sql`${userCredentials.passwordVersion} + 1`,
+          failedAttempts: 0,
+          lockedUntil: null,
+          updatedAt: new Date(),
+        }).where(eq(userCredentials.userId, input.userId));
+      } else {
+        await tx.insert(userCredentials).values({
+          userId: input.userId,
+          passwordHash: input.passwordHash,
+          passwordSalt: input.passwordSalt,
+        });
+      }
+      await tx.update(users).set({ emailVerifiedAt: new Date(), updatedAt: new Date(), version: sql`${users.version} + 1` }).where(eq(users.id, input.userId));
+      await tx.update(appSessions).set({ revokedAt: new Date() }).where(and(
+        eq(appSessions.userId, input.userId),
+        isNull(appSessions.revokedAt),
+        input.keepSessionId ? sql`${appSessions.id} <> ${input.keepSessionId}` : undefined,
+      ));
+    });
+  }
+
+  async recentPasswordHistory(userId: string, limit = 5) {
+    const current = await this.db.select({
+      passwordHash: userCredentials.passwordHash,
+      passwordSalt: userCredentials.passwordSalt,
+      createdAt: userCredentials.updatedAt,
+    }).from(userCredentials).where(eq(userCredentials.userId, userId)).limit(1);
+    const history = await this.db.select({
+      passwordHash: passwordHistory.passwordHash,
+      passwordSalt: passwordHistory.passwordSalt,
+      createdAt: passwordHistory.createdAt,
+    }).from(passwordHistory).where(eq(passwordHistory.userId, userId)).orderBy(desc(passwordHistory.createdAt)).limit(Math.max(0, limit - current.length));
+    return [...current, ...history];
+  }
+
+  async sessionByTokenHash(tokenHash: string) {
+    const [session] = await this.db.select().from(appSessions).where(and(
+      eq(appSessions.tokenHash, tokenHash),
+      isNull(appSessions.revokedAt),
+      gt(appSessions.expiresAt, new Date()),
+    )).limit(1);
+    return session;
+  }
+
+  async listUserSessions(userId: string) {
+    return this.db.select({
+      id: appSessions.id,
+      createdAt: appSessions.createdAt,
+      lastSeenAt: appSessions.lastSeenAt,
+      authenticatedAt: appSessions.authenticatedAt,
+      expiresAt: appSessions.expiresAt,
+      revokedAt: appSessions.revokedAt,
+      userAgent: appSessions.userAgent,
+    }).from(appSessions).where(eq(appSessions.userId, userId)).orderBy(desc(appSessions.lastSeenAt)).limit(50);
+  }
+
+  async revokeUserSession(userId: string, sessionId: string) {
+    const rows = await this.db.update(appSessions).set({ revokedAt: new Date() }).where(and(
+      eq(appSessions.id, sessionId),
+      eq(appSessions.userId, userId),
+      isNull(appSessions.revokedAt),
+    )).returning({ id: appSessions.id });
+    return Boolean(rows.length);
+  }
+
+  async revokeUserSessions(userId: string, exceptSessionId?: string) {
+    const rows = await this.db.update(appSessions).set({ revokedAt: new Date() }).where(and(
+      eq(appSessions.userId, userId),
+      isNull(appSessions.revokedAt),
+      exceptSessionId ? sql`${appSessions.id} <> ${exceptSessionId}` : undefined,
+    )).returning({ id: appSessions.id });
+    return rows.length;
   }
 
   async consumeRateLimit(key: string, limit: number, windowMs: number) {

@@ -2,7 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   DEMO_USER_ID,
   NeonRepository,
+  type AssistantSessionMemory,
+  type ImageExtractionWrite,
   type PaperWrite,
+  type QuestionBankAttemptWrite,
+  type QuestionBankWrite,
   type SourceWrite,
   type StoredMemoryChunk,
   type StoredSourceChunk,
@@ -53,6 +57,20 @@ export interface Store {
   getLearningState(conceptId?: string): Promise<MasteryState>;
   saveLearningState(state: MasteryState): Promise<void>;
   ensureConcept(topic: string): Promise<string>;
+  saveQuestionBank(questionBank: QuestionBankWrite): Promise<unknown>;
+  listQuestionBanks(): Promise<unknown[]>;
+  getQuestionBank(questionBankId: string): Promise<Record<string, unknown> | undefined>;
+  saveQuestionBankAttempt(attempt: QuestionBankAttemptWrite): Promise<unknown>;
+  getImageExtractionByHash(contentHash: string): Promise<Record<string, unknown> | undefined>;
+  getImageExtraction(extractionId: string): Promise<Record<string, unknown> | undefined>;
+  saveImageExtraction(extraction: ImageExtractionWrite): Promise<unknown>;
+  createAssistantSession(input: { id: string; title: string }): Promise<unknown>;
+  listAssistantSessions(): Promise<unknown[]>;
+  getAssistantSession(sessionId: string): Promise<Record<string, unknown> | undefined>;
+  appendAssistantMessage(input: { id: string; sessionId: string; role: "user" | "assistant"; content: string; provider?: string; model?: string; metadata?: Record<string, unknown> }): Promise<unknown>;
+  updateAssistantSession(sessionId: string, input: { title?: string; pinned?: boolean; archived?: boolean; groupLabel?: string | null; contextSettings?: Record<string, unknown> }): Promise<unknown>;
+  updateAssistantSessionMemory(sessionId: string, memory: AssistantSessionMemory): Promise<unknown>;
+  deleteAssistantSession(sessionId: string): Promise<boolean>;
   findSourceByHash(hash: string): Promise<{ id: string; title: string } | undefined>;
   saveSource(source: SourceWrite): Promise<void>;
   listSources(): Promise<unknown[]>;
@@ -100,6 +118,21 @@ function estimateTokens(value: string) {
   return Math.max(1, Math.ceil(value.length / 4));
 }
 
+async function settleWithin<T>(promise: Promise<T>, milliseconds: number): Promise<T | undefined> {
+  let cancelTimeout: (() => void) | undefined;
+  try {
+    return await Promise.race([
+      promise.catch(() => undefined),
+      new Promise<undefined>((resolve) => {
+        const timeout = setTimeout(resolve, milliseconds);
+        cancelTimeout = () => clearTimeout(timeout);
+      }),
+    ]);
+  } finally {
+    cancelTimeout?.();
+  }
+}
+
 function compactToBudget<T>(value: T, maxTokens: number): T {
   const maxChars = Math.max(400, maxTokens * 4);
   const clone = JSON.parse(JSON.stringify(value)) as T;
@@ -133,6 +166,30 @@ function memoryContent(input: AppEventInput) {
   return `${input.summary}\nType: ${input.type}\n${JSON.stringify(durablePayload)}`.slice(0, 12_000);
 }
 
+function publicQuestionBanksForWorkspace(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map((bank) => {
+    if (!bank || typeof bank !== "object") return bank;
+    const row = bank as Record<string, unknown>;
+    const questions = Array.isArray(row.questions) ? row.questions : [];
+    return {
+      ...row,
+      questions: questions.map((question) => {
+        if (!question || typeof question !== "object") return question;
+        const item = question as Record<string, unknown>;
+        return {
+          id: item.id,
+          prompt: item.prompt,
+          type: item.type,
+          choices: item.choices,
+          difficulty: item.difficulty,
+          sourceChunkIds: item.sourceChunkIds,
+        };
+      }),
+    };
+  });
+}
+
 function assertRecentConfirmation(confirmedAt: unknown, now: string) {
   const confirmationTime = Date.parse(String(confirmedAt));
   const requestTime = Date.parse(now);
@@ -151,14 +208,18 @@ class MemoryStore implements Store {
     const selected: Record<string, string[]> = {
       today: ["goals", "tasks", "projects", "receipts", "resourceActivities", "schedule"],
       goals: ["goals", "tasks", "schedule"],
-      learn: ["goals", "tasks", "learningState", "resourceActivities", "receipts"],
+      learn: ["goals", "tasks", "taskDependencies", "learningState", "resourceActivities", "questionBanks", "receipts"],
       research: ["goals", "tasks", "projects", "decisions", "claims", "notes", "sources", "papers"],
       memory: ["goals", "tasks", "projects", "decisions", "claims", "notes", "sources", "papers", "learningState", "memoryChunks", "receipts", "events", "schedule"],
       activity: ["proposals", "events"],
       code: ["goals", "tasks", "projects", "learningState", "receipts"],
+      assistant: ["goals", "tasks", "projects", "learningState", "sources", "papers", "receipts", "assistantSessions"],
       integrations: [],
     };
-    return Object.fromEntries((selected[view] ?? []).map((key) => [key, state[key]]));
+    return Object.fromEntries((selected[view] ?? []).map((key) => [
+      key,
+      key === "questionBanks" ? publicQuestionBanksForWorkspace(state[key]) : state[key],
+    ]));
   }
 
   async read(name: string, args: Record<string, unknown>) {
@@ -322,6 +383,86 @@ class MemoryStore implements Store {
   async getLearningState() { return demoStore.learningState; }
   async saveLearningState(state: MasteryState) { demoStore.learningState = state; }
   async ensureConcept(topic: string) { return `concept_${createHash("sha256").update(`${this.userId}:${topic.toLowerCase().trim()}`).digest("hex").slice(0, 20)}`; }
+  async saveQuestionBank(input: QuestionBankWrite) {
+    const now = new Date().toISOString();
+    const value = { ...input, userId: this.userId, createdAt: now, updatedAt: now, version: 1, deleted: false };
+    const index = demoStore.questionBanks.findIndex((item) => item.id === input.id);
+    if (index >= 0) demoStore.questionBanks[index] = { ...demoStore.questionBanks[index], ...value, version: Number(demoStore.questionBanks[index]?.version ?? 1) + 1 };
+    else demoStore.questionBanks.unshift(value);
+    return value;
+  }
+  async listQuestionBanks() { return demoStore.questionBanks.filter((item) => item.userId === this.userId && item.deleted !== true); }
+  async getQuestionBank(questionBankId: string) {
+    const bank = demoStore.questionBanks.find((item) => item.id === questionBankId && item.userId === this.userId && item.deleted !== true);
+    return bank ? { ...bank, attempts: demoStore.questionBankAttempts.filter((item) => item.questionBankId === questionBankId && item.userId === this.userId) } : undefined;
+  }
+  async saveQuestionBankAttempt(input: QuestionBankAttemptWrite) {
+    const bank = demoStore.questionBanks.find((item) => item.id === input.questionBankId && item.userId === this.userId && item.deleted !== true);
+    if (!bank) throw new Error("Question bank not found or not accessible");
+    const now = new Date().toISOString();
+    const value = { ...input, userId: this.userId, createdAt: now, updatedAt: now, version: 1 };
+    const index = demoStore.questionBankAttempts.findIndex((item) => item.id === input.id && item.userId === this.userId);
+    if (index >= 0) demoStore.questionBankAttempts[index] = { ...demoStore.questionBankAttempts[index], ...value, version: Number(demoStore.questionBankAttempts[index]?.version ?? 1) + 1 };
+    else demoStore.questionBankAttempts.unshift(value);
+    Object.assign(bank, { status: input.completedAt ? "completed" : "in_progress", mode: input.mode, updatedAt: now });
+    return value;
+  }
+  async getImageExtractionByHash(contentHash: string) {
+    return demoStore.imageExtractions.find((item) => item.userId === this.userId && item.contentHash === contentHash);
+  }
+  async getImageExtraction(extractionId: string) {
+    return demoStore.imageExtractions.find((item) => item.userId === this.userId && item.id === extractionId);
+  }
+  async saveImageExtraction(input: ImageExtractionWrite) {
+    const now = new Date().toISOString();
+    const value = { ...input, userId: this.userId, createdAt: now, updatedAt: now };
+    const index = demoStore.imageExtractions.findIndex((item) => item.userId === this.userId && item.contentHash === input.contentHash);
+    if (index >= 0) demoStore.imageExtractions[index] = { ...demoStore.imageExtractions[index], ...value };
+    else demoStore.imageExtractions.unshift(value);
+    return value;
+  }
+  async createAssistantSession(input: { id: string; title: string }) {
+    const now = new Date().toISOString();
+    const session = { ...input, userId: this.userId, status: "active", summary: null, decisions: [], unresolvedQuestions: [], createdTasks: [], importantFacts: [], linkedEntityIds: [], memoryExcluded: false, pinned: false, archived: false, groupLabel: null, contextSettings: {}, lastMessageAt: now, createdAt: now, updatedAt: now, version: 1, deleted: false };
+    demoStore.assistantSessions.unshift(session);
+    return session;
+  }
+  async listAssistantSessions() { return demoStore.assistantSessions.filter((item) => item.userId === this.userId && item.deleted !== true).sort((left, right) => Number(Boolean(right.pinned)) - Number(Boolean(left.pinned)) || String(right.lastMessageAt).localeCompare(String(left.lastMessageAt))); }
+  async getAssistantSession(sessionId: string) {
+    const session = demoStore.assistantSessions.find((item) => item.id === sessionId && item.userId === this.userId && item.deleted !== true);
+    return session ? { ...session, messages: demoStore.assistantMessages.filter((item) => item.sessionId === sessionId && item.userId === this.userId) } : undefined;
+  }
+  async appendAssistantMessage(input: { id: string; sessionId: string; role: "user" | "assistant"; content: string; provider?: string; model?: string; metadata?: Record<string, unknown> }) {
+    const session = demoStore.assistantSessions.find((item) => item.id === input.sessionId && item.userId === this.userId && item.deleted !== true);
+    if (!session) throw new Error("Assistant session not found or not accessible");
+    const now = new Date().toISOString();
+    const message = { ...input, userId: this.userId, createdAt: now, updatedAt: now, version: 1 };
+    demoStore.assistantMessages.push(message);
+    Object.assign(session, {
+      lastMessageAt: now,
+      updatedAt: now,
+      ...(session.title === "New conversation" && input.role === "user" ? { title: input.content.trim().replace(/\s+/g, " ").slice(0, 72) } : {}),
+    });
+    return message;
+  }
+  async updateAssistantSession(sessionId: string, input: { title?: string; pinned?: boolean; archived?: boolean; groupLabel?: string | null; contextSettings?: Record<string, unknown> }) {
+    const session = demoStore.assistantSessions.find((item) => item.id === sessionId && item.userId === this.userId && item.deleted !== true);
+    if (!session) return undefined;
+    Object.assign(session, input, { updatedAt: new Date().toISOString(), version: Number(session.version ?? 1) + 1 });
+    return session;
+  }
+  async updateAssistantSessionMemory(sessionId: string, memory: AssistantSessionMemory) {
+    const session = demoStore.assistantSessions.find((item) => item.id === sessionId && item.userId === this.userId && item.deleted !== true);
+    if (!session) return undefined;
+    Object.assign(session, memory, { updatedAt: new Date().toISOString(), version: Number(session.version ?? 1) + 1 });
+    return session;
+  }
+  async deleteAssistantSession(sessionId: string) {
+    const session = demoStore.assistantSessions.find((item) => item.id === sessionId && item.userId === this.userId && item.deleted !== true);
+    if (!session) return false;
+    Object.assign(session, { deleted: true, memoryExcluded: true, updatedAt: new Date().toISOString() });
+    return true;
+  }
   async findSourceByHash(hash: string) { const source = demoStore.sources.find((item) => item.contentHash === hash); return source ? { id: source.id, title: source.title } : undefined; }
   async saveSource(source: SourceWrite) {
     demoStore.sources.unshift({ id: source.id, userId: this.userId, ...(source.projectId ? { projectId: source.projectId } : {}), title: source.title, mimeType: source.mimeType, ...(source.storagePath ? { storagePath: source.storagePath } : {}), contentHash: source.contentHash, sourceVersion: source.sourceVersion, parserVersion: source.parserVersion, createdAt: new Date().toISOString() });
@@ -551,7 +692,12 @@ class NeonStore implements Store {
     let embeddingModel: string | undefined;
     const configuration = embeddingConfiguration();
     if (configuration) {
-      try { [embedding] = await embedDocuments([content]); embeddingModel = configuration.model; } catch { /* Lexical retrieval remains available and a later worker can backfill. */ }
+      const writeBudget = Math.max(250, Math.min(Number(process.env.EMBEDDING_WRITE_BUDGET_MS ?? 2_000), 10_000));
+      const result = await settleWithin(embedDocuments([content]), writeBudget);
+      if (result?.[0]) {
+        [embedding] = result;
+        embeddingModel = configuration.model;
+      }
     }
     await this.repo.saveMemoryChunk({ id: opaqueId("memory"), userId: this.userId, projectId: input.projectId, goalId: input.goalId, kind: input.type, content, contentHash: contentHash(`${event.id}:${content}`), embeddingModel, embedding, tokenEstimate: estimateTokens(content), importance: input.importance ?? 0.6, occurredAt: now, sourceEventIds: [event.id], metadata: { surface: event.source.surface, entityIds: input.entityIds } });
     return { id: event.id, type: event.type, entityIds: input.entityIds, summary: input.summary, payload: event.payload, occurredAt: now };
@@ -560,6 +706,26 @@ class NeonStore implements Store {
   async getLearningState(conceptId = "concept_potential") { return (await this.repo.getLearningState(this.userId, conceptId)) ?? { conceptId, exposure: 0, understanding: 0, transfer: 0, retention: 0, confidence: 0, status: "not_started", evidenceIds: [], explanation: "No verified evidence has been recorded for this concept yet." }; }
   async saveLearningState(state: MasteryState) { await this.repo.saveLearningState(state, this.userId); }
   async ensureConcept(topic: string) { const normalized = topic.trim().replace(/\s+/g, " "); const conceptId = `concept_${createHash("sha256").update(`${this.userId}:${normalized.toLowerCase()}`).digest("hex").slice(0, 20)}`; await this.repo.ensureConcept(conceptId, normalized); return conceptId; }
+  async saveQuestionBank(input: QuestionBankWrite) { return this.repo.saveQuestionBank({ ...input, userId: this.userId }); }
+  async listQuestionBanks() { return this.repo.listQuestionBanks(this.userId); }
+  async getQuestionBank(questionBankId: string) { return await this.repo.getQuestionBank(questionBankId, this.userId) as unknown as Record<string, unknown> | undefined; }
+  async saveQuestionBankAttempt(input: QuestionBankAttemptWrite) { return this.repo.saveQuestionBankAttempt({ ...input, userId: this.userId }); }
+  async getImageExtractionByHash(contentHash: string) {
+    return this.repo.getImageExtractionByHash(contentHash, this.userId) as Promise<Record<string, unknown> | undefined>;
+  }
+  async getImageExtraction(extractionId: string) {
+    return this.repo.getImageExtraction(extractionId, this.userId) as Promise<Record<string, unknown> | undefined>;
+  }
+  async saveImageExtraction(input: ImageExtractionWrite) {
+    return this.repo.saveImageExtraction({ ...input, userId: this.userId });
+  }
+  async createAssistantSession(input: { id: string; title: string }) { return this.repo.createAssistantSession({ ...input, userId: this.userId }); }
+  async listAssistantSessions() { return this.repo.listAssistantSessions(this.userId); }
+  async getAssistantSession(sessionId: string) { return await this.repo.getAssistantSession(sessionId, this.userId) as unknown as Record<string, unknown> | undefined; }
+  async appendAssistantMessage(input: { id: string; sessionId: string; role: "user" | "assistant"; content: string; provider?: string; model?: string; metadata?: Record<string, unknown> }) { return this.repo.appendAssistantMessage({ ...input, userId: this.userId }); }
+  async updateAssistantSession(sessionId: string, input: { title?: string; pinned?: boolean; archived?: boolean; groupLabel?: string | null; contextSettings?: Record<string, unknown> }) { return this.repo.updateAssistantSession(sessionId, this.userId, input); }
+  async updateAssistantSessionMemory(sessionId: string, memory: AssistantSessionMemory) { return this.repo.updateAssistantSessionMemory(sessionId, this.userId, memory); }
+  async deleteAssistantSession(sessionId: string) { return this.repo.deleteAssistantSession(sessionId, this.userId); }
   async findSourceByHash(hash: string) { const source = await this.repo.findSourceByHash(hash, this.userId); return source ? { id: source.id, title: source.title } : undefined; }
   async saveSource(source: SourceWrite) { await this.repo.saveSource({ ...source, userId: this.userId }); }
   async listSources() { return this.repo.listSources(this.userId); }
