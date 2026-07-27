@@ -50,6 +50,20 @@
       "when": 1784942040000,
       "tag": "0006_ai_gateway_oauth_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785052800000,
+      "tag": "0007_learning_assistant",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785060000000,
+      "tag": "0008_completion_systems",
+      "breakpoints": true
     }
   ]
 }
