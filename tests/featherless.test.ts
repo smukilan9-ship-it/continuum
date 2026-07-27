@@ -40,6 +40,21 @@ describe("Featherless catalog routing", () => {
       FEATHERLESS_MODEL_CONCURRENCY_COST: "3",
     } as NodeJS.ProcessEnv)).resolves.toMatchObject({ id: "owner/reviewed-model", concurrencyCost: 3 });
   });
+
+  it("uses the fast override for summarization", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(selectFeatherlessModel("summarization", {
+      FEATHERLESS_API_KEY_PRIMARY: "test-key",
+      FEATHERLESS_FAST_MODEL: "owner/fast-summary-model",
+      FEATHERLESS_REASONING_MODEL: "owner/reasoning-model",
+    } as NodeJS.ProcessEnv)).resolves.toMatchObject({
+      id: "owner/fast-summary-model",
+      selectedBy: "configured_policy",
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe("Featherless credential pool", () => {

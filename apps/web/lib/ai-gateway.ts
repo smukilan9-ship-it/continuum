@@ -15,6 +15,7 @@ import { NextResponse } from "next/server";
 import type { z } from "zod";
 import { checkDailyAiBudget, checkSharedAiBudget, logModelUsage } from "./ai-budget";
 import { enforceRateLimit } from "./auth";
+import { getUserProviderSecret } from "./provider-credentials";
 
 export type AiGatewayErrorCode =
   | "service_busy"
@@ -45,6 +46,7 @@ type GatewayContext = {
   highStakes?: boolean;
   maxOutputTokens?: number;
   allowedProviders?: Array<"featherless" | "groq" | "gemini" | "ai_gateway">;
+  credentialMode?: "platform" | "user";
 };
 
 type StructuredGatewayRequest<T> = GatewayContext & {
@@ -87,6 +89,10 @@ export function availableAiProviders() {
   return availableProviders(providerEnvironmentFromProcess());
 }
 
+export async function availableAssistantProvidersForUser(userId: string) {
+  return availableProviders(await gatewayEnvironment(false, userId, undefined, "user"));
+}
+
 function cacheKey(input: GatewayContext) {
   return createHash("sha256")
     .update(JSON.stringify({
@@ -98,6 +104,7 @@ function cacheKey(input: GatewayContext) {
       sourceLocked: input.sourceLocked,
       maxOutputTokens: input.maxOutputTokens,
       allowedProviders: input.allowedProviders,
+      credentialMode: input.credentialMode ?? "platform",
     }))
     .digest("base64url");
 }
@@ -108,8 +115,62 @@ function pruneCache(now = Date.now()) {
   while (structuredCache.size > 256) structuredCache.delete(structuredCache.keys().next().value as string);
 }
 
-function gatewayEnvironment(conserve: boolean) {
+async function gatewayEnvironment(
+  conserve: boolean,
+  userId: string,
+  allowedProviders?: GatewayContext["allowedProviders"],
+  credentialMode: GatewayContext["credentialMode"] = "platform",
+) {
   const environment = providerEnvironmentFromProcess();
+  if (credentialMode === "user") {
+    environment.FEATHERLESS_API_KEY_PRIMARY = undefined;
+    environment.FEATHERLESS_API_KEY_SECONDARY = undefined;
+    environment.GROQ_API_KEY = undefined;
+    environment.GEMINI_API_KEY = undefined;
+    environment.GEMINI_API_KEYS = undefined;
+    environment.GEMINI_DATA_USE_ACKNOWLEDGED = undefined;
+    environment.AI_GATEWAY_ENABLED = "false";
+    environment.AI_GATEWAY_API_KEY = undefined;
+    environment.VERCEL_OIDC_TOKEN = undefined;
+    for (let index = 1; index <= 10; index += 1) environment[`GEMINI_API_KEY_${index}`] = undefined;
+  }
+  if (credentialMode === "user" && process.env.DATABASE_URL) {
+    const [featherless, groq, gemini] = await Promise.all([
+      getUserProviderSecret(userId, "featherless").catch(() => undefined),
+      getUserProviderSecret(userId, "groq").catch(() => undefined),
+      getUserProviderSecret(userId, "gemini").catch(() => undefined),
+    ]);
+    if (featherless?.secret) {
+      environment.FEATHERLESS_API_KEY_PRIMARY = featherless.secret;
+      environment.FEATHERLESS_API_KEY_SECONDARY = undefined;
+    }
+    if (groq?.secret) environment.GROQ_API_KEY = groq.secret;
+    if (gemini?.secret) {
+      environment.GEMINI_API_KEY = gemini.secret;
+      environment.GEMINI_API_KEYS = undefined;
+      environment.GEMINI_DATA_USE_ACKNOWLEDGED = "true";
+      for (let index = 1; index <= 10; index += 1) environment[`GEMINI_API_KEY_${index}`] = undefined;
+    }
+  }
+  if (allowedProviders?.length) {
+    const allowed = new Set(allowedProviders);
+    if (!allowed.has("featherless")) {
+      environment.FEATHERLESS_API_KEY_PRIMARY = undefined;
+      environment.FEATHERLESS_API_KEY_SECONDARY = undefined;
+    }
+    if (!allowed.has("groq")) environment.GROQ_API_KEY = undefined;
+    if (!allowed.has("gemini")) {
+      environment.GEMINI_API_KEY = undefined;
+      environment.GEMINI_API_KEYS = undefined;
+      environment.GEMINI_DATA_USE_ACKNOWLEDGED = undefined;
+      for (let index = 1; index <= 10; index += 1) environment[`GEMINI_API_KEY_${index}`] = undefined;
+    }
+    if (!allowed.has("ai_gateway")) {
+      environment.AI_GATEWAY_ENABLED = "false";
+      environment.AI_GATEWAY_API_KEY = undefined;
+      environment.VERCEL_OIDC_TOKEN = undefined;
+    }
+  }
   if (conserve) {
     const fast = environment.FEATHERLESS_FAST_MODEL ?? environment.FEATHERLESS_FALLBACK_MODEL;
     if (fast) {
@@ -230,7 +291,7 @@ export async function runStructuredAi<T>(input: StructuredGatewayRequest<T>) {
   }
 
   const execute = async () => {
-    const environment = gatewayEnvironment(limits.conserve);
+    const environment = await gatewayEnvironment(limits.conserve, input.userId, input.allowedProviders, input.credentialMode);
     const decision = decisionFor(input, environment, limits.conserve);
     const release = await acquireGlobalLease(input.userId, input.feature);
     try {
@@ -268,7 +329,7 @@ export async function runStructuredAi<T>(input: StructuredGatewayRequest<T>) {
 
 export async function runStreamingAi(input: GatewayContext) {
   const limits = await authorizeGatewayRequest(input);
-  const environment = gatewayEnvironment(limits.conserve);
+  const environment = await gatewayEnvironment(limits.conserve, input.userId, input.allowedProviders, input.credentialMode);
   const decision = decisionFor(input, environment, limits.conserve);
   const release = await acquireGlobalLease(input.userId, input.feature);
   try {

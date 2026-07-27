@@ -194,7 +194,7 @@ export async function listFeatherlessModels(apiKey = selectFeatherlessCredential
 }
 
 function modelOverride(taskClass: RouteDecision["taskClass"], env: NodeJS.ProcessEnv) {
-  if (taskClass === "classification" || taskClass === "extraction" || taskClass === "misconception_diagnosis") return env.FEATHERLESS_FAST_MODEL;
+  if (taskClass === "classification" || taskClass === "extraction" || taskClass === "summarization" || taskClass === "misconception_diagnosis") return env.FEATHERLESS_FAST_MODEL;
   if (taskClass === "code_reasoning") return env.FEATHERLESS_CODE_MODEL;
   if (taskClass === "citation_entailment") return env.FEATHERLESS_VERIFIER_MODEL ?? env.FEATHERLESS_REASONING_MODEL;
   return env.FEATHERLESS_REASONING_MODEL ?? env.FEATHERLESS_MODEL;
