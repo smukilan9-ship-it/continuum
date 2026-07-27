@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEMO_EMAIL, DEMO_USERNAME, PASSWORD_MIN_LENGTH, isDemoLoginIdentifier, passwordSchema, resolveLoginIdentifier } from "../apps/web/lib/password-policy";
+import { DEMO_EMAIL, DEMO_USERNAME, PASSWORD_MIN_LENGTH, isDemoLoginIdentifier, passwordSchema, resolveLoginIdentifier, usernameSchema } from "../apps/web/lib/password-policy";
 import { demoAccountPassword, demoLoginEnabled } from "../apps/web/lib/env";
 
 describe("password policy", () => {
@@ -18,6 +18,16 @@ describe("password policy", () => {
 
   it("caps password length to prevent slow-hash abuse", () => {
     expect(passwordSchema.safeParse("a".repeat(201)).success).toBe(false);
+  });
+});
+
+describe("username policy", () => {
+  it("normalizes safe usernames and rejects email addresses or unsafe punctuation", () => {
+    expect(usernameSchema.parse("  Mukilan_9  ")).toBe("mukilan_9");
+    expect(usernameSchema.safeParse("mu").success).toBe(false);
+    expect(usernameSchema.safeParse("user@example.com").success).toBe(false);
+    expect(usernameSchema.safeParse("-leading").success).toBe(false);
+    expect(usernameSchema.safeParse("trailing_").success).toBe(false);
   });
 });
 

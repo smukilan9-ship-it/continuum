@@ -21,7 +21,7 @@ export function applicationBaseUrl(env: NodeJS.ProcessEnv = process.env) {
 }
 
 export function publicRegistrationEnabled(env: NodeJS.ProcessEnv = process.env) {
-  return env.NODE_ENV !== "production" || env.PUBLIC_REGISTRATION_ENABLED === "true";
+  return env.PUBLIC_REGISTRATION_ENABLED !== "false";
 }
 
 /**
@@ -57,7 +57,6 @@ export function environmentStatus(env: NodeJS.ProcessEnv = process.env) {
     let integrationKeyBytes = 0;
     try { integrationKeyBytes = /^[a-f0-9]{64}$/i.test(integrationKey) ? 32 : Buffer.from(integrationKey, "base64url").length; } catch { integrationKeyBytes = 0; }
     if (integrationKeyBytes !== 32) errors.push("INTEGRATION_CREDENTIAL_ENCRYPTION_KEY must contain exactly 32 random bytes");
-    if (!env.RESEND_API_KEY || !env.TRANSACTIONAL_EMAIL_FROM) errors.push("RESEND_API_KEY and TRANSACTIONAL_EMAIL_FROM are required for verification and recovery email");
   }
   return {
     ready: errors.length === 0,

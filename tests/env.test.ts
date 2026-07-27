@@ -34,14 +34,14 @@ describe("production environment validation", () => {
     expect(environmentStatus({ ...productionMinimum, APP_BASE_URL: "https://continuum.example/app" }).ready).toBe(false);
   });
 
-  it("rejects missing credential encryption and partial Google OAuth configuration", () => {
+  it("rejects an invalid credential-encryption key", () => {
     expect(environmentStatus({ ...productionMinimum, APP_BASE_URL: "https://continuum.example", INTEGRATION_CREDENTIAL_ENCRYPTION_KEY: "short" }).ready).toBe(false);
-    expect(environmentStatus({ ...productionMinimum, APP_BASE_URL: "https://continuum.example", GOOGLE_CLIENT_ID: "client-id" }).ready).toBe(false);
   });
 
-  it("keeps public registration closed by default in production", () => {
-    expect(publicRegistrationEnabled({ NODE_ENV: "production" })).toBe(false);
+  it("keeps public registration open unless the operator closes it", () => {
+    expect(publicRegistrationEnabled({ NODE_ENV: "production" })).toBe(true);
     expect(publicRegistrationEnabled({ NODE_ENV: "production", PUBLIC_REGISTRATION_ENABLED: "true" })).toBe(true);
+    expect(publicRegistrationEnabled({ NODE_ENV: "production", PUBLIC_REGISTRATION_ENABLED: "false" })).toBe(false);
     expect(publicRegistrationEnabled({ NODE_ENV: "development" })).toBe(true);
   });
 

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NeonRepository } from "@continuum/db";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { authenticateUser, enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
+import { enforceRateLimit, getRequestUser, sameOriginWrite, verifyUserPassword } from "@/lib/auth";
 import { credentialEncryptionVersion, sealCredential } from "@/lib/credential-vault";
 import {
   credentialProviderMetadata,
@@ -32,10 +32,9 @@ function httpsSubmission(request: Request) {
   return url.protocol === "https:" || forwarded === "https" || (process.env.NODE_ENV !== "production" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname));
 }
 
-async function reauthenticate(user: { id: string; email: string }, password: string | undefined) {
+async function reauthenticate(user: { id: string; username: string }, password: string | undefined) {
   if (!password) return false;
-  const verified = await authenticateUser(user.email, password);
-  return verified?.id === user.id;
+  return verifyUserPassword(user.id, password);
 }
 
 function publicRecord(row: {

@@ -243,7 +243,7 @@ export function ContinuumApp({ user, initialState, view, serverNow }: { user: Au
         <button className="command-hint" onClick={() => setCommandOpen(true)}><Command size={16} /><span>Jump to anything</span><kbd>⌘K</kbd></button>
         <div className="profile-card">
           <div className="avatar">{initials(user.displayName)}</div>
-          <button className="profile-details" onClick={() => navigate("account")}><strong>{user.displayName}</strong><span>{user.educationLevel ?? user.email}</span></button>
+          <button className="profile-details" onClick={() => navigate("account")}><strong>{user.displayName}</strong><span>{user.educationLevel ?? `@${user.username}`}</span></button>
           <button className="profile-signout" onClick={() => void signOut()} aria-label="Sign out"><LogOut size={16} /></button>
         </div>
       </aside>

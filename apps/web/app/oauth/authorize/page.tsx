@@ -108,7 +108,7 @@ export default async function OAuthAuthorizePage({
             <p className="eyebrow">CLAUDE MCP CONNECTION</p>
             <h1 id="oauth-title">Allow {authorization.client.clientName} to connect?</h1>
             <p>
-              Signed in as <strong>{user.email}</strong>. After approval, you will return to{" "}
+              Signed in as <strong>@{user.username}</strong>. After approval, you will return to{" "}
               <strong>{new URL(authorization.redirectUri).hostname}</strong>.
             </p>
           </div>

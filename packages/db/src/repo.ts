@@ -227,7 +227,11 @@ export type StoredMemoryChunk = {
   metadata: Record<string, unknown>;
 };
 
-export type AuthUser = { id: string; email: string; displayName: string; timezone: string; educationLevel?: string; emailVerified?: boolean };
+export type AuthUser = { id: string; username: string; displayName: string; timezone: string; educationLevel?: string };
+
+function publicUsername(identifier: string) {
+  return identifier.includes("@") ? identifier.slice(0, identifier.indexOf("@")) : identifier;
+}
 
 export class NeonRepository {
   private readonly db = getDatabase();
@@ -1641,13 +1645,13 @@ export class NeonRepository {
     await this.db.delete(aiRequestLeases).where(eq(aiRequestLeases.id, id));
   }
 
-  async createUser(input: { id: string; email: string; displayName: string; timezone: string; educationLevel?: string; passwordHash: string; passwordSalt: string }) {
+  async createUser(input: { id: string; username: string; displayName: string; timezone: string; educationLevel?: string; passwordHash: string; passwordSalt: string }) {
     await this.db.transaction(async (tx) => {
-      await tx.insert(users).values({ id: input.id, email: input.email.toLowerCase() });
+      await tx.insert(users).values({ id: input.id, email: input.username.toLowerCase() });
       await tx.insert(profiles).values({ id: `profile_${input.id.replace(/^user_/, "")}`, userId: input.id, displayName: input.displayName, timezone: input.timezone, educationLevel: input.educationLevel, preferences: { explanationStyle: "intuition_before_derivation", memoryWrites: true } });
       await tx.insert(userCredentials).values({ userId: input.id, passwordHash: input.passwordHash, passwordSalt: input.passwordSalt });
     });
-    return { id: input.id, email: input.email.toLowerCase(), displayName: input.displayName, timezone: input.timezone, ...(input.educationLevel ? { educationLevel: input.educationLevel } : {}), emailVerified: false } satisfies AuthUser;
+    return { id: input.id, username: input.username.toLowerCase(), displayName: input.displayName, timezone: input.timezone, ...(input.educationLevel ? { educationLevel: input.educationLevel } : {}) } satisfies AuthUser;
   }
 
   async findUserForLogin(email: string) {
@@ -1658,7 +1662,7 @@ export class NeonRepository {
   async getUser(userId: string): Promise<AuthUser | undefined> {
     const [row] = await this.db.select({ user: users, profile: profiles }).from(users).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(users.id, userId), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
     if (!row) return undefined;
-    return { id: row.user.id, email: row.user.email, displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}), emailVerified: Boolean(row.user.emailVerifiedAt) };
+    return { id: row.user.id, username: publicUsername(row.user.email), displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}) };
   }
 
   async updateLoginFailure(userId: string, succeeded: boolean) {
@@ -1680,7 +1684,16 @@ export class NeonRepository {
     if (Date.now() - row.session.lastSeenAt.getTime() > 5 * 60_000) {
       void this.db.update(appSessions).set({ lastSeenAt: new Date() }).where(eq(appSessions.id, row.session.id));
     }
-    return { id: row.user.id, email: row.user.email, displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}), emailVerified: Boolean(row.user.emailVerifiedAt) } satisfies AuthUser;
+    return { id: row.user.id, username: publicUsername(row.user.email), displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}) } satisfies AuthUser;
+  }
+
+  async findCredentialForUser(userId: string) {
+    const [row] = await this.db.select({ user: users, credential: userCredentials })
+      .from(users)
+      .innerJoin(userCredentials, eq(userCredentials.userId, users.id))
+      .where(and(eq(users.id, userId), eq(users.deleted, false)))
+      .limit(1);
+    return row;
   }
 
   async revokeSession(tokenHash: string) {

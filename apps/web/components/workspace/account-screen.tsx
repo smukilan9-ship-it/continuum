@@ -1,7 +1,7 @@
 "use client";
 
 import type { AuthUser } from "@continuum/db";
-import { Download, KeyRound, Laptop, LogOut, MailCheck, RefreshCw, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
+import { Download, KeyRound, Laptop, LogOut, ShieldAlert, UserRound, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Button, Card, LoadingButton, Modal } from "@/components/ui";
 import { PageIntro } from "./page-intro";
@@ -44,14 +44,6 @@ export function AccountScreen({ user, showToast }: { user: AuthUser; showToast: 
     setPasswordOpen(false); await refreshSessions(); showToast("Password changed. Other sessions were revoked.");
   }
 
-  async function resendVerification() {
-    setBusy("verification");
-    const response = await fetch("/api/auth/verification", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "resend" }) });
-    const body = await response.json() as { error?: string; alreadyVerified?: boolean };
-    setBusy("");
-    showToast(response.ok ? body.alreadyVerified ? "This email is already verified." : "Verification email sent." : body.error ?? "Verification email could not be sent.");
-  }
-
   async function deleteAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy("delete"); setError("");
     const form = new FormData(event.currentTarget);
@@ -63,9 +55,9 @@ export function AccountScreen({ user, showToast }: { user: AuthUser; showToast: 
   }
 
   return <div className="screen account-screen">
-    <PageIntro eyebrow="ACCOUNT & SECURITY" title="Your account, sessions, and exit are under your control." description="Continuum uses a native email-and-password account. Security links are single-use, sessions are revocable, and exports exclude secrets." />
+    <PageIntro eyebrow="ACCOUNT & SECURITY" title="Your account, sessions, and exit are under your control." description="Continuum uses a native username-and-password account for the hackathon. Sessions are revocable and exports exclude secrets." />
     <div className="account-grid">
-      <Card className="account-card"><div className="account-card-heading"><MailCheck size={20} /><div><h2>Email</h2><p>{user.email}</p></div></div><div className={`account-status ${user.emailVerified ? "verified" : "pending"}`}><ShieldCheck size={16} />{user.emailVerified ? "Verified" : "Verification required"}</div>{!user.emailVerified ? <LoadingButton className="button-secondary" loading={busy === "verification"} loadingLabel="Sending…" onClick={() => void resendVerification()}><RefreshCw size={14} />Resend verification</LoadingButton> : null}</Card>
+      <Card className="account-card"><div className="account-card-heading"><UserRound size={20} /><div><h2>Username</h2><p>{user.username}</p></div></div><div className="account-status verified">Active account</div><small className="field-hint">Email verification and self-service recovery are planned after the hackathon.</small></Card>
       <Card className="account-card"><div className="account-card-heading"><KeyRound size={20} /><div><h2>Password</h2><p>Changing it revokes every other active session.</p></div></div><Button className="button-secondary" onClick={() => setPasswordOpen(true)}>Change password</Button></Card>
       <Card className="account-card account-export"><div className="account-card-heading"><Download size={20} /><div><h2>Download your data</h2><p>A structured ZIP of your workspace, learning, research, Assistant, Zotero, and sync records. Secrets are excluded.</p></div></div><a className="button button-primary" href="/api/account/export"><Download size={14} />Download export</a></Card>
     </div>

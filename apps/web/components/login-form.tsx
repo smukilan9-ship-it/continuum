@@ -3,8 +3,7 @@
 import { ArrowRight, Eye, EyeOff, PlayCircle, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import type { Route } from "next";
-import { PASSWORD_HELP, PASSWORD_MIN_LENGTH } from "@/lib/password-policy";
+import { PASSWORD_HELP, PASSWORD_MIN_LENGTH, USERNAME_HELP, USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from "@/lib/password-policy";
 
 type Mode = "login" | "register";
 
@@ -21,13 +20,11 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailab
     setError(null);
     const form = new FormData(event.currentTarget);
     const body = mode === "login"
-      ? { email: form.get("email"), password: form.get("password") }
+      ? { username: form.get("username"), password: form.get("password") }
       : {
-          email: form.get("email"),
+          username: form.get("username"),
           password: form.get("password"),
           passwordConfirmation: form.get("passwordConfirmation"),
-          displayName: form.get("displayName"),
-          educationLevel: form.get("educationLevel"),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           termsAccepted: form.get("termsAccepted") === "on",
         };
@@ -87,7 +84,7 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailab
           </button>
         ) : null}
 
-        {demoAvailable ? <div className="auth-divider"><span>or use {mode === "login" ? "email" : "email & password"}</span></div> : null}
+        {demoAvailable ? <div className="auth-divider"><span>or use username &amp; password</span></div> : null}
 
         {registrationEnabled ? (
           <div className="auth-tabs" role="tablist">
@@ -97,13 +94,10 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailab
         ) : <p className="registration-closed">New account registration is currently closed.</p>}
 
         <form className="auth-form" onSubmit={submit}>
-          {mode === "register" && (
-            <>
-              <label>Name<input name="displayName" minLength={2} maxLength={80} required autoComplete="name" placeholder="Your name" /></label>
-              <label>Education level<input name="educationLevel" maxLength={120} placeholder="e.g. CBSE Class 12" /></label>
-            </>
-          )}
-          <label>{mode === "login" ? "Email or username" : "Email"}<input name="email" type={mode === "login" ? "text" : "email"} required autoComplete={mode === "login" ? "username" : "email"} placeholder={mode === "login" ? "you@example.com or demo" : "you@example.com"} /></label>
+          <label>Username
+            <input name="username" type="text" minLength={mode === "register" ? USERNAME_MIN_LENGTH : 1} maxLength={USERNAME_MAX_LENGTH} required autoComplete="username" placeholder={mode === "login" ? "Your username" : "Choose a username"} />
+            {mode === "register" ? <small className="field-hint">{USERNAME_HELP}</small> : null}
+          </label>
           <label>Password
             <span className="password-field">
               <input name="password" type={showPassword ? "text" : "password"} minLength={mode === "register" ? PASSWORD_MIN_LENGTH : 1} required autoComplete={mode === "register" ? "new-password" : "current-password"} />
@@ -118,7 +112,7 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailab
               </span>
             </label>
             <label className="auth-terms"><input name="termsAccepted" type="checkbox" required />I agree to the Privacy and account-retention terms.</label>
-          </> : <Link className="forgot-password-link" href={"/forgot-password" as Route}>Forgot password?</Link>}
+          </> : <small className="field-hint">Password recovery is planned after the hackathon. Keep your password safe.</small>}
           {error && <p className="auth-error" role="alert">{error}</p>}
           <button className="button button-primary button-large" disabled={busy !== null}>{busy === "form" ? "Please wait…" : mode === "login" ? "Sign in" : "Create private workspace"}<ArrowRight size={17} /></button>
         </form>

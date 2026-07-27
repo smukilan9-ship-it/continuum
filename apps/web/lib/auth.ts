@@ -44,18 +44,18 @@ export async function verifyPassword(password: string, salt: string, expected: s
   return actual.length === expectedBuffer.length && timingSafeEqual(actual, expectedBuffer);
 }
 
-export async function registerUser(input: { email: string; password: string; displayName: string; timezone: string; educationLevel?: string }) {
+export async function registerUser(input: { username: string; password: string; timezone: string }) {
   if (!process.env.DATABASE_URL) throw new Error("Persistent accounts require DATABASE_URL");
   const repo = new NeonRepository();
   const credential = await createPasswordCredential(input.password);
   const id = `user_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
-  return repo.createUser({ id, email: input.email, displayName: input.displayName, timezone: input.timezone, educationLevel: input.educationLevel, passwordHash: credential.passwordHash, passwordSalt: credential.salt });
+  return repo.createUser({ id, username: input.username, displayName: input.username, timezone: input.timezone, passwordHash: credential.passwordHash, passwordSalt: credential.salt });
 }
 
-export async function authenticateUser(email: string, password: string) {
+export async function authenticateUser(identifier: string, password: string) {
   if (!process.env.DATABASE_URL) return undefined;
   const repo = new NeonRepository();
-  const row = await repo.findUserForLogin(email);
+  const row = await repo.findUserForLogin(identifier);
   if (!row || (row.credential.lockedUntil && row.credential.lockedUntil > new Date())) {
     await verifyPassword(password, dummyPasswordSalt, dummyPasswordHash);
     return undefined;
@@ -63,7 +63,17 @@ export async function authenticateUser(email: string, password: string) {
   const valid = await verifyPassword(password, row.credential.passwordSalt, row.credential.passwordHash);
   await repo.updateLoginFailure(row.user.id, valid);
   if (!valid) return undefined;
-  return { id: row.user.id, email: row.user.email, displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}) } satisfies AuthUser;
+  return { id: row.user.id, username: row.user.email.includes("@") ? row.user.email.slice(0, row.user.email.indexOf("@")) : row.user.email, displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}) } satisfies AuthUser;
+}
+
+export async function verifyUserPassword(userId: string, password: string) {
+  if (!process.env.DATABASE_URL) return process.env.NODE_ENV !== "production";
+  const row = await new NeonRepository().findCredentialForUser(userId);
+  if (!row) {
+    await verifyPassword(password, dummyPasswordSalt, dummyPasswordHash);
+    return false;
+  }
+  return verifyPassword(password, row.credential.passwordSalt, row.credential.passwordHash);
 }
 
 export async function createAppSession(userId: string, request: Request) {
@@ -95,7 +105,7 @@ function tokenFromCookieHeader(header: string | null) {
 export async function getRequestUser(request: Request): Promise<AuthUser | undefined> {
   if (!process.env.DATABASE_URL) {
     if (process.env.NODE_ENV === "production") return undefined;
-    return { id: DEMO_USER_ID, email: "maya@continuum.demo", displayName: "Maya Singh", timezone: "Asia/Kolkata", educationLevel: "CBSE Class 12" };
+    return { id: DEMO_USER_ID, username: "demo", displayName: "Maya Singh", timezone: "Asia/Kolkata", educationLevel: "CBSE Class 12" };
   }
   const token = tokenFromCookieHeader(request.headers.get("cookie"));
   if (!token) return undefined;
@@ -105,7 +115,7 @@ export async function getRequestUser(request: Request): Promise<AuthUser | undef
 export async function getServerUser(): Promise<AuthUser | undefined> {
   if (!process.env.DATABASE_URL) {
     if (process.env.NODE_ENV === "production") return undefined;
-    return { id: DEMO_USER_ID, email: "maya@continuum.demo", displayName: "Maya Singh", timezone: "Asia/Kolkata", educationLevel: "CBSE Class 12" };
+    return { id: DEMO_USER_ID, username: "demo", displayName: "Maya Singh", timezone: "Asia/Kolkata", educationLevel: "CBSE Class 12" };
   }
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   return token ? new NeonRepository().getSession(authTokenHash(token)) : undefined;

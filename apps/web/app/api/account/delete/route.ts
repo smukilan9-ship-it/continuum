@@ -3,9 +3,8 @@ import { NeonRepository } from "@continuum/db";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { accountPrivateFiles, deleteAccountData } from "@/lib/account-data";
-import { currentSession, enforceRateLimit, getRequestUser, sameOriginWrite, verifyPassword } from "@/lib/auth";
+import { currentSession, enforceRateLimit, getRequestUser, sameOriginWrite, verifyUserPassword } from "@/lib/auth";
 import { prepareObsidianAccountDeletion } from "@/lib/obsidian-sync-engine";
-import { securityEmail, sendSecurityEmail } from "@/lib/transactional-email";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -29,8 +28,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Sign out and sign in again before deleting this account." }, { status: 403 });
   }
   const repo = new NeonRepository();
-  const login = await repo.findUserForLogin(user.email);
-  if (!login || !await verifyPassword(parsed.data.password, login.credential.passwordSalt, login.credential.passwordHash)) {
+  if (!await verifyUserPassword(user.id, parsed.data.password)) {
     return NextResponse.json({ error: "Password confirmation failed." }, { status: 403 });
   }
   if (!parsed.data.preserveObsidianNotes) {
@@ -57,9 +55,7 @@ export async function POST(request: Request) {
     try { await del([...new Set(files)]); }
     catch { return NextResponse.json({ error: "Private file cleanup failed. No database records were deleted; retry safely." }, { status: 502 }); }
   }
-  const confirmation = securityEmail({ to: user.email, displayName: user.displayName, kind: "account_deleted" });
   await deleteAccountData(user.id);
-  await sendSecurityEmail(confirmation).catch(() => undefined);
   return NextResponse.json({
     deleted: true,
     privateFilesDeleted: files.length,
