@@ -123,7 +123,7 @@ export async function POST(request: Request) {
     }
     if (form.get("decision") !== "approve") return formError(request, form, "invalid_decision");
 
-    const selectedScopes = form.getAll("scope")
+    const selectedScopes = form.getAll("selected_scope")
       .map(String)
       .filter((scope) => consent.scopes.includes(scope) && authorization.client.scopes.includes(scope));
     const now = Math.floor(Date.now() / 1000);

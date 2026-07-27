@@ -161,7 +161,15 @@ async function handle(request: Request) {
   const requestOrigin = request.headers.get("origin");
   const serviceOrigin = new URL(request.url).origin;
   const configuredOrigins = (process.env.MCP_ALLOWED_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
-  const allowedOrigins = new Set([serviceOrigin, process.env.APP_BASE_URL?.replace(/\/$/, ""), "https://claude.ai", "https://www.claude.ai", ...configuredOrigins].filter(Boolean));
+  const allowedOrigins = new Set([
+    serviceOrigin,
+    process.env.APP_BASE_URL?.replace(/\/$/, ""),
+    "https://claude.ai",
+    "https://www.claude.ai",
+    "https://claude.com",
+    "https://www.claude.com",
+    ...configuredOrigins,
+  ].filter(Boolean));
   if (requestOrigin && !allowedOrigins.has(requestOrigin)) {
     return new Response(JSON.stringify({ jsonrpc: "2.0", error: { code: -32003, message: "Origin is not allowed" }, id: null }), { status: 403, headers: { "content-type": "application/json" } });
   }
@@ -194,7 +202,15 @@ export function OPTIONS(request: Request) {
   const requestOrigin = request.headers.get("origin");
   const serviceOrigin = new URL(request.url).origin;
   const configuredOrigins = (process.env.MCP_ALLOWED_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
-  const allowed = !requestOrigin || new Set([serviceOrigin, process.env.APP_BASE_URL?.replace(/\/$/, ""), "https://claude.ai", "https://www.claude.ai", ...configuredOrigins].filter(Boolean)).has(requestOrigin);
+  const allowed = !requestOrigin || new Set([
+    serviceOrigin,
+    process.env.APP_BASE_URL?.replace(/\/$/, ""),
+    "https://claude.ai",
+    "https://www.claude.ai",
+    "https://claude.com",
+    "https://www.claude.com",
+    ...configuredOrigins,
+  ].filter(Boolean)).has(requestOrigin);
   if (!allowed) return new Response(null, { status: 403 });
   return new Response(null, { status: 204, headers: {
     ...(requestOrigin ? { "access-control-allow-origin": requestOrigin } : {}),

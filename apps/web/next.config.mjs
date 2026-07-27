@@ -7,6 +7,7 @@ const nextConfig = {
   productionBrowserSourceMaps: false,
   output: "standalone",
   outputFileTracingRoot: fileURLToPath(new URL("../..", import.meta.url)),
+  serverExternalPackages: ["@napi-rs/canvas", "sharp"],
   typedRoutes: true,
   transpilePackages: [
     "@continuum/ai",
@@ -23,6 +24,13 @@ const nextConfig = {
       // callback can finish the code exchange, leaving the UI on "Connecting".
       { key: "Cross-Origin-Opener-Policy", value: "unsafe-none" },
     ];
+    const oauthConsentHeaders = [
+      ...oauthPopupHeaders,
+      // Chromium applies form-action across redirects. The consent form posts
+      // to Continuum and then redirects to the dynamically registered OAuth
+      // callback, so this route must permit the secure callback hop.
+      { key: "Content-Security-Policy", value: `default-src 'self'; base-uri 'self'; form-action 'self' https: http://localhost:* http://127.0.0.1:*; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}; connect-src 'self' http://localhost:* http://127.0.0.1:*; worker-src 'self' blob:` },
+    ];
     const securityHeaders = [
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -36,8 +44,8 @@ const nextConfig = {
     return [
       { source: "/(.*)", headers: securityHeaders },
       { source: "/login", headers: oauthPopupHeaders },
-      { source: "/oauth/authorize", headers: oauthPopupHeaders },
-      { source: "/api/oauth/authorize", headers: oauthPopupHeaders },
+      { source: "/oauth/authorize", headers: oauthConsentHeaders },
+      { source: "/api/oauth/authorize", headers: oauthConsentHeaders },
     ];
   },
 };

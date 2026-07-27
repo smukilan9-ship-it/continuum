@@ -43,7 +43,7 @@ export function OAuthConsentForm({
         <div className="oauth-permissions">
           {permissions.length ? permissions.map((permission) => (
             <label className="oauth-permission" key={permission.scope}>
-              <input name="scope" value={permission.scope} type="checkbox" defaultChecked />
+              <input name="selected_scope" value={permission.scope} type="checkbox" defaultChecked />
               <span className="oauth-permission-check" aria-hidden="true"><Check size={13} /></span>
               <span>
                 <strong>{permission.title}</strong>

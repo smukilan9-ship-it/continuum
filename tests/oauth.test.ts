@@ -12,13 +12,13 @@ async function authorizationFixture() {
   const challenge = createHash("sha256").update(verifier).digest("base64url");
   const clientId = await issueClientRegistration({
     clientName: "Claude",
-    redirectUris: ["https://claude.ai/oauth/callback"],
+    redirectUris: ["https://claude.ai/api/mcp/auth_callback"],
     scopes: ["memory:read", "goals:read"],
     grantTypes: ["authorization_code", "refresh_token"],
   });
   const params = new URLSearchParams({
     client_id: clientId,
-    redirect_uri: "https://claude.ai/oauth/callback",
+    redirect_uri: "https://claude.ai/api/mcp/auth_callback",
     response_type: "code",
     scope: "memory:read goals:read",
     state: "opaque-client-state",
@@ -36,8 +36,8 @@ async function consentForm(decision: "approve" | "deny", mutate?: (form: URLSear
   form.set("decision", decision);
   form.set("consent_token", consentToken);
   form.set("ux", "continuum");
-  form.append("scope", "memory:read");
-  form.append("scope", "goals:read");
+  form.append("selected_scope", "memory:read");
+  form.append("selected_scope", "goals:read");
   mutate?.(form);
   const response = await authorize(new Request("http://localhost:3000/api/oauth/authorize", {
     method: "POST",
@@ -105,7 +105,7 @@ describe("durable OAuth grant state", () => {
   });
 
   it("signs a stable client registration payload", async () => {
-    const clientId = await issueClientRegistration({ clientName: "Claude", redirectUris: ["https://claude.ai/callback"], scopes: ["memory:read"], grantTypes: ["authorization_code", "refresh_token"] });
+    const clientId = await issueClientRegistration({ clientName: "Claude", redirectUris: ["https://claude.ai/api/mcp/auth_callback"], scopes: ["memory:read"], grantTypes: ["authorization_code", "refresh_token"] });
     await expect(verifyClientRegistration(clientId)).resolves.toMatchObject({ clientName: "Claude" });
   });
 
@@ -142,7 +142,7 @@ describe("durable OAuth grant state", () => {
       grant_type: "authorization_code",
       code: callback.searchParams.get("code")!,
       client_id: clientId,
-      redirect_uri: "https://claude.ai/oauth/callback",
+      redirect_uri: "https://claude.ai/api/mcp/auth_callback",
       code_verifier: "wrong-verifier-that-is-still-long-enough-to-send",
       resource: "http://localhost:3000/mcp",
     });

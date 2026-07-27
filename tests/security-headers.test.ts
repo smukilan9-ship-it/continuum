@@ -18,5 +18,13 @@ describe("security headers", () => {
         value: "unsafe-none",
       });
     }
+
+    for (const source of ["/oauth/authorize", "/api/oauth/authorize"]) {
+      const csp = rules?.find((rule) => rule.source === source)?.headers
+        .find((header) => header.key === "Content-Security-Policy")?.value;
+      expect(csp).toContain("form-action 'self' https:");
+      expect(csp).toContain("http://localhost:*");
+      expect(csp).not.toBe(globalRule?.headers.find((header) => header.key === "Content-Security-Policy")?.value);
+    }
   });
 });
