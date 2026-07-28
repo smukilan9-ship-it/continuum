@@ -9,6 +9,7 @@ import { getStore } from "@/lib/store";
 import { buildAcademicPrompt, type PromptSurface } from "@/lib/prompt-context";
 import { promptContracts } from "@/lib/prompt-registry";
 import { availableAiProviders, runStructuredAi } from "@/lib/ai-gateway";
+import { publicErrorMessage } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,7 +56,7 @@ function createServer(identity: AuthorizedMcpIdentity, request: Request) {
           structuredContent: result as unknown as Record<string, unknown>,
         };
       } catch (error) {
-        return { isError: true, content: [{ type: "text" as const, text: error instanceof Error ? error.message : "Tool execution failed" }] };
+        return { isError: true, content: [{ type: "text" as const, text: publicErrorMessage(error, "Tool execution failed") }] };
       }
     });
   }

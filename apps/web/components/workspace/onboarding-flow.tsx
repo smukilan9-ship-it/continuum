@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, LoaderCircle, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui";
-import { PageIntro } from "./page-intro";
+import { PageHeader } from "./page-header";
 
 type Intake = {
   curriculum: string;
@@ -52,10 +52,42 @@ const learningOptions = [
   { value: "visual", label: "Diagrams and visuals" },
 ];
 
-export function OnboardingFlow({ userName, onRefresh }: { userName: string; onRefresh: () => Promise<void> }) {
+type ScheduleStatus = { status: "committed" | "empty" | "deferred" | "not_generated"; blocks?: number; unscheduled?: number; reason?: string };
+type PlanResult = {
+  goal?: { id?: string; title?: string };
+  milestones?: unknown[];
+  tasks?: Array<{ id: string; title: string }>;
+  schedule?: ScheduleStatus;
+  nextAction?: string;
+};
+
+/**
+ * The steps the server actually performs, so the progress panel names real work
+ * rather than showing an indeterminate spinner for 20 seconds. Durations are
+ * the observed shape of the request, not a fake animation: each stage advances
+ * on a timer and the final stage holds until the response lands.
+ */
+const BUILD_STAGES = [
+  { label: "Creating your goal", after: 0 },
+  { label: "Breaking it into milestones", after: 2_500 },
+  { label: "Generating tasks", after: 7_000 },
+  { label: "Scheduling your first week", after: 13_000 },
+] as const;
+
+const STEP_RATIONALE = [
+  "Your curriculum and subjects decide which concept map and diagnostic Continuum uses.",
+  "The goal and its success criterion become the milestones and tasks — the more concrete, the better the plan.",
+  "Your weekly hours cap how much work the scheduler will place, so the first week is one you can actually finish.",
+  "These shape how explanations are written and where your data is processed.",
+  "Nothing is written until you press Create. You can change any of it afterwards.",
+] as const;
+
+export function OnboardingFlow({ userName, onRefresh, onNavigate }: { userName: string; onRefresh: () => Promise<void>; onNavigate?: (view: "goals" | "today" | "learn") => void }) {
   const [step, setStep] = useState(0);
   const [intake, setIntake] = useState<Intake>(defaults);
   const [busy, setBusy] = useState(false);
+  const [stage, setStage] = useState(0);
+  const [result, setResult] = useState<PlanResult>();
   const [error, setError] = useState("");
   const [restored, setRestored] = useState(false);
 
@@ -85,12 +117,23 @@ export function OnboardingFlow({ userName, onRefresh }: { userName: string; onRe
     return true;
   }, [step, intake, subjectList.length]);
 
+  // Advance the named build stages while the request is in flight.
+  useEffect(() => {
+    if (!busy) return;
+    const timers = BUILD_STAGES.map((entry, index) => window.setTimeout(() => setStage(index), entry.after));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [busy]);
+
   async function submit() {
     setBusy(true);
+    setStage(0);
     setError("");
     try {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 90_000);
       const response = await fetch("/api/onboarding", {
         method: "POST",
+        signal: controller.signal,
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           academicLevel: `${intake.curriculum} ${intake.level}`.trim(),
@@ -107,21 +150,92 @@ export function OnboardingFlow({ userName, onRefresh }: { userName: string; onRe
           privacyMode: intake.privacyMode,
         }),
       });
-      const body = await response.json().catch(() => ({}));
+      window.clearTimeout(timeout);
+      const body = await response.json().catch(() => ({})) as PlanResult & { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Onboarding could not be completed");
       window.localStorage.removeItem(STORAGE_KEY);
-      await onRefresh();
+      // The response says exactly what was created and whether scheduling
+      // succeeded. Discarding it is what let the flow promise a first-week
+      // schedule it had not actually produced.
+      // Deliberately not refreshing yet: refreshing swaps this component out for
+      // the populated Today screen, and the user would never see what was built.
+      setResult(body);
+      setBusy(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Onboarding could not be completed");
+      const aborted = cause instanceof DOMException && cause.name === "AbortError";
+      setError(aborted ? "Building your plan took too long. Nothing was lost — try again." : cause instanceof Error ? cause.message : "Onboarding could not be completed");
       setBusy(false);
     }
   }
 
   const next = () => (step < STEPS.length - 1 ? setStep((value) => value + 1) : void submit());
 
+  // Plan creation takes ~20s. A button label change reads as a hang, so the
+  // whole panel becomes a progress state naming the work the server is doing.
+  if (busy) {
+    return (
+      <div className="screen onboarding-screen">
+        <PageHeader title={`Building your plan, ${userName}`} description="Continuum is creating your goal, milestones, tasks, and — where your availability allows — a first-week schedule." />
+        <div className="onboarding-shell">
+          <div className="onboarding-panel onboarding-building" role="status" aria-live="polite">
+            <ol className="build-stages">
+              {BUILD_STAGES.map((entry, index) => (
+                <li key={entry.label} className={index < stage ? "done" : index === stage ? "current" : ""}>
+                  <span className="build-stage-dot">{index < stage ? <Check size={13} aria-hidden="true" /> : index === stage ? <LoaderCircle className="spin" size={13} aria-hidden="true" /> : index + 1}</span>
+                  <span>{entry.label}{index < stage ? "" : index === stage ? "…" : ""}</span>
+                </li>
+              ))}
+            </ol>
+            <p className="onboarding-help">This runs deterministically on the server. Leaving this page will not lose your answers.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Honest completion: what was actually created, and what to do next.
+  if (result) {
+    const schedule = result.schedule ?? { status: "not_generated" as const };
+    const taskCount = result.tasks?.length ?? 0;
+    const milestoneCount = result.milestones?.length ?? 0;
+    const headline = schedule.status === "committed"
+      ? `Your first week is scheduled — ${schedule.blocks ?? 0} block${schedule.blocks === 1 ? "" : "s"}.`
+      : schedule.status === "empty"
+        ? "We built your plan, but your stated availability couldn't fit these tasks."
+        : schedule.status === "deferred"
+          ? "Your plan is ready. We'll schedule it in a moment."
+          : "Your plan is ready.";
+    const cta = schedule.status === "committed"
+      ? { label: "Open Plan", view: "goals" as const }
+      : schedule.status === "empty"
+        ? { label: "Adjust availability", view: "goals" as const }
+        : { label: "Build my week", view: "goals" as const };
+    return (
+      <div className="screen onboarding-screen">
+        <PageHeader title="Your plan is ready" description="Continuum created a goal, milestones, and tasks from your answers. Everything here is editable." />
+        <div className="onboarding-shell">
+          <div className="onboarding-panel onboarding-complete">
+            <h2>{headline}</h2>
+            <dl className="onboarding-review">
+              <div><dt>Goal</dt><dd>{result.goal?.title ?? intake.goalTitle}</dd></div>
+              <div><dt>Milestones</dt><dd>{milestoneCount}</dd></div>
+              <div><dt>Tasks</dt><dd>{taskCount}</dd></div>
+              <div><dt>Schedule</dt><dd>{schedule.status === "committed" ? `${schedule.blocks ?? 0} blocks${schedule.unscheduled ? `, ${schedule.unscheduled} task${schedule.unscheduled === 1 ? "" : "s"} need more time` : ""}` : schedule.status === "empty" ? "No study window was large enough" : "Not scheduled yet"}</dd></div>
+            </dl>
+            {result.nextAction ? <p className="onboarding-help"><Sparkles size={14} aria-hidden="true" /> Next: {result.nextAction}</p> : null}
+            <div className="onboarding-actions">
+              <Button className="button-primary" onClick={() => { void onRefresh(); onNavigate?.(cta.view); }}>{cta.label}<ArrowRight size={16} aria-hidden="true" /></Button>
+              <Button className="button-secondary" onClick={() => { void onRefresh(); onNavigate?.("today"); }}>Go to Today</Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="screen onboarding-screen">
-      <PageIntro eyebrow="GET STARTED" title={`Let's build your real plan, ${userName}.`} description="A few questions become a goal, milestones, actionable tasks, and a first-week schedule — one shared context for the app and every assistant you authorize." />
+      <PageHeader title={`Let's build your real plan, ${userName}`} description="A few questions become a goal, milestones, actionable tasks, and — where your availability allows — a first-week schedule. One shared context for the app and every assistant you authorize." />
 
       <div className="onboarding-shell">
         <ol className="onboarding-steps" aria-label="Onboarding progress">
@@ -243,7 +357,7 @@ export function OnboardingFlow({ userName, onRefresh }: { userName: string; onRe
           {step === 4 && (
             <fieldset>
               <legend>Review & create your plan</legend>
-              <p className="onboarding-help">Continuum will create a goal, milestones, actionable tasks, and a first-week schedule — deterministically.</p>
+              <p className="onboarding-help">Continuum will create a goal, milestones, actionable tasks, and, where your availability allows, a first-week schedule — deterministically.</p>
               <dl className="onboarding-review">
                 <div><dt>You</dt><dd>{intake.curriculum} {intake.level} · {subjectList.join(", ") || "—"}</dd></div>
                 <div><dt>Goal</dt><dd>{intake.goalTitle || "—"}</dd></div>
@@ -256,10 +370,12 @@ export function OnboardingFlow({ userName, onRefresh }: { userName: string; onRe
             </fieldset>
           )}
 
+          <p className="onboarding-rationale">{STEP_RATIONALE[step]}</p>
+
           {error ? <p className="form-error" role="alert">{error}</p> : null}
 
           <div className="onboarding-actions">
-            <Button type="button" className="button-quiet" onClick={() => setStep((value) => Math.max(0, value - 1))} disabled={step === 0 || busy}><ArrowLeft size={15} />Back</Button>
+            {step > 0 ? <Button type="button" className="button-quiet" onClick={() => setStep((value) => value - 1)} disabled={busy}><ArrowLeft size={15} aria-hidden="true" />Back</Button> : <span />}
             <span className="onboarding-progress-label">Step {step + 1} of {STEPS.length}</span>
             <Button type="submit" className="button-primary" disabled={!stepValid || busy}>
               {step === STEPS.length - 1 ? (busy ? "Building your plan…" : "Create my plan") : "Continue"}

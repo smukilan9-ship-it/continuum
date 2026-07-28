@@ -9,6 +9,7 @@ import { z } from "zod";
 import { getStore } from "@/lib/store";
 import { enforceRateLimit } from "@/lib/auth";
 import { contextPackMarkdown, type ContextPack, type ContextPackMetadata } from "@/lib/context-packs";
+import { publicErrorMessage } from "@/lib/api-errors";
 import {
   acknowledgeBridgeOperations,
   applyBridgeBatch,
@@ -142,7 +143,7 @@ export async function POST(request: Request) {
   const parsed = documentSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Invalid vault document", issues: parsed.error.issues }, { status: 400, headers: cors(request) });
   let path: string;
-  try { path = safeVaultPath(parsed.data.path); } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unsafe vault path" }, { status: 400, headers: cors(request) }); }
+  try { path = safeVaultPath(parsed.data.path); } catch (error) { return NextResponse.json({ error: publicErrorMessage(error, "Unsafe vault path") }, { status: 400, headers: cors(request) }); }
   const bytes = parsed.data.content !== undefined ? Buffer.from(parsed.data.content, "utf8") : Buffer.from(parsed.data.contentBase64!, "base64");
   if (!bytes.byteLength) return NextResponse.json({ error: "The vault document is empty" }, { status: 400, headers: cors(request) });
   if (bytes.byteLength > 10 * 1024 * 1024) return NextResponse.json({ error: "Documents are limited to 10 MB per sync request" }, { status: 413, headers: cors(request) });

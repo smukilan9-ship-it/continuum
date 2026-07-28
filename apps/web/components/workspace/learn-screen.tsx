@@ -2,12 +2,12 @@
 
 import type { ResourceActivity, ResourceRecommendation } from "@continuum/schemas";
 import { ArrowLeft, ArrowRight, BookOpen, BrainCircuit, Check, CheckCircle2, ChevronRight, Clock3, ExternalLink, GraduationCap, HelpCircle, LoaderCircle, PlayCircle, RotateCcw, Search, ShieldCheck, Sparkles, Target, Video } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Badge, Button, Card, ConfirmationDialog, ErrorState, LoadingButton, Modal, SuccessState } from "@/components/ui";
-import { PageIntro } from "./page-intro";
+import { useEffect, useMemo, useState } from "react";
+import { Badge, Button, Card, ConfirmationDialog, EmptyState, ErrorState, LoadingButton, Modal, SuccessState, Tooltip } from "@/components/ui";
+import { PageHeader } from "./page-header";
 import { formatLabel, masteryLabel } from "@/lib/labels";
 import type { LearningVideo } from "@/lib/youtube";
-import { number, text, type Row, type WorkspaceState } from "./types";
+import { list, number, text, type Row, type WorkspaceState } from "./types";
 import { QuestionBankPanel } from "./question-bank-panel";
 import { AskQuestionDialog } from "./ask-question-dialog";
 import { ConceptMap, type ConceptNode } from "./concept-map";
@@ -59,6 +59,7 @@ function goalMatchScore(query: string, goal: Row) {
 
 export function LearnScreen({ state, userId, showToast, onRefresh }: { state: WorkspaceState; userId: string; showToast: Toast; onRefresh: () => Promise<void> }) {
   const [view, setView] = useState<LearnView>("home");
+  const [tool, setTool] = useState<"map" | "banks" | "videos" | "activity">("map");
   const [topic, setTopic] = useState("");
   const [need, setNeed] = useState("");
   const [intent, setIntent] = useState("");
@@ -99,6 +100,38 @@ export function LearnScreen({ state, userId, showToast, onRefresh }: { state: Wo
   const recentActivityId = text(state.resourceActivities.find((item) => !["verified", "abandoned"].includes(text(item, "status"))), "id");
   const activityToResume = resumeActivityId || (resumeRequested ? recentActivityId : "");
   const focusLearning = state.learningStates.find((item) => text(item, "conceptId").includes("potential")) ?? state.learningStates[0];
+
+  /**
+   * One honest composite state for the focus concept.
+   *
+   * The signal panel used to read "100% understanding · Mastered" beside a card
+   * tagging the same concept "Misconception to fix". A concept carrying an open
+   * misconception is never mastered, and the composite is capped to say so; the
+   * sub-scores move into the tooltip.
+   */
+  const focusSignal = useMemo(() => {
+    const conceptId = text(focusLearning, "conceptId");
+    const openMisconception = state.learningStates.some((item) => text(item, "conceptId") === conceptId && text(item, "misconceptionStatus") === "active")
+      || list(focusLearning, "misconceptions").length > 0;
+    const exposure = Math.round(number(focusLearning, "exposure", 0) * 100);
+    const transfer = Math.round(number(focusLearning, "transfer", 0) * 100);
+    const retention = Math.round(number(focusLearning, "retention", 0) * 100);
+    const raw = Math.round(number(focusLearning, "understanding", (exposure + transfer + retention) / 300) * 100);
+    const composite = openMisconception ? Math.min(raw, 70) : raw;
+    const status = text(focusLearning, "status", "not_started");
+    return {
+      conceptId,
+      exposure,
+      transfer,
+      retention,
+      composite,
+      // An open misconception outranks the aggregate score in what it tells you to do.
+      label: openMisconception ? "Misconception to fix" : masteryLabel(status),
+      tone: openMisconception ? "orange" : status === "mastered" ? "green" : "neutral",
+      title: text(focusLearning, "conceptLabel", "Electric potential vs potential energy"),
+      body: text(focusLearning, "explanation", "At one location, potential stays fixed. Energy changes with the charge you place there."),
+    };
+  }, [focusLearning, state.learningStates]);
 
   useEffect(() => {
     try {
@@ -402,33 +435,65 @@ export function LearnScreen({ state, userId, showToast, onRefresh }: { state: Wo
 
   return (
     <div className="screen learn-screen premium-screen">
-      <PageIntro
-        eyebrow={view === "home" ? "LEARN" : view === "resource" ? "LEARN · FIND A RESOURCE" : "LEARN · ACTIVE LESSON"}
-        title={view === "home" ? "What will move your learning forward?" : view === "resource" ? "Find one resource that fits the job." : "Work through the idea, then check it."}
-        description={view === "home" ? "Continue from where you stopped, repair a weak area, or find a reviewed resource for a specific goal." : view === "resource" ? "Tell Continuum what you need. It will ask only the questions that change the recommendation." : "Progress changes only after a check that can support it."}
+      <PageHeader
+        title="Learn"
+        context={view === "home" ? undefined : <span>{view === "resource" ? "Find a resource" : "Active lesson"}</span>}
+        description={view === "home" ? "Continue from where you stopped, repair a weak area, or find a reviewed resource for a specific goal. Progress changes only after a check that can support it." : view === "resource" ? "Tell Continuum what you need. It will ask only the questions that change the recommendation." : "Work through the idea, then check it. Progress changes only after a check that can support it."}
+        stats={view === "home" ? [{ label: "active paths", value: state.goals.length }, { label: "tracked concepts", value: state.learningStates.length }] : undefined}
       />
 
       {view === "home" ? <div className="learn-home">
-        <section className="learn-landing-actions" aria-label="Learning actions">
-          <button onClick={() => void openLesson()} disabled={lessonBusy}><span><PlayCircle size={20} /></span><strong>Continue learning</strong><small>Resume your current concept</small><ChevronRight size={17} /></button>
-          <button onClick={() => { setRecommendation(undefined); setActivity(undefined); setResumeActivityId(""); setResumeRequested(false); setGoalOverridden(false); setView("resource"); }}><span><Search size={20} /></span><strong>Find a resource</strong><small>Match the goal, time, and access</small><ChevronRight size={17} /></button>
-          <button onClick={() => void openLesson()} disabled={lessonBusy}><span><BrainCircuit size={20} /></span><strong>Review weak areas</strong><small>Start with the clearest current gap</small><ChevronRight size={17} /></button>
-          <button onClick={() => { setRecommendation(undefined); setActivity(undefined); setResumeRequested(true); setView("resource"); }} disabled={!recentActivityId}><span><RotateCcw size={20} /></span><strong>Return to an active resource</strong><small>{recentActivityId ? "Continue the saved handoff" : "No active resource right now"}</small><ChevronRight size={17} /></button>
-        </section>
+        {/* Band 1 — one primary action. The other routes are secondary text links;
+            a disabled control is hidden rather than shown greyed out. */}
         <section className="learn-home-hero">
-          <Card className="continue-learning-card"><div className="learn-card-label"><Sparkles size={15} />CONTINUE LEARNING</div><div className="continue-learning-body"><div><Badge tone="orange">Misconception to fix</Badge><h2>Electric potential vs potential energy</h2><p>At one location, potential stays fixed. Energy changes with the charge you place there.</p></div><div className="mastery-ring" style={{ "--mastery": `${Math.round(number(focusLearning, "understanding", .52) * 100)}%` } as React.CSSProperties}><strong>{Math.round(number(focusLearning, "understanding", .52) * 100)}%</strong><span>understanding</span></div></div><div className="continue-learning-actions"><Button className="button-primary" disabled={lessonBusy} onClick={() => void openLesson()}>{lessonBusy ? <LoaderCircle className="spin" size={16} /> : <BookOpen size={16} />}Open 6-min lesson</Button><button onClick={() => { setRecommendation(undefined); setActivity(undefined); setResumeActivityId(""); setResumeRequested(false); setGoalOverridden(false); setTopic("electric potential and potential energy"); setNeed("conceptual_intuition"); setIntent("concept"); setView("resource"); }}>Compare resources <ChevronRight size={15} /></button></div></Card>
-          <Card className="learning-signal-card"><div className="learn-card-label"><BrainCircuit size={15} />CURRENT SIGNAL</div><strong>{masteryLabel(text(focusLearning, "status", "not_started"))}</strong><p>{text(focusLearning, "explanation", "Continuum needs an unseen checkpoint before it can claim transfer.")}</p><div><span>Exposure <b>{Math.round(number(focusLearning, "exposure", 0) * 100)}%</b></span><span>Transfer <b>{Math.round(number(focusLearning, "transfer", 0) * 100)}%</b></span><span>Retention <b>{Math.round(number(focusLearning, "retention", 0) * 100)}%</b></span></div></Card>
+          <Card className="continue-learning-card">
+            <div className="learn-card-label"><Sparkles size={15} aria-hidden="true" />CONTINUE</div>
+            <div className="continue-learning-body">
+              <div>
+                {/* One honest composite state. A "Mastered" badge must never sit
+                    beside an open misconception on the same concept. */}
+                <Badge tone={focusSignal.tone}>{focusSignal.label}</Badge>
+                <h2>{focusSignal.title}</h2>
+                <p>{focusSignal.body}</p>
+              </div>
+              <Tooltip label={`Exposure ${focusSignal.exposure}% · Transfer ${focusSignal.transfer}% · Retention ${focusSignal.retention}%`}>
+                <div className="mastery-ring" style={{ "--mastery": `${focusSignal.composite}%` } as React.CSSProperties} tabIndex={0} role="img" aria-label={`${focusSignal.composite}% composite understanding. Exposure ${focusSignal.exposure}%, transfer ${focusSignal.transfer}%, retention ${focusSignal.retention}%.`}>
+                  <strong>{focusSignal.composite}%</strong><span>understanding</span>
+                </div>
+              </Tooltip>
+            </div>
+            <div className="continue-learning-actions">
+              <Button className="button-primary button-large" disabled={lessonBusy} onClick={() => void openLesson()}>{lessonBusy ? <LoaderCircle className="spin" size={16} aria-hidden="true" /> : <BookOpen size={16} aria-hidden="true" />}Open 6-min lesson</Button>
+            </div>
+            <div className="learn-secondary-actions">
+              <button onClick={() => { setRecommendation(undefined); setActivity(undefined); setResumeActivityId(""); setResumeRequested(false); setGoalOverridden(false); setView("resource"); }}><Search size={14} aria-hidden="true" />Find a resource</button>
+              <button onClick={() => void openLesson()} disabled={lessonBusy}><BrainCircuit size={14} aria-hidden="true" />Review weak areas</button>
+              {recentActivityId ? <button onClick={() => { setRecommendation(undefined); setActivity(undefined); setResumeRequested(true); setView("resource"); }}><RotateCcw size={14} aria-hidden="true" />Return to active resource</button> : null}
+              <button onClick={() => { setRecommendation(undefined); setActivity(undefined); setResumeActivityId(""); setResumeRequested(false); setGoalOverridden(false); setTopic("electric potential and potential energy"); setNeed("conceptual_intuition"); setIntent("concept"); setView("resource"); }}><ChevronRight size={14} aria-hidden="true" />Compare resources</button>
+            </div>
+          </Card>
         </section>
 
-        <section className="learning-home-section"><div className="section-heading"><div><p className="eyebrow">YOUR PATHS</p><h2>Continue from active goals</h2></div></div><div className="learning-path-grid">{state.goals.slice(0, 3).map((goal) => { const goalTasks = state.tasks.filter((task) => text(task, "goalId") === text(goal, "id") && text(task, "status") !== "done"); const next = goalTasks[0]; return <Card className="learning-path-card" key={text(goal, "id")}><span><GraduationCap size={18} /></span><div><small>{formatLabel(text(goal, "status", "active"))} path</small><h3>{text(goal, "title")}</h3><p>{next ? text(next, "title") : "No unfinished learning task"}</p></div><button disabled={!next} onClick={() => next && continueTask(next)}>Continue <ChevronRight size={15} /></button></Card>;})}</div></section>
+        {/* Band 2 — your paths. */}
+        <section className="learning-home-section"><div className="section-heading"><div><h2>Continue from active goals</h2></div></div><div className="learning-path-grid">{state.goals.slice(0, 3).map((goal) => { const goalTasks = state.tasks.filter((task) => text(task, "goalId") === text(goal, "id") && text(task, "status") !== "done"); const next = goalTasks[0]; return <Card className="learning-path-card" key={text(goal, "id")}><span><GraduationCap size={18} aria-hidden="true" /></span><div><small>{formatLabel(text(goal, "status", "active"))} path</small><h3>{text(goal, "title")}</h3><p>{next ? text(next, "title") : "No unfinished learning task"}</p></div><button disabled={!next} onClick={() => next && continueTask(next)}>Continue <ChevronRight size={15} aria-hidden="true" /></button></Card>;})}{!state.goals.length ? <EmptyState title="No active path yet" body="Create a goal and Continuum will build a learning path from it." /> : null}</div></section>
 
-        <ConceptMap state={state} onOpenLesson={(node) => void openLesson(node)} onAskQuestion={(node) => askAsQuestion(node.description, node.id)} />
+        {/* Band 3 — tools, in tabs rather than stacked. The concept map is one of
+            the strongest features here and was buried below the fold. */}
+        <section className="learning-home-section learn-tools">
+          <nav className="section-tabs" role="tablist" aria-label="Learning tools">
+            {([
+              { id: "map", label: "Concept map" },
+              { id: "banks", label: "Question banks" },
+              { id: "videos", label: "Videos" },
+              { id: "activity", label: "Activity" },
+            ] as const).map((entry) => <button key={entry.id} type="button" role="tab" aria-selected={tool === entry.id} className={tool === entry.id ? "active" : ""} onClick={() => setTool(entry.id)}>{entry.label}</button>)}
+          </nav>
 
-        <QuestionBankPanel state={state} showToast={showToast} onRefresh={onRefresh} />
-
-        <section className="learning-home-section"><div className="section-heading"><div><p className="eyebrow">VIDEO EXPLORATION</p><h2>Find a visual explanation</h2><p className="section-description">Provider results stay separate from verified curriculum progress.</p></div></div><Card className="learning-video-search"><form onSubmit={searchVideos}><label><Video size={17} /><input value={videoQuery} onChange={(event) => setVideoQuery(event.target.value)} minLength={2} maxLength={300} aria-label="Video topic" /><Button className="button-primary" disabled={videoBusy}>{videoBusy ? <LoaderCircle className="spin" size={15} /> : <Search size={15} />}{videoBusy ? "Searching…" : "Search videos"}</Button></label></form>{videos ? <><div className="video-provider-row"><span className={`provider-status ${videos.status}`}><i />YouTube: {videos.status}</span><small>{videos.note}</small></div>{videos.videos.length ? <div className="learning-video-grid">{videos.videos.map((video) => <article key={video.id}>{video.thumbnailUrl ? <span className="video-thumbnail" role="img" aria-label={`Thumbnail for ${video.title}`} style={{ backgroundImage: `url(${JSON.stringify(video.thumbnailUrl)})` }} /> : <span className="video-placeholder"><PlayCircle size={28} /></span>}<div><Badge tone={video.reviewState === "trusted_channel" ? "green" : "neutral"}>{video.reviewState === "trusted_channel" ? "Trusted channel" : "Provider result"}</Badge><h3>{video.title}</h3><p>{video.channelTitle}</p><a href={video.watchUrl} target="_blank" rel="noreferrer">Watch on YouTube <ExternalLink size={13} /></a></div></article>)}</div> : <div className="video-unconfigured"><Video size={21} /><div><strong>{videos.status === "unconfigured" ? "YouTube API key not configured" : "No embeddable results returned"}</strong><p>{videos.message ?? "Review search results directly before choosing a video."}</p></div><a className="button button-secondary" href={videos.handoffUrl} target="_blank" rel="noreferrer">Open YouTube search <ExternalLink size={14} /></a></div>}</> : <div className="video-search-empty"><PlayCircle size={23} /><p>Search uses YouTube’s official API when configured. Results do not raise mastery until you return with evidence.</p></div>}</Card></section>
-
-        {state.resourceActivities.length ? <section className="learning-home-section"><div className="section-heading"><div><p className="eyebrow">RECENT LEARNING</p><h2>Evidence-producing activity</h2></div></div><div className="recent-learning-strip">{state.resourceActivities.slice(0, 4).map((item) => <Card key={text(item, "id")}><span><CheckCircle2 size={16} /></span><div><strong>{formatLabel(text(item, "status", "started"))}</strong><p>{text(item, "resourceId", "Guided resource activity")}</p></div><small>{item.startedAt ? new Date(String(item.startedAt)).toLocaleDateString() : ""}</small></Card>)}</div></section> : null}
+          {tool === "map" ? <ConceptMap state={state} onOpenLesson={(node) => void openLesson(node)} onAskQuestion={(node) => askAsQuestion(node.description, node.id)} /> : null}
+          {tool === "banks" ? <QuestionBankPanel state={state} showToast={showToast} onRefresh={onRefresh} /> : null}
+          {tool === "videos" ? <Card className="learning-video-search"><form onSubmit={searchVideos}><label><Video size={17} aria-hidden="true" /><input value={videoQuery} onChange={(event) => setVideoQuery(event.target.value)} minLength={2} maxLength={300} aria-label="Video topic" /><Button className="button-primary" disabled={videoBusy}>{videoBusy ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <Search size={15} aria-hidden="true" />}{videoBusy ? "Searching…" : "Search videos"}</Button></label></form>{videos ? <><div className="video-provider-row"><span className={`provider-status ${videos.status}`}><i />YouTube: {videos.status}</span><small>{videos.note}</small></div>{videos.videos.length ? <div className="learning-video-grid">{videos.videos.map((video) => <article key={video.id}>{video.thumbnailUrl ? <span className="video-thumbnail" role="img" aria-label={`Thumbnail for ${video.title}`} style={{ backgroundImage: `url(${JSON.stringify(video.thumbnailUrl)})` }} /> : <span className="video-placeholder"><PlayCircle size={28} aria-hidden="true" /></span>}<div><Badge tone={video.reviewState === "trusted_channel" ? "green" : "neutral"}>{video.reviewState === "trusted_channel" ? "Trusted channel" : "Provider result"}</Badge><h3>{video.title}</h3><p>{video.channelTitle}</p><a href={video.watchUrl} target="_blank" rel="noreferrer">Watch on YouTube <ExternalLink size={13} aria-hidden="true" /></a></div></article>)}</div> : <div className="video-unconfigured"><Video size={21} aria-hidden="true" /><div><strong>{videos.status === "unconfigured" ? "YouTube API key not configured" : "No embeddable results returned"}</strong><p>{videos.message ?? "Review search results directly before choosing a video."}</p></div><a className="button button-secondary" href={videos.handoffUrl} target="_blank" rel="noreferrer">Open YouTube search <ExternalLink size={14} aria-hidden="true" /></a></div>}</> : <div className="video-search-empty"><PlayCircle size={23} aria-hidden="true" /><p>Search uses YouTube’s official API when configured. Results do not raise mastery until you return with evidence.</p></div>}</Card> : null}
+          {tool === "activity" ? (state.resourceActivities.length ? <div className="recent-learning-strip">{state.resourceActivities.slice(0, 8).map((item) => <Card key={text(item, "id")}><span><CheckCircle2 size={16} aria-hidden="true" /></span><div><strong>{formatLabel(text(item, "status", "started"))}</strong><p>{text(item, "resourceId", "Guided resource activity")}</p></div><small>{item.startedAt ? new Date(String(item.startedAt)).toLocaleDateString() : ""}</small></Card>)}</div> : <EmptyState title="No learning activity yet" body="Opening a resource and returning with evidence records an activity here." action={<Button className="button-primary compact-button" onClick={() => { setRecommendation(undefined); setActivity(undefined); setView("resource"); }}>Find a resource</Button>} />) : null}
+        </section>
       </div> : null}
 
       {view === "lesson" && lesson ? <Card className="native-lesson-screen">

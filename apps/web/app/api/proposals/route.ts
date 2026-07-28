@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { getStore } from "@/lib/store";
+import { logRequestFailure, publicErrorMessage } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
     const result = await store.write("commit_schedule_change", { proposalId: parsed.data.proposalId, confirmation: { confirmedBy: user.id, confirmedAt: now } }, now, "standalone_app");
     return NextResponse.json({ result: result.data, changeSummary: result.summary });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "The proposal could not be reviewed" }, { status: 409 });
+    logRequestFailure("proposal_review_failed", {}, error);
+    return NextResponse.json({ error: publicErrorMessage(error, "The proposal could not be reviewed") }, { status: 409 });
   }
 }

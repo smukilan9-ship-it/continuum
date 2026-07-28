@@ -26,6 +26,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Square,
+  MoreHorizontal,
   Trash2,
   UploadCloud,
   X,
@@ -33,7 +34,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Badge, Button, LoadingButton, Modal } from "@/components/ui";
+import { Badge, Button, ConfirmationDialog, LoadingButton, Modal } from "@/components/ui";
+import { formatLabel } from "@/lib/labels";
 import { text, type WorkspaceState } from "./types";
 
 type Toast = (message: string | null) => void;
@@ -52,6 +54,21 @@ type AssistantMessage = {
     mode?: AssistantMode;
   };
 };
+/** "just now" / "2h ago" / "12 Mar" — enough to tell two threads apart. */
+function relativeTime(iso?: string) {
+  if (!iso) return "No messages yet";
+  const elapsed = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(elapsed)) return "";
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
 type AssistantSession = {
   id: string;
   title: string;
@@ -141,6 +158,8 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
   const [sessions, setSessions] = useState<AssistantSession[]>(() => state.assistantSessions as AssistantSession[]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sessionSearch, setSessionSearch] = useState("");
+  const [renameTarget, setRenameTarget] = useState<AssistantSession>();
+  const [confirmRequest, setConfirmRequest] = useState<{ title: string; description: string; confirmLabel: string; run: () => void | Promise<void> }>();
   const [showArchived, setShowArchived] = useState(false);
   const [activeId, setActiveId] = useState(() => text(state.assistantSessions[0], "id"));
   const [active, setActive] = useState<AssistantSession>();
@@ -181,7 +200,23 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
     return matches && (showArchived ? Boolean(session.archived) : !session.archived);
   });
   const pinnedSessions = visibleSessions.filter((session) => session.pinned);
-  const recentSessions = visibleSessions.filter((session) => !session.pinned);
+  // Grouped by recency so a long list stays scannable; a bare reverse-chronological
+  // run of identical-looking titles is what made this list unusable.
+  const groupedSessions = useMemo(() => {
+    const now = Date.now();
+    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+    const buckets: Array<{ label: string; sessions: AssistantSession[] }> = [
+      { label: "Today", sessions: [] },
+      { label: "This week", sessions: [] },
+      { label: "Earlier", sessions: [] },
+    ];
+    for (const session of visibleSessions.filter((entry) => !entry.pinned)) {
+      const at = session.lastMessageAt ? Date.parse(session.lastMessageAt) : 0;
+      const bucket = at >= startOfToday.getTime() ? 0 : now - at < 7 * 24 * 3600_000 ? 1 : 2;
+      buckets[bucket]!.sessions.push(session);
+    }
+    return buckets.filter((bucket) => bucket.sessions.length);
+  }, [visibleSessions]);
 
   const refreshCredentials = useCallback(async () => {
     const response = await fetch("/api/integrations/credentials", { cache: "no-store" });
@@ -296,10 +331,9 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
     }
   }
 
-  async function renameSession(session: AssistantSession) {
-    const title = window.prompt("Rename conversation", session.title)?.trim();
-    if (!title || title === session.title) return;
-    try { await updateSession(session.id, { title }); }
+  async function commitRename(session: AssistantSession, title: string) {
+    if (!title.trim() || title.trim() === session.title) { setRenameTarget(undefined); return; }
+    try { await updateSession(session.id, { title: title.trim() }); setRenameTarget(undefined); }
     catch (cause) { showToast(cause instanceof Error ? cause.message : "Conversation could not be renamed"); }
   }
 
@@ -440,8 +474,17 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
     showToast("This conversation remains in session history but is excluded from durable memory.");
   }
 
-  async function deleteSession(target = active) {
-    if (!target || !window.confirm("Delete this Assistant conversation? Its saved memory will also be excluded from future retrieval.")) return;
+  function deleteSession(target = active) {
+    if (!target) return;
+    setConfirmRequest({
+      title: `Delete “${target.title}”?`,
+      description: "The conversation and its saved memory are removed, and that memory is excluded from future retrieval. Your goals, tasks, and research are unaffected.",
+      confirmLabel: "Delete conversation",
+      run: () => performDeleteSession(target),
+    });
+  }
+
+  async function performDeleteSession(target: AssistantSession) {
     const response = await fetch("/api/assistant", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -492,12 +535,20 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
     }
   }
 
-  async function deletePersonalCredential(provider: PersonalProvider) {
+  function deletePersonalCredential(provider: PersonalProvider) {
     if (!credentialPassword) {
       showToast("Enter your current Continuum password before deleting this key.");
       return;
     }
-    if (!window.confirm("Delete this Assistant API key? Continuum Auto will remain available.")) return;
+    setConfirmRequest({
+      title: "Delete this Assistant API key?",
+      description: "Continuum Auto keeps working. Only messages you explicitly send in My API Key mode use a personal key.",
+      confirmLabel: "Delete API key",
+      run: () => performDeleteCredential(provider),
+    });
+  }
+
+  async function performDeleteCredential(provider: PersonalProvider) {
     setCredentialBusy(true);
     try {
       const response = await fetch("/api/integrations/credentials", {
@@ -519,10 +570,17 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
   }
 
   const sessionRow = (session: AssistantSession) => <div className={`assistant-session-row ${activeId === session.id ? "active" : ""}`} key={session.id}>
-    <button className="assistant-session-open" onClick={() => setActiveId(session.id)}><MessageCircle size={15} /><span>{session.title}</span>{session.obsidianSync?.status === "synced" ? <Check size={13} aria-label="Synced to Obsidian" /> : session.obsidianSync ? <LoaderCircle size={13} aria-label={`Obsidian ${session.obsidianSync.status}`} /> : null}</button>
+    <button className="assistant-session-open" onClick={() => setActiveId(session.id)}>
+      <MessageCircle size={15} aria-hidden="true" />
+      <span>
+        <strong>{session.title}</strong>
+        <small>{relativeTime(session.lastMessageAt)}{session.summary ? ` · ${session.summary.replace(/\s+/g, " ").slice(0, 60)}` : ""}</small>
+      </span>
+      {session.obsidianSync?.status === "synced" ? <Check size={13} aria-label="Synced to Obsidian" /> : session.obsidianSync ? <LoaderCircle size={13} aria-label={`Obsidian ${session.obsidianSync.status}`} /> : null}
+    </button>
     <div className="assistant-session-actions">
       <button onClick={() => void updateSession(session.id, { pinned: !session.pinned })} aria-label={session.pinned ? "Unpin conversation" : "Pin conversation"}><Pin size={12} /></button>
-      <button onClick={() => void renameSession(session)} aria-label="Rename conversation"><Edit3 size={12} /></button>
+      <button onClick={() => setRenameTarget(session)} aria-label={`Rename ${session.title}`}><Edit3 size={12} /></button>
       <button onClick={() => void updateSession(session.id, { archived: !session.archived })} aria-label={session.archived ? "Restore conversation" : "Archive conversation"}>{session.archived ? <ArchiveRestore size={12} /> : <Archive size={12} />}</button>
       <button onClick={() => void deleteSession(session)} aria-label="Delete conversation"><Trash2 size={12} /></button>
     </div>
@@ -535,7 +593,9 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
         <label className="assistant-history-search"><Search size={14} /><input value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder="Search conversations" /></label>
         <nav>
           {pinnedSessions.length ? <><small className="assistant-history-label">Pinned</small>{pinnedSessions.map(sessionRow)}</> : null}
-          {recentSessions.length ? <><small className="assistant-history-label">{showArchived ? "Archived" : "Recent"}</small>{recentSessions.map(sessionRow)}</> : null}
+          {showArchived
+            ? <><small className="assistant-history-label">Archived</small>{visibleSessions.filter((session) => !session.pinned).map(sessionRow)}</>
+            : groupedSessions.map((bucket) => <div key={bucket.label}><small className="assistant-history-label">{bucket.label}</small>{bucket.sessions.map(sessionRow)}</div>)}
           {!visibleSessions.length ? <p>{sessionSearch ? "No matching conversations." : "Your conversations will appear here after you start."}</p> : null}
         </nav>
         <button className="assistant-archive-toggle" onClick={() => setShowArchived((shown) => !shown)}>{showArchived ? <MessageCircle size={14} /> : <Archive size={14} />}{showArchived ? "Back to active" : "Archived conversations"}</button>
@@ -545,7 +605,19 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
       <section className="assistant-workspace">
         <header className="assistant-topline">
           <div><span className="assistant-presence"><i />Workspace context ready</span><small>{route} · only relevant records are selected</small></div>
-          {active ? <div>{active.obsidianSync ? <Badge tone={active.obsidianSync.status === "synced" ? "green" : active.obsidianSync.status === "conflict" ? "orange" : "neutral"}>Obsidian: {active.obsidianSync.status === "synced" ? "synced" : active.obsidianSync.status === "conflict" ? "needs review" : "pending"}</Badge> : null}<LoadingButton className="button-secondary" loading={memoryBusy} loadingLabel="Preparing…" disabled={messages.length < 2} onClick={() => void prepareMemory()}><Save size={14} />Review memory</LoadingButton><Button className="button-quiet danger" onClick={() => void deleteSession()} aria-label="Delete conversation"><Trash2 size={15} /></Button></div> : null}
+          {active ? <div>
+            {active.obsidianSync ? <Badge tone={active.obsidianSync.status === "synced" ? "green" : active.obsidianSync.status === "conflict" ? "orange" : "neutral"}>Obsidian: {active.obsidianSync.status === "synced" ? "synced" : active.obsidianSync.status === "conflict" ? "needs review" : "pending"}</Badge> : null}
+            {/* Review memory and Delete are rare and destructive; they no longer sit
+                in the primary header. */}
+            <details className="assistant-overflow">
+              <summary aria-label="More conversation actions"><MoreHorizontal size={16} /></summary>
+              <div>
+                <LoadingButton className="button-quiet" loading={memoryBusy} loadingLabel="Preparing…" disabled={messages.length < 2} onClick={() => void prepareMemory()}><Save size={14} aria-hidden="true" />Review memory</LoadingButton>
+                <Button className="button-quiet" onClick={() => active && setRenameTarget(active)}><Edit3 size={14} aria-hidden="true" />Rename conversation</Button>
+                <Button className="button-quiet danger" onClick={() => void deleteSession()}><Trash2 size={14} aria-hidden="true" />Delete conversation</Button>
+              </div>
+            </details>
+          </div> : null}
         </header>
 
         <div className={`assistant-thread ${messages.length || live ? "has-messages" : ""}`}>
@@ -561,7 +633,7 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
             <div className="assistant-message-author">{message.role === "user" ? "You" : <><Sparkles size={14} />Continuum</>}</div>
             {message.metadata?.attachmentIds?.length ? <div className="assistant-message-attachments">{message.metadata.attachmentIds.map((sourceId) => <span key={sourceId}><Paperclip size={12} />{text(state.sources.find((source) => text(source, "id") === sourceId), "title", "Attached source")}</span>)}</div> : null}
             {message.role === "assistant" ? <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown> : <p>{message.content}</p>}
-            {message.metadata?.usedContext?.length ? <details className="assistant-used-context"><summary><SlidersHorizontal size={12} />Used context · {message.metadata.usedContext.length}</summary><ul>{message.metadata.usedContext.map((item) => <li key={`${item.type}:${item.id}`}>{item.label}</li>)}</ul></details> : null}
+            {message.metadata?.usedContext?.length ? <details className="assistant-used-context"><summary><SlidersHorizontal size={12} aria-hidden="true" />Answered using {message.metadata.usedContext.length} record{message.metadata.usedContext.length === 1 ? "" : "s"} from your workspace</summary><p>Continuum retrieved only these records — the smallest set relevant to your message. Nothing else from your workspace was sent.</p><ul>{message.metadata.usedContext.map((item) => <li key={`${item.type}:${item.id}`}><span>{formatLabel(item.type)}</span>{item.label}</li>)}</ul></details> : null}
             <div className="assistant-message-actions">
               <button onClick={() => void navigator.clipboard.writeText(message.content)}><Copy size={12} />Copy</button>
               {message.role === "user" ? <button onClick={() => { setDraft(message.content); document.querySelector<HTMLTextAreaElement>(".assistant-composer textarea")?.focus(); }}><Edit3 size={12} />Edit and resend</button> : <button onClick={regenerateLast}><RefreshCw size={12} />Regenerate</button>}
@@ -580,7 +652,7 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }}
           onDrop={(event) => { event.preventDefault(); setDragging(false); void uploadFiles(Array.from(event.dataTransfer.files)); }}
         >
-          <input ref={attachmentInputRef} className="sr-only" type="file" multiple accept=".pdf,.docx,.txt,.md,.markdown,.csv,.json,.yaml,.yml,.tex,.py,.js,.jsx,.ts,.tsx,.java,.c,.cpp,.h,.hpp,.rs,.go,.rb,.php,.swift,.kt,.sql,.html,.css,.png,.jpg,.jpeg,.webp" onChange={(event) => { void uploadFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
+          <input ref={attachmentInputRef} className="sr-only" aria-label="Attach files to this conversation" type="file" multiple accept=".pdf,.docx,.txt,.md,.markdown,.csv,.json,.yaml,.yml,.tex,.py,.js,.jsx,.ts,.tsx,.java,.c,.cpp,.h,.hpp,.rs,.go,.rb,.php,.swift,.kt,.sql,.html,.css,.png,.jpg,.jpeg,.webp" onChange={(event) => { void uploadFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
           {attachments.length ? <div className="assistant-attachment-tray">{attachments.map((attachment) => <div className={`assistant-attachment ${attachment.state}`} key={attachment.id}>{attachment.state === "extracting" ? <LoaderCircle className="spin" size={14} /> : attachment.state === "error" ? <X size={14} /> : <Paperclip size={14} />}<span><strong>{attachment.name}</strong><small>{attachment.state === "extracting" ? "Extracting safely…" : attachment.message ?? `${(attachment.size / 1024).toFixed(0)} KB · retrieved when needed`}</small></span><button type="button" onClick={() => setAttachments((current) => current.filter((candidate) => candidate.id !== attachment.id))} aria-label={`Remove ${attachment.name}`}><X size={13} /></button></div>)}</div> : null}
           {dragging ? <div className="assistant-drop-hint"><UploadCloud size={20} />Drop files to extract and attach</div> : null}
           <textarea
@@ -605,21 +677,45 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
                 if (event.target.value === "byok") setCredentialMode("user");
                 else { setCredentialMode("platform"); setAssistantMode(event.target.value as AssistantMode); }
               }}>
-                <option value="auto">Continuum Auto</option>
-                <option value="fast">Fast</option>
-                <option value="deep">Deep Reasoning</option>
-                <option value="coding">Coding</option>
-                <option value="document">Document Analysis</option>
-                {hasPersonalCredential ? <option value="byok">My API key</option> : null}
+                {/* Bare mode names told a new user nothing about what changes. */}
+                <option value="auto">Continuum Auto — picks the right model per message</option>
+                <option value="fast">Fast — quick answers, lighter reasoning</option>
+                <option value="deep">Deep Reasoning — slower, for hard problems</option>
+                <option value="coding">Coding — code, tests, and debugging</option>
+                <option value="document">Document Analysis — long sources and attachments</option>
+                {hasPersonalCredential ? <option value="byok">My API key — billed to your own provider</option> : null}
               </select>
             </label>
-            <button type="button" onClick={() => setContextOpen(true)}><SlidersHorizontal size={13} />Context · {contextScopes.length}</button>
+            <button type="button" onClick={() => setContextOpen(true)} title="Choose which parts of your workspace this conversation may retrieve from"><SlidersHorizontal size={13} aria-hidden="true" />{contextScopes.length} context source{contextScopes.length === 1 ? "" : "s"}</button>
             <button type="button" onClick={() => setCredentialOpen(true)}><KeyRound size={13} />{hasPersonalCredential ? "Manage API key" : "Use my API key"}</button>
           </div>
           <div className="assistant-context-chips">{contextScopes.slice(0, 3).map((scope) => <span key={scope}>{contextOptions.find((option) => option.value === scope)?.label}</span>)}{contextScopes.length > 3 ? <span>+{contextScopes.length - 3}</span> : null}</div>
           <small><Badge tone="neutral">Private workspace</Badge> Enter to send · Shift+Enter for a new line · files use targeted retrieval</small>
         </form>
       </section>
+
+      <Modal
+        open={Boolean(renameTarget)}
+        onOpenChange={(open) => { if (!open) setRenameTarget(undefined); }}
+        title="Rename conversation"
+        description="A clear name makes a long list scannable."
+      >
+        {renameTarget ? <form className="workspace-form" onSubmit={(event) => { event.preventDefault(); void commitRename(renameTarget, String(new FormData(event.currentTarget).get("title") ?? "")); }}>
+          <label>Conversation name<input name="title" autoFocus maxLength={120} defaultValue={renameTarget.title} /></label>
+          <div className="form-actions"><Button className="button-secondary" type="button" onClick={() => setRenameTarget(undefined)}>Cancel</Button><Button className="button-primary" type="submit">Rename</Button></div>
+        </form> : null}
+      </Modal>
+
+      <ConfirmationDialog
+        open={Boolean(confirmRequest)}
+        onOpenChange={(open) => { if (!open) setConfirmRequest(undefined); }}
+        title={confirmRequest?.title ?? ""}
+        description={confirmRequest?.description ?? ""}
+        confirmLabel={confirmRequest?.confirmLabel ?? "Confirm"}
+        destructive
+        busy={credentialBusy}
+        onConfirm={() => { const request = confirmRequest; setConfirmRequest(undefined); void request?.run(); }}
+      />
 
       <Modal open={contextOpen} onOpenChange={setContextOpen} title="Choose context for this conversation" description="Continuum retrieves only relevant records within the scopes you select. It never sends an entire large library or document to every request.">
         <div className="assistant-context-selector">

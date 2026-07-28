@@ -17,10 +17,9 @@ const GoalsScreen = dynamic(() => import("./workspace/goals-screen").then((modul
 const LearnScreen = dynamic(() => import("./workspace/learn-screen").then((module) => module.LearnScreen), { loading });
 const CodeScreen = dynamic(() => import("./workspace/code-screen").then((module) => module.CodeScreen), { loading });
 const MemoryScreen = dynamic(() => import("./workspace/memory-screen").then((module) => module.MemoryScreen), { loading });
-const OpenAlexScreen = dynamic(() => import("./workspace/openalex-screen").then((module) => module.OpenAlexScreen), { loading });
+const LibraryScreen = dynamic(() => import("./workspace/library-screen").then((module) => module.LibraryScreen), { loading });
 const ResearchScreen = dynamic(() => import("./workspace/research-screen").then((module) => module.ResearchScreen), { loading });
 const TodayScreen = dynamic(() => import("./workspace/today-screen").then((module) => module.TodayScreen), { loading });
-const ZoteroScreen = dynamic(() => import("./workspace/zotero-screen").then((module) => module.ZoteroScreen), { loading });
 
 export function WorkspaceScreens({ view, state, user, userName, serverNow, onNavigate, onRefresh, showToast }: { view: WorkspaceView; state: WorkspaceState; user: AuthUser; userName: string; serverNow: string; onNavigate: (view: WorkspaceView) => void; onRefresh: () => Promise<void>; showToast: Toast }) {
   if (view === "today") return <TodayScreen state={state} userName={userName} timeZone={user.timezone} serverNow={serverNow} onNavigate={onNavigate} onRefresh={onRefresh} />;
@@ -29,8 +28,11 @@ export function WorkspaceScreens({ view, state, user, userName, serverNow, onNav
   if (view === "learn") return <LearnScreen state={state} userId={user.id} showToast={showToast} onRefresh={onRefresh} />;
   if (view === "code") return <CodeScreen state={state} user={user} showToast={showToast} />;
   if (view === "research") return <ResearchScreen state={state} showToast={showToast} onRefresh={onRefresh} />;
-  if (view === "openalex") return <OpenAlexScreen showToast={showToast} />;
-  if (view === "zotero") return <ZoteroScreen showToast={showToast} />;
+  // `/openalex` and `/zotero` predate the merged Library destination and stay
+  // reachable; they open the same screen with the matching tab preselected.
+  if (view === "library") return <LibraryScreen showToast={showToast} onNavigate={onNavigate} />;
+  if (view === "openalex") return <LibraryScreen initialTab="discover" showToast={showToast} onNavigate={onNavigate} />;
+  if (view === "zotero") return <LibraryScreen initialTab="zotero" showToast={showToast} onNavigate={onNavigate} />;
   if (view === "memory") return <MemoryScreen state={state} showToast={showToast} />;
   if (view === "activity") return <ActivityScreen state={state} timeZone={user.timezone} showToast={showToast} onRefresh={onRefresh} />;
   if (view === "account") return <AccountScreen user={user} showToast={showToast} />;

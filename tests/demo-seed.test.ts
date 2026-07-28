@@ -125,6 +125,22 @@ describe("idempotency by construction", () => {
     }
   });
 
+  it("keeps every schedule block inside the rolling week the Plan grid renders", () => {
+    // The Plan grid shows seven days from today. Absolute seed dates decayed out
+    // of that window and left "7.2h scheduled" sitting above an empty week.
+    const dayKeys = new Set(Array.from({ length: 7 }, (_, index) => new Date(now.getTime() + index * 24 * 3600_000).toISOString().slice(0, 10)));
+    const upcoming = data.scheduleRows.filter((row) => row.status !== "done");
+    expect(upcoming.length).toBeGreaterThanOrEqual(7);
+    for (const row of upcoming) expect(dayKeys.has(row.startsAt.toISOString().slice(0, 10))).toBe(true);
+    // Every day of the visible week carries at least one block.
+    expect(new Set(upcoming.map((row) => row.startsAt.toISOString().slice(0, 10))).size).toBeGreaterThanOrEqual(6);
+  });
+
+  it("points every schedule block at a task that exists", () => {
+    const taskIds = new Set(data.taskRows.map((row) => row.id));
+    for (const row of data.scheduleRows) expect(taskIds.has(row.taskId)).toBe(true);
+  });
+
   it("has no duplicate ids within any table", () => {
     for (const [rows] of [[data.taskRows], [data.milestoneRows], [data.chunkRows], [data.eventRows]] as Array<[Array<{ id: string }>]>) {
       expect(new Set(ids(rows)).size).toBe(rows.length);

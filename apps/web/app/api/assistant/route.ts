@@ -7,6 +7,7 @@ import { buildAcademicPrompt } from "@/lib/prompt-context";
 import { getStore } from "@/lib/store";
 import { assistantMemoryMarkdown, assistantMemoryVaultPath } from "@/lib/assistant-memory-note";
 import { assistantMemorySyncStatuses, enqueueContinuumRecord, type RecordSyncStatus } from "@/lib/obsidian-sync-engine";
+import { publicErrorMessage } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -270,7 +271,7 @@ export async function POST(request: Request) {
       content: note,
       metadata: { source: "continuum-assistant", savedAt, rawTranscriptIncluded: parsed.data.includeRawTranscript },
       idempotencyKey: `assistant-memory:${parsed.data.sessionId}`,
-    }).catch((error) => ({ status: "unavailable" as const, error: error instanceof Error ? error.message : "Obsidian sync is unavailable" }));
+    }).catch((error) => ({ status: "unavailable" as const, error: publicErrorMessage(error, "Obsidian sync is unavailable") }));
     return NextResponse.json({ session: publicSession(updated as Record<string, unknown>), saved: true, obsidian });
   }
 

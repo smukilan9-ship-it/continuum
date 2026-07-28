@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { resolveSyncConflict, retryObsidianSync, setObsidianSyncPaused, syncDashboard } from "@/lib/obsidian-sync-engine";
+import { logRequestFailure, publicErrorMessage } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +39,7 @@ export async function POST(request: Request) {
     if (parsed.data.action === "retry") return NextResponse.json(await retryObsidianSync(user.id, parsed.data.operationId));
     return NextResponse.json(await resolveSyncConflict({ userId: user.id, ...parsed.data }));
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Sync action failed" }, { status: 409 });
+    logRequestFailure("obsidian_action_failed", {}, error);
+    return NextResponse.json({ error: publicErrorMessage(error, "Sync action failed") }, { status: 409 });
   }
 }

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { checkpointScore } from "@/lib/resource-verification";
 import { getStore } from "@/lib/store";
+import { logRequestFailure, publicErrorMessage } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 
@@ -177,7 +178,8 @@ export async function GET(request: Request) {
     const recommendation = await getStore(user.id).recommendResource(parsed.data);
     return NextResponse.json({ recommendation }, { headers: { "cache-control": "private, no-store" } });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "No eligible resource was found" }, { status: 422 });
+    logRequestFailure("resource_selection_failed", {}, error);
+    return NextResponse.json({ error: publicErrorMessage(error, "No eligible resource was found") }, { status: 422 });
   }
 }
 

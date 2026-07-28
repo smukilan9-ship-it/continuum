@@ -1,9 +1,9 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, ExternalLink, FileQuestion, FileText, Folder, LoaderCircle, RefreshCw, Save, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, FileQuestion, FileText, Folder, Library, LoaderCircle, RefreshCw, Save, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Button, Card } from "@/components/ui";
-import { PageIntro } from "./page-intro";
+import { Badge, Button, Card, EmptyState } from "@/components/ui";
+import type { WorkspaceView } from "@/lib/workspace-routes";
 
 type Library = {
   type: "user" | "group";
@@ -45,7 +45,12 @@ function collectionDepth(collection: Collection, byKey: Map<string, Collection>)
   return depth;
 }
 
-export function ZoteroScreen({ showToast }: { showToast: (message: string | null) => void }) {
+/**
+ * The Zotero browser, without a page header of its own — it renders inside the
+ * Library screen's Zotero tab rather than occupying a sidebar slot that is empty
+ * for anyone who has not connected Zotero.
+ */
+export function ZoteroBrowser({ showToast, onNavigate }: { showToast: (message: string | null) => void; onNavigate?: (view: WorkspaceView) => void }) {
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [libraryKey, setLibraryKey] = useState("");
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -168,9 +173,26 @@ export function ZoteroScreen({ showToast }: { showToast: (message: string | null
     finally { setBusy(""); }
   }
 
+  // Not connected yet: one card that explains the value and links to Connections,
+  // rather than a full empty browser chrome.
+  if (!busy && !libraries.length) {
+    return (
+      <div className="zotero-browser">
+        <EmptyState
+          icon={<Library size={20} />}
+          title={error ? "Zotero isn't connected" : "Connect your Zotero library"}
+          body={error ?? "Continuum reads your personal and group libraries, matches them against the scholarly graph by DOI, and can save items straight into a research project."}
+          action={<>
+            {onNavigate ? <Button className="button-primary compact-button" onClick={() => onNavigate("integrations")}>Open Connections</Button> : null}
+            <Button className="button-secondary compact-button" onClick={() => void loadLibraries()}>Retry</Button>
+          </>}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="page-stack zotero-browser">
-      <PageIntro eyebrow="CONNECTED LIBRARY" title="Zotero" description="Browse personal and group libraries, inspect attachments, and save selected sources into Continuum research." />
+    <div className="zotero-browser">
       {error ? <div className="banner banner-error" role="alert">{error}</div> : null}
       <Card className="zotero-toolbar">
         <label>Library<select value={libraryKey} onChange={(event) => setLibraryKey(event.target.value)} disabled={busy === "libraries"}>{libraries.map((library) => <option key={`${library.type}:${library.id}`} value={`${library.type}:${library.id}`}>{library.name} · {library.type}</option>)}</select></label>

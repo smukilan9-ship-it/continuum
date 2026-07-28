@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { getStore } from "@/lib/store";
+import { logRequestFailure, publicErrorMessage } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -138,7 +139,8 @@ export async function POST(request: Request) {
       }
     } catch (scheduleError) {
       // A schedule failure must not undo the goal/milestone/task plan.
-      scheduleStatus = { status: "deferred", reason: scheduleError instanceof Error ? scheduleError.message : "Schedule could not be generated now." };
+      logRequestFailure("onboarding_schedule_deferred", { userId: user.id }, scheduleError);
+      scheduleStatus = { status: "deferred", reason: publicErrorMessage(scheduleError, "Schedule could not be generated now.") };
     }
 
     const finalSchedule = await store.read("load_schedule", { maxTokens: 4000 });
@@ -153,6 +155,7 @@ export async function POST(request: Request) {
       assumptions: plan.assumptions,
     }, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Onboarding plan could not be created" }, { status: 500 });
+    logRequestFailure("onboarding_failed", {}, error);
+    return NextResponse.json({ error: publicErrorMessage(error, "Onboarding plan could not be created") }, { status: 500 });
   }
 }

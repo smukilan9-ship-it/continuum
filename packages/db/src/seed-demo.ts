@@ -330,13 +330,27 @@ export function buildDemoData(now: Date) {
     { id: "misc_demo_sql_commit", userId: DEMO_ACCOUNT_USER_ID, conceptId: "concept_demo_sql_txn", attemptId: "attempt_demo_sql_txn", label: "Assumed data-changing queries persist without commit()", status: "resolved", confidence: 0.8 },
   ];
 
-  // Schedule: today's committed block + an earlier completed one; upcoming blocks.
+  // Schedule: every block is dated relative to `now()` and spread across the whole
+  // rolling seven-day window the Plan grid renders, so the demo shows a populated
+  // current week no matter how long ago it was seeded. Absolute dates decayed a
+  // little each day until the flagship planning screen looked broken.
+  const atDay = (day: number, hour: number, minutes: number) => {
+    const date = daysFromNow(day);
+    date.setHours(hour, 0, 0, 0);
+    return { startsAt: date, endsAt: new Date(date.getTime() + minutes * 60_000) };
+  };
   const scheduleRows = [
-    { id: "block_demo_sat_today", taskId: "task_demo_sat_geometry", startsAt: hoursFromNow(2), endsAt: hoursFromNow(3), status: "committed", proposalId: "prop_demo_sat", committedAt: daysFromNow(-1) },
-    { id: "block_demo_sql_yesterday", taskId: "task_demo_sql_crud", startsAt: hoursFromNow(-20), endsAt: hoursFromNow(-19), status: "done", proposalId: "prop_demo_sql", committedAt: daysFromNow(-3) },
-    { id: "block_demo_sql_tomorrow", taskId: "task_demo_sql_param", startsAt: hoursFromNow(30), endsAt: hoursFromNow(31), status: "committed", proposalId: "prop_demo_sql", committedAt: daysFromNow(-1) },
-    { id: "block_demo_oasis_soon", taskId: "task_demo_oasis_dense", startsAt: hoursFromNow(48), endsAt: hoursFromNow(50), status: "committed", proposalId: "prop_demo_oasis", committedAt: daysFromNow(-1) },
-    { id: "block_demo_sat_reading", taskId: "task_demo_sat_reading", startsAt: daysFromNow(2), endsAt: new Date(daysFromNow(2).getTime() + 70 * 60_000), status: "committed", proposalId: "prop_demo_sat", committedAt: daysFromNow(-1) },
+    { id: "block_demo_sat_today", taskId: "task_demo_sat_geometry", ...atDay(0, 17, 60), status: "committed", proposalId: "prop_demo_sat", committedAt: daysFromNow(-1) },
+    { id: "block_demo_sql_today", taskId: "task_demo_sql_crud", ...atDay(0, 19, 45), status: "committed", proposalId: "prop_demo_sql", committedAt: daysFromNow(-1) },
+    { id: "block_demo_sql_tomorrow", taskId: "task_demo_sql_param", ...atDay(1, 17, 60), status: "committed", proposalId: "prop_demo_sql", committedAt: daysFromNow(-1) },
+    { id: "block_demo_sat_reading", taskId: "task_demo_sat_reading", ...atDay(1, 19, 70), status: "committed", proposalId: "prop_demo_sat", committedAt: daysFromNow(-1) },
+    { id: "block_demo_oasis_soon", taskId: "task_demo_oasis_dense", ...atDay(2, 17, 120), status: "committed", proposalId: "prop_demo_oasis", committedAt: daysFromNow(-1) },
+    { id: "block_demo_exo_cv", taskId: "task_demo_exo_ensemble", ...atDay(3, 18, 90), status: "committed", proposalId: "prop_demo_exo", committedAt: daysFromNow(-1) },
+    { id: "block_demo_sat_mock", taskId: "task_demo_sat_mockreview", ...atDay(4, 17, 60), status: "committed", proposalId: "prop_demo_sat", committedAt: daysFromNow(-1) },
+    { id: "block_demo_sql_cli", taskId: "task_demo_sql_cli", ...atDay(5, 10, 120), status: "committed", proposalId: "prop_demo_sql", committedAt: daysFromNow(-1) },
+    { id: "block_demo_oasis_draft", taskId: "task_demo_oasis_fig", ...atDay(6, 11, 90), status: "committed", proposalId: "prop_demo_oasis", committedAt: daysFromNow(-1) },
+    // One completed block just before the window, so history stays reachable.
+    { id: "block_demo_sql_yesterday", taskId: "task_demo_sql_crud", ...atDay(-1, 18, 60), status: "done", proposalId: "prop_demo_sql", committedAt: daysFromNow(-3) },
   ];
 
   const calendarRows = [

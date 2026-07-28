@@ -2,7 +2,8 @@
 
 import { AlertTriangle, BookOpen, Check, ChevronDown, Clipboard, Download, ExternalLink, Eye, EyeOff, KeyRound, Laptop, Library, Link2, LoaderCircle, Pause, Play, RefreshCw, ShieldCheck, Unplug, Video, X } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Badge, Button, LoadingButton, Modal } from "@/components/ui";
+import { Badge, Button, ConfirmationDialog, LoadingButton, Modal } from "@/components/ui";
+import { PageHeader } from "@/components/workspace/page-header";
 
 type Status = {
   mcp: { endpoint: string; status: string; connections: Array<{ clientId: string; name: string; scopes: string[]; connectedAt: string; lastUsedAt?: string; calls: number }>; claude: { instructions: string[] } };
@@ -47,16 +48,24 @@ const links = {
   youtubeDocs: "https://developers.google.com/youtube/v3/getting-started",
 };
 
+/**
+ * One row per integration, expanded on click.
+ *
+ * Every card used to render fully expanded at once, producing a page several
+ * screens long in which nothing stood out. Connected integrations open by
+ * default because that is where the controls you came for live.
+ */
 function ConnectionCard({ id, icon, title, status, connected, description, children }: { id?: string; icon: ReactNode; title: string; status: string; connected?: boolean; description: string; children: ReactNode }) {
   return (
-    <article className="connection-card" id={id}>
-      <div className="connection-card-head">
+    <details className="connection-card" id={id} open={connected}>
+      <summary className="connection-card-head">
         <span className="connection-mark">{icon}</span>
         <div><h2>{title}</h2><p>{description}</p></div>
-        <Badge tone={connected ? "green" : "neutral"}>{connected ? <Check size={12} /> : null}{status}</Badge>
-      </div>
-      {children}
-    </article>
+        <Badge tone={connected ? "green" : "neutral"}>{connected ? <Check size={12} aria-hidden="true" /> : null}{status}</Badge>
+        <ChevronDown className="connection-card-chevron" size={17} aria-hidden="true" />
+      </summary>
+      <div className="connection-card-body">{children}</div>
+    </details>
   );
 }
 
@@ -118,6 +127,10 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
   const [youtubePassword, setYouTubePassword] = useState("");
   const [showYouTubeKey, setShowYouTubeKey] = useState(false);
   const [youtubeTest, setYouTubeTest] = useState<{ ok: boolean; message: string }>();
+  // Every destructive confirmation on this screen goes through the app's own
+  // dialog. Native `window.confirm` is unstyled, untestable, and suppressed in
+  // some embedded contexts.
+  const [confirmRequest, setConfirmRequest] = useState<{ title: string; description: string; confirmLabel: string; run: () => void | Promise<void> }>();
 
   const refresh = useCallback(async () => {
     setError("");
@@ -404,12 +417,20 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
     }
   }
 
-  async function disconnectOpenAlex() {
+  function disconnectOpenAlex() {
     if (!openAlexPassword) {
       showToast("Enter your current Continuum password before disconnecting OpenAlex.");
       return;
     }
-    if (!window.confirm("Disconnect OpenAlex? Saved papers and entities stay in Continuum, but live scholarly search will use the deployment key only if one is available.")) return;
+    setConfirmRequest({
+      title: "Disconnect OpenAlex?",
+      description: "Saved papers and entities stay in Continuum. Live scholarly search falls back to the deployment key, or to the unauthenticated public API.",
+      confirmLabel: "Disconnect OpenAlex",
+      run: () => performDisconnectOpenAlex(),
+    });
+  }
+
+  async function performDisconnectOpenAlex() {
     setBusy("openalex-disconnect");
     try {
       const response = await fetch("/api/integrations/credentials", {
@@ -481,12 +502,20 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
     }
   }
 
-  async function disconnectYouTube() {
+  function disconnectYouTube() {
     if (!youtubePassword) {
       showToast("Enter your current Continuum password before disconnecting YouTube.");
       return;
     }
-    if (!window.confirm("Disconnect the YouTube Data API? Saved learning progress stays in Continuum, but live video search will use the deployment key only if one is available.")) return;
+    setConfirmRequest({
+      title: "Disconnect the YouTube Data API?",
+      description: "Saved learning progress stays in Continuum. Live video search will use the deployment key only if one is available.",
+      confirmLabel: "Disconnect YouTube",
+      run: () => performDisconnectYouTube(),
+    });
+  }
+
+  async function performDisconnectYouTube() {
     setBusy("youtube-disconnect");
     try {
       const response = await fetch("/api/integrations/credentials", {
@@ -515,24 +544,25 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
 
   return (
     <div className="screen connections-screen">
-      <header className="page-intro connections-intro">
-        <div><p className="eyebrow">CONNECTIONS</p><h1>Bring your academic context with you.</h1><p className="page-description">Each connection is optional. You can see what it reads, choose when it syncs, and revoke access without deleting your work.</p></div>
-        <Button className="button-secondary" onClick={() => void refresh()} disabled={busy === "refresh"}><RefreshCw size={15} />Refresh</Button>
-      </header>
+      <PageHeader
+        title="Connections"
+        description="Bring your academic context with you. Each connection is optional — you can see what it reads, choose when it syncs, and revoke access without deleting your work."
+        actions={<Button className="button-secondary compact-button" onClick={() => void refresh()} disabled={busy === "refresh"}><RefreshCw size={15} aria-hidden="true" />Refresh</Button>}
+      />
       {error ? <div className="inline-alert" role="alert"><Unplug size={17} /><span>{error}</span><button onClick={() => void refresh()}>Try again</button></div> : null}
 
       <section className="connection-section" aria-labelledby="assistants-title">
-        <div className="section-heading"><div><p className="eyebrow">DEVELOPER & ASSISTANTS</p><h2 id="assistants-title">One memory, wherever you work</h2></div><p>Claude retrieves only the relevant context it requests. It never receives a raw history dump.</p></div>
+        <div className="section-heading"><div><h2 id="assistants-title">Assistants</h2></div><p>Claude retrieves only the relevant context it requests. It never receives a raw history dump.</p></div>
         <ConnectionCard id="claude" icon={<Link2 size={20} />} title="Claude" status={status?.mcp.connections.length ? "Connected" : "Ready to connect"} connected={Boolean(status?.mcp.connections.length)} description="Use your Continuum goals, projects, sources, decisions, progress, and schedule from Claude through remote MCP.">
           <div className="permission-line"><ShieldCheck size={15} /><span>OAuth sign-in · permission-scoped tools · consequential writes require approval</span></div>
           <div className="connection-actions"><Button className="button-primary" disabled={!status?.mcp.endpoint} onClick={() => { setClaudeTest(undefined); setClaudeOpen(true); }}><Link2 size={15} />Connect Claude</Button></div>
           <Guide title="Connect Claude in four steps" steps={status?.mcp.claude.instructions ?? ["Open Claude Customize → Connectors.", "Add a custom connector.", "Paste the Continuum connector URL.", "Sign in and review permissions."]} official={[{ label: "Claude's official connector guide", href: links.claude }]} />
-          {status?.mcp.connections.map((connection) => <div className="connected-account" key={connection.clientId}><div><strong>{connection.name}</strong><span>{connection.scopes.map((scope) => scope.replace(":", " ")).join(" · ")}</span><small>{connection.lastUsedAt ? `Last used ${dateLabel(connection.lastUsedAt)}` : `Connected ${dateLabel(connection.connectedAt)}`}</small></div><button onClick={async () => { if (window.confirm(`Revoke ${connection.name}'s access to Continuum?`)) { await action("/api/integrations", { action: "revoke_mcp_client", clientId: connection.clientId }, connection.clientId); showToast("Claude access revoked."); } }}>Revoke</button></div>)}
+          {status?.mcp.connections.map((connection) => <div className="connected-account" key={connection.clientId}><div><strong>{connection.name}</strong><span>{connection.scopes.map((scope) => scope.replace(":", " ")).join(" · ")}</span><small>{connection.lastUsedAt ? `Last used ${dateLabel(connection.lastUsedAt)}` : `Connected ${dateLabel(connection.connectedAt)}`}</small></div><button onClick={() => setConfirmRequest({ title: `Revoke ${connection.name}?`, description: `${connection.name} will immediately lose access to your Continuum context. Your data is unchanged and you can reconnect at any time.`, confirmLabel: "Revoke access", run: async () => { await action("/api/integrations", { action: "revoke_mcp_client", clientId: connection.clientId }, connection.clientId); showToast("Claude access revoked."); } })}>Revoke</button></div>)}
         </ConnectionCard>
       </section>
 
       <section className="connection-section" aria-labelledby="study-tools-title">
-        <div className="section-heading"><div><p className="eyebrow">PRODUCTIVITY</p><h2 id="study-tools-title">Sources and notes</h2></div><p>Continuum’s planner uses its own editable schedule. These optional tools add research and note context.</p></div>
+        <div className="section-heading"><div><h2 id="study-tools-title">Sources and notes</h2></div><p>Continuum’s planner uses its own editable schedule. These optional tools add research and note context.</p></div>
         <div className="connection-list">
           <ConnectionCard
             icon={<Library size={20} />}
@@ -561,7 +591,7 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
           </ConnectionCard>
 
           <ConnectionCard icon={<Library size={20} />} title="Zotero" status={status?.zotero.connected ? "Connected" : "Not connected"} connected={status?.zotero.connected} description="Index citation metadata and abstracts from your private Zotero library so research retrieval can find the right paper again.">
-            {status?.zotero.connected ? <><div className="connected-summary"><strong>{status.zotero.username ?? "Private Zotero library"}</strong><span>Last sync: {dateLabel(status.zotero.lastSyncAt)}</span></div><div className="connection-actions"><Button className="button-primary" disabled={busy === "zotero-sync"} onClick={async () => { const result = await action("/api/connections/zotero", { action: "sync" }, "zotero-sync"); if (result) showToast(result.hasMore ? `${result.indexed ?? 0} items indexed. ${result.remaining ?? 0} remain; sync again to continue.` : `Zotero sync complete: ${result.indexed ?? 0} changed items indexed.`); }}>{busy === "zotero-sync" ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}Sync library</Button><Button className="button-quiet danger" onClick={async () => { if (window.confirm("Disconnect Zotero? Already indexed source metadata stays in Continuum until you delete it from Research.")) await action("/api/connections/zotero", { action: "disconnect" }, "zotero-disconnect"); }}>Disconnect</Button></div></> : null}
+            {status?.zotero.connected ? <><div className="connected-summary"><strong>{status.zotero.username ?? "Private Zotero library"}</strong><span>Last sync: {dateLabel(status.zotero.lastSyncAt)}</span></div><div className="connection-actions"><Button className="button-primary" disabled={busy === "zotero-sync"} onClick={async () => { const result = await action("/api/connections/zotero", { action: "sync" }, "zotero-sync"); if (result) showToast(result.hasMore ? `${result.indexed ?? 0} items indexed. ${result.remaining ?? 0} remain; sync again to continue.` : `Zotero sync complete: ${result.indexed ?? 0} changed items indexed.`); }}>{busy === "zotero-sync" ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}Sync library</Button><Button className="button-quiet danger" onClick={() => setConfirmRequest({ title: "Disconnect Zotero?", description: "Already-indexed source metadata stays in Continuum until you delete it from Research.", confirmLabel: "Disconnect Zotero", run: async () => { await action("/api/connections/zotero", { action: "disconnect" }, "zotero-disconnect"); } })}>Disconnect</Button></div></> : null}
             {!status?.zotero.connected ? <div className="connection-actions"><Button className="button-primary" disabled={!status?.zotero.available} onClick={() => { setZoteroStep(1); setZoteroTest(undefined); setZoteroOpen(true); }}><KeyRound size={15} />Connect Zotero</Button></div> : null}
             <Guide title="Create the safest Zotero key" steps={["Open Zotero's official key page and create a new key named Continuum.", "Allow access to your personal library. Leave write access off; Continuum only needs to read.", "Paste the key above. Continuum validates it directly with Zotero before storing it encrypted.", "Run Sync library. Attachments and full-text PDFs are not imported automatically."]} official={[{ label: "Create a Zotero key", href: links.zoteroKey }, { label: "Zotero Web API guide", href: links.zoteroApi }]} />
           </ConnectionCard>
@@ -597,7 +627,7 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
               const record = obsidianDashboard.records.find((candidate) => candidate.sync_id === operation.sync_id);
               return <div className="obsidian-operation" key={operation.id}><span><strong>{record?.title ?? operation.operation_type}</strong><small>{operation.operation_type} · {dateLabel(operation.updated_at)}</small></span><Badge tone={operation.status === "completed" ? "green" : operation.status === "conflict" || operation.latest_error ? "orange" : "neutral"}>{operation.status === "completed" && operation.bridge_acknowledged_at ? "acknowledged" : operation.status}</Badge>{operation.latest_error ? <p>{operation.latest_error}</p> : null}</div>;
             })}</div></details> : null}
-            {status?.obsidian.tokens.map((token) => <div className="connected-account" key={token.id}><div><strong>{token.name}</strong><span>Selected documents · memory updates</span><small>{token.lastUsedAt ? `Last used ${dateLabel(token.lastUsedAt)}` : `Created ${dateLabel(token.createdAt)}`}</small></div><button onClick={async () => { if (window.confirm(`Revoke ${token.name}?`)) await action("/api/integrations", { action: "revoke_integration_token", tokenId: token.id }, token.id); }}>Revoke</button></div>)}
+            {status?.obsidian.tokens.map((token) => <div className="connected-account" key={token.id}><div><strong>{token.name}</strong><span>Selected documents · memory updates</span><small>{token.lastUsedAt ? `Last used ${dateLabel(token.lastUsedAt)}` : `Created ${dateLabel(token.createdAt)}`}</small></div><button onClick={() => setConfirmRequest({ title: `Revoke ${token.name}?`, description: "The Obsidian bridge using this token will stop syncing. Notes already in your vault are untouched.", confirmLabel: "Revoke token", run: async () => { await action("/api/integrations", { action: "revoke_integration_token", tokenId: token.id }, token.id); } })}>Revoke</button></div>)}
             <Guide title="Install Continuum Sync" steps={["Install the Continuum Sync plugin files into your chosen vault's .obsidian/plugins/continuum-sync folder.", "Review and enable it under Settings → Community plugins.", "Create a token here and paste it into the plugin's secret prompt.", "Choose one folder and run a manual sync before enabling any automatic sync."]} official={[{ label: "Official Obsidian plugin guide", href: links.obsidian }, { label: "Official plugin security guide", href: links.obsidianSecurity }]} />
           </ConnectionCard>
         </div>
@@ -750,6 +780,17 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
           <p className="privacy-note">Continuum stores the approved Claude client, scopes, and revocation state. OAuth tokens are short-lived or revocable; the connector never receives your Continuum password.</p>
         </div>
       </Modal>
+
+      <ConfirmationDialog
+        open={Boolean(confirmRequest)}
+        onOpenChange={(open) => { if (!open) setConfirmRequest(undefined); }}
+        title={confirmRequest?.title ?? ""}
+        description={confirmRequest?.description ?? ""}
+        confirmLabel={confirmRequest?.confirmLabel ?? "Confirm"}
+        destructive
+        busy={Boolean(busy)}
+        onConfirm={() => { const request = confirmRequest; setConfirmRequest(undefined); void request?.run(); }}
+      />
     </div>
   );
 }

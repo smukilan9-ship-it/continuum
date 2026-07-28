@@ -4,6 +4,7 @@ import { issueToken, mcpResource, validMcpResource, verifyClientRegistration, ve
 import { getStore } from "@/lib/store";
 import { NextResponse } from "next/server";
 import { enforceRateLimit } from "@/lib/auth";
+import { publicErrorMessage } from "@/lib/api-errors";
 
 async function tokenResponse(payload: { sub: string; clientId: string; scopes: string[]; resource: string }) {
   const now = Math.floor(Date.now() / 1000);
@@ -68,6 +69,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unsupported_grant_type" }, { status: 400 });
   } catch (error) {
     console.error(JSON.stringify({ level: "error", message: "oauth_token_failed", requestId, error: error instanceof Error ? error.message : "Token exchange failed", ms: Date.now() - startedAt }));
-    return NextResponse.json({ error: "invalid_grant", error_description: error instanceof Error ? error.message : "Token exchange failed" }, { status: 400 });
+    return NextResponse.json({ error: "invalid_grant", error_description: publicErrorMessage(error, "Token exchange failed") }, { status: 400 });
   }
 }

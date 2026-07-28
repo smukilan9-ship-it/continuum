@@ -3350,3 +3350,450 @@ html[data-theme="dark"] .code-editor-shell .cm-activeLineGutter { color: var(--l
     font-size: 0;
   }
 }
+
+/* ============================================================================
+   Redesign layer — see finalplan.md
+   Loaded last so it can refine the established visual language without
+   rewriting it. Grouped by the plan section that motivates each rule.
+   ========================================================================= */
+
+/* §6.6 Plan — week navigation and readable block titles (F-08, F-15) */
+.week-nav { display: inline-flex; align-items: center; gap: 4px; padding: 2px; border: 1px solid var(--line); border-radius: 10px; }
+.week-nav > button { min-width: 28px; height: 28px; display: grid; place-items: center; color: var(--muted-strong); background: transparent; border: 0; border-radius: 8px; cursor: pointer; transition: background 150ms ease-out, color 150ms ease-out; }
+.week-nav > button:hover { color: var(--ink); background: var(--surface-soft); }
+.week-nav > button:focus-visible { outline: 2px solid var(--focus, var(--blue-strong)); outline-offset: 1px; }
+.week-nav > span { min-width: 84px; padding-inline: 4px; text-align: center; color: var(--muted-strong); font-size: 12px; font-weight: 600; }
+.week-nav-today { width: auto !important; padding-inline: 8px; font-size: 12px; font-weight: 600; }
+/* Generated titles run long ("Run the dense-null candidate on the two completed
+   LL477 H-DAB bundles") and wrapped to five or six lines in a narrow column. */
+.week-block strong,
+.draft-block strong { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* §8.1 Spacing scale — 4px base, used exclusively by the redesign layer. */
+:root {
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-6: 24px; --space-8: 32px; --space-12: 48px; --space-16: 64px;
+  --radius-card: 12px;
+  /* §8.2 Type scale — six sizes, nothing below 12px. */
+  --type-display: 40px; --type-title: 24px; --type-heading: 18px;
+  --type-body: 14px; --type-small: 13px; --type-caption: 12px;
+  --motion-fast: 150ms; --motion-panel: 200ms; --motion-modal: 250ms;
+}
+
+/* §5.4 Compact page header — replaces the ~250px marketing hero on every screen. */
+.page-header { display: grid; gap: var(--space-2); padding-block: var(--space-2) var(--space-3); }
+.page-header-line { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.page-header-line h1 { margin: 0; color: var(--ink); font-size: var(--type-title); font-weight: 600; line-height: 1.25; letter-spacing: -.01em; }
+.page-header-context { min-width: 0; display: flex; align-items: center; gap: var(--space-2); color: var(--muted-strong); font-size: var(--type-body); }
+.page-header-help,
+.page-header-overflow { width: 28px; height: 28px; display: grid; place-items: center; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 8px; cursor: pointer; transition: color var(--motion-fast) ease-out, background var(--motion-fast) ease-out; }
+.page-header-help:hover,
+.page-header-overflow:hover { color: var(--ink); background: var(--surface-soft); }
+.page-header-actions { margin-inline-start: auto; display: flex; align-items: center; gap: var(--space-2); }
+.page-header-popover,
+.page-header-menu { max-width: 320px; padding: var(--space-3); display: grid; gap: var(--space-1); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow-md); z-index: 60; }
+.page-header-popover strong { font-size: var(--type-small); }
+.page-header-popover p { margin: 0; color: var(--muted-strong); font-size: var(--type-small); line-height: 1.5; }
+.page-header-popover-arrow { fill: var(--surface); }
+.page-header-menu { gap: var(--space-1); }
+.page-header-menu .button { width: 100%; justify-content: flex-start; }
+.page-header-stats { margin: 0; display: flex; flex-wrap: wrap; gap: var(--space-3); color: var(--muted); font-size: var(--type-caption); }
+.page-header-stats > div { display: flex; align-items: baseline; gap: var(--space-1); }
+.page-header-stats dt { order: 2; text-transform: lowercase; }
+.page-header-stats dd { order: 1; margin: 0; color: var(--ink); font-weight: 600; font-size: var(--type-small); }
+
+/* §8.4 Section tabs — one underline style for switching major content. */
+.section-tabs { display: flex; align-items: center; gap: var(--space-4); overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line); }
+.section-tabs::-webkit-scrollbar { display: none; }
+.section-tabs > button { position: relative; padding: var(--space-2) 0 10px; display: inline-flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; color: var(--muted); background: transparent; border: 0; font-size: var(--type-body); font-weight: 500; cursor: pointer; transition: color var(--motion-fast) ease-out; }
+.section-tabs > button::after { content: ""; position: absolute; inset-inline: 0; bottom: -1px; height: 2px; background: transparent; border-radius: 2px; transition: background var(--motion-fast) ease-out; }
+.section-tabs > button:hover { color: var(--ink); }
+.section-tabs > button.active { color: var(--ink); font-weight: 600; }
+.section-tabs > button.active::after { background: var(--primary); }
+.section-tabs > button > small { padding: 1px 6px; color: var(--muted-strong); background: var(--surface-soft); border-radius: 999px; font-size: var(--type-caption); }
+
+/* §7 Shared empty / loading / error regions. */
+.data-region { display: grid; gap: var(--space-2); }
+.loading-state-skeleton { display: grid; gap: var(--space-2); padding: var(--space-2) 0; }
+.skeleton-row { height: 56px; display: block; background: linear-gradient(90deg, var(--surface-soft) 25%, var(--surface-strong) 50%, var(--surface-soft) 75%); background-size: 240% 100%; border-radius: 10px; animation: skeleton-shimmer 1.4s ease-in-out infinite; }
+@keyframes skeleton-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+.loading-state-spinner { padding: var(--space-6); display: flex; align-items: center; justify-content: center; gap: var(--space-2); color: var(--muted); font-size: var(--type-small); }
+.state-detail { margin-top: var(--space-2); }
+.state-detail summary { color: var(--muted); font-size: var(--type-caption); cursor: pointer; }
+.state-detail p { margin: var(--space-2) 0 0; padding: var(--space-2); color: var(--muted-strong); background: var(--surface-soft); border-radius: 8px; font-family: var(--font-mono), monospace; font-size: var(--type-caption); overflow-x: auto; }
+
+/* §5.2 Library — merged Zotero + OpenAlex destination. */
+.library-screen { display: grid; gap: var(--space-4); }
+.library-saved { display: grid; gap: var(--space-2); }
+.library-saved-row { padding: var(--space-3); display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; border: 1px solid var(--line); border-radius: var(--radius-card); }
+.library-saved-row > div:first-child { min-width: 0; display: grid; gap: var(--space-1); }
+.library-saved-row strong { font-size: var(--type-body); }
+.library-saved-row small { color: var(--muted); font-size: var(--type-caption); }
+.library-saved-actions { display: flex; gap: var(--space-2); }
+
+/* §5.3 The one scholarly-search surface, shared by Library and Research. */
+.scholarly-search { display: grid; gap: var(--space-4); }
+.scholarly-toolbar { display: grid; gap: var(--space-3); }
+.scholarly-toolbar form { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.scholarly-toolbar form label { min-width: 220px; flex: 1; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3); color: var(--muted); background: var(--surface-soft); border: 1px solid var(--line); border-radius: 10px; }
+.scholarly-toolbar form input { width: 100%; min-height: 36px; color: var(--ink); background: transparent; border: 0; font-size: var(--type-body); outline: none; }
+.scholarly-filters { display: flex; flex-wrap: wrap; gap: var(--space-3); padding-top: var(--space-1); }
+.scholarly-filters label { display: grid; gap: var(--space-1); color: var(--muted); font-size: var(--type-caption); }
+.scholarly-filters input,
+.scholarly-filters select { min-height: 32px; padding: 0 var(--space-2); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font-size: var(--type-small); }
+.scholarly-filter-check { flex-direction: row; align-items: center; gap: var(--space-2); align-self: end; min-height: 32px; }
+.scholarly-destination { margin: 0; color: var(--muted-strong); font-size: var(--type-small); }
+.scholarly-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: var(--space-4); align-items: start; }
+.scholarly-results,
+.scholarly-detail { display: grid; gap: var(--space-2); align-content: start; }
+.scholarly-results > header { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.scholarly-results > header strong { font-size: var(--type-small); }
+.scholarly-results > header .button { margin-inline-start: auto; }
+.cache-chip { padding: 2px var(--space-2); color: var(--muted-strong); background: var(--surface-soft); border-radius: 999px; font-size: var(--type-caption); }
+.scholarly-card { display: flex; align-items: stretch; gap: var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-card); transition: border-color var(--motion-fast) ease-out, background var(--motion-fast) ease-out; }
+.scholarly-card:hover { border-color: var(--line-strong); background: var(--surface-soft); }
+.scholarly-card.active { border-color: var(--primary); }
+.scholarly-card-main { flex: 1; min-width: 0; padding: var(--space-3); display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); color: inherit; background: transparent; border: 0; text-align: start; cursor: pointer; }
+.scholarly-card-main > div { min-width: 0; display: grid; gap: var(--space-1); }
+.scholarly-card-main strong { font-size: var(--type-body); line-height: 1.4; }
+.scholarly-card-main p { margin: 0; color: var(--muted-strong); font-size: var(--type-small); }
+.scholarly-card-main small { color: var(--muted); font-size: var(--type-caption); }
+.scholarly-card-actions { display: flex; align-items: center; gap: var(--space-2); padding-inline-end: var(--space-3); }
+.scholarly-bookmark { width: 32px; height: 32px; display: grid; place-items: center; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; transition: color var(--motion-fast) ease-out, border-color var(--motion-fast) ease-out; }
+.scholarly-bookmark:hover { color: var(--ink); border-color: var(--line-strong); }
+.scholarly-bookmark.saved { color: var(--primary-hover); background: var(--primary-soft); border-color: var(--primary); }
+.scholarly-detail > .data-region > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.scholarly-detail h2 { margin: var(--space-1) 0 0; font-size: var(--type-heading); line-height: 1.3; }
+.scholarly-detail h3 { margin: 0 0 var(--space-2); font-size: var(--type-small); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.scholarly-detail section { display: grid; gap: var(--space-2); }
+.scholarly-detail dl { margin: 0; display: grid; gap: var(--space-1); }
+.scholarly-detail dl > div { display: flex; gap: var(--space-2); font-size: var(--type-small); }
+.scholarly-detail dt { min-width: 88px; color: var(--muted); }
+.scholarly-detail dd { margin: 0; word-break: break-word; }
+.scholarly-facts { display: flex; flex-wrap: wrap; gap: var(--space-2); color: var(--muted-strong); font-size: var(--type-caption); }
+.scholarly-facts > span { padding: 2px var(--space-2); background: var(--surface-soft); border-radius: 999px; }
+.scholarly-external { color: var(--muted-strong); font-size: var(--type-caption); }
+
+@media (max-width: 1099px) {
+  .scholarly-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* §5.1 Sidebar grouped by intent. Today is the daily entry point and should not
+   look like a peer of Account & Security; the occasional destinations sit under
+   a divider. */
+.nav-group + .nav-group { margin-top: var(--space-3); }
+.nav-group-primary .nav-item { min-height: 46px; font-size: var(--type-body); font-weight: 650; }
+.nav-group-utility { margin-top: var(--space-4) !important; padding-top: var(--space-3); border-top: 1px solid var(--line); }
+.nav-group-utility .nav-item { font-size: var(--type-small); }
+.nav-group > p { font-size: var(--type-caption); font-weight: 600; }
+.nav-item small { font-size: var(--type-caption); }
+/* §8.3 The lime accent signals "the primary action / where you are" and nothing
+   else, so an active nav item and a primary button are the only lime surfaces. */
+.mobile-bottom-nav .nav-dot { position: absolute; inset-block-start: 8px; inset-inline-end: calc(50% - 16px); width: 6px; height: 6px; background: var(--primary-hover); border-radius: 50%; }
+.mobile-bottom-nav > button { position: relative; }
+
+/* §10.2 Onboarding — real progress and an honest completion state. */
+.onboarding-building { display: grid; gap: var(--space-4); }
+.build-stages { margin: 0; padding: 0; display: grid; gap: var(--space-3); list-style: none; }
+.build-stages > li { display: flex; align-items: center; gap: var(--space-3); color: var(--muted); font-size: var(--type-body); }
+.build-stages > li.current { color: var(--ink); font-weight: 600; }
+.build-stages > li.done { color: var(--muted-strong); }
+.build-stage-dot { width: 24px; height: 24px; display: grid; place-items: center; flex: 0 0 auto; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 50%; font-size: var(--type-caption); }
+.build-stages > li.done .build-stage-dot { color: #171812; background: var(--lime); border-color: var(--lime); }
+.build-stages > li.current .build-stage-dot { color: var(--primary-hover); border-color: var(--primary); }
+.onboarding-complete { display: grid; gap: var(--space-4); }
+.onboarding-complete h2 { margin: 0; font-size: var(--type-heading); }
+.onboarding-rationale { margin: 0; color: var(--muted); font-size: var(--type-small); line-height: 1.5; }
+.today-technical summary { color: var(--muted); font-size: var(--type-caption); cursor: pointer; }
+.today-technical p { margin: var(--space-2) 0 0; color: var(--muted-strong); font-family: var(--font-mono), monospace; font-size: var(--type-caption); word-break: break-all; }
+
+/* §6.1 Code — three panes on desktop, two on tablet, one at a time on mobile.
+   The rail is always present so adding a second file no longer shifts the
+   layout, and Setup / Task guidance live there instead of in full-width blocks
+   between the toolbar and the editor. */
+/* Three panes need real room: a 200px rail, a usable editor, and a 420px output
+   column sit inside the content area *after* the 310px sidebar and the page
+   gutters, so the three-pane layout starts at the wide breakpoint and the band
+   below it uses the two-pane stack. */
+.code-screen .code-studio {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "rail" "editor" "execution";
+  border-radius: var(--radius-card);
+}
+@media (min-width: 1400px) {
+  .code-screen .code-studio {
+    grid-template-columns: 190px minmax(380px, 1fr) 6px minmax(320px, var(--code-panel-width, 420px));
+    grid-template-areas: "rail editor resizer execution";
+  }
+  .code-screen .code-studio.panel-collapsed { grid-template-columns: 190px minmax(380px, 1fr) 52px; grid-template-areas: "rail editor execution"; }
+}
+.code-rail { grid-area: rail; min-width: 0; height: 100%; padding: var(--space-3) var(--space-2); display: flex; flex-direction: column; gap: var(--space-3); background: var(--surface-soft); border-right: 1px solid var(--line); }
+.code-rail-files { display: grid; gap: 2px; }
+.code-rail-files > strong { display: flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-2) var(--space-2); color: var(--muted); font-size: var(--type-caption); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.code-rail-files button,
+.code-rail-file-actions button { width: 100%; padding: 7px var(--space-2); display: flex; align-items: center; gap: var(--space-2); overflow: hidden; color: var(--muted-strong); background: transparent; border: 0; border-radius: 7px; font-size: var(--type-caption); font-family: var(--font-mono), ui-monospace, Menlo, monospace; text-align: start; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.code-rail-files button:hover,
+.code-rail-file-actions button:hover { color: var(--ink); background: var(--surface); }
+.code-rail-files button.active { color: var(--ink); background: var(--surface); font-weight: 600; }
+.code-rail-new { color: var(--primary-hover) !important; font-family: inherit !important; }
+.code-rail-file-actions { display: grid; gap: 2px; padding-top: var(--space-2); border-top: 1px solid var(--line); }
+.code-rail-file-actions button { font-family: inherit; }
+.code-rail-disclosure > summary { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); color: var(--muted-strong); border-radius: 7px; font-size: var(--type-small); cursor: pointer; list-style: none; }
+.code-rail-disclosure > summary::-webkit-details-marker { display: none; }
+.code-rail-disclosure > summary:hover { color: var(--ink); background: var(--surface); }
+.code-rail-disclosure > div { padding: var(--space-2); display: grid; gap: var(--space-2); font-size: var(--type-caption); }
+.code-rail-disclosure select { width: 100%; min-height: 32px; }
+.code-rail .studio-save-status { margin-top: auto; padding: var(--space-2); display: flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--type-caption); }
+.code-header-file { font-family: var(--font-mono), ui-monospace, Menlo, monospace; font-size: var(--type-small); }
+.code-screen .editor-pane .code-editor-shell .cm-scroller { min-height: 480px; max-height: none; }
+.code-screen .editor-pane .code-editor-fallback { min-height: 480px !important; max-height: none; }
+.code-screen .editor-pane,
+.code-screen .execution-pane { min-height: 600px; height: auto; }
+
+/* Error-first output: the fix leads, the dump is one disclosure away. */
+.runtime-error-lead { display: grid; gap: var(--space-3); padding: var(--space-4); background: var(--red-soft); border: 1px solid color-mix(in srgb, var(--red) 30%, transparent); border-radius: var(--radius-card); }
+.runtime-error-headline { display: flex; gap: var(--space-3); color: var(--red); }
+.runtime-error-headline strong { display: block; font-size: var(--type-body); font-family: var(--font-mono), ui-monospace, Menlo, monospace; }
+.runtime-error-headline span { display: block; margin-top: var(--space-1); color: var(--muted-strong); font-size: var(--type-small); }
+.runtime-error-lead > p { margin: 0; color: var(--muted-strong); font-size: var(--type-small); line-height: 1.5; }
+.runtime-error-lead .runtime-stderr summary { color: var(--muted); font-size: var(--type-caption); cursor: pointer; }
+.runtime-error-lead .runtime-stderr pre { margin: var(--space-2) 0 0; padding: var(--space-2); background: var(--surface); border-radius: 8px; font-size: var(--type-caption); overflow-x: auto; }
+
+/* Expected vs actual, aligned line by line. */
+.output-diff { display: grid; gap: 2px; margin-top: var(--space-2); font-size: var(--type-caption); }
+.output-diff-head { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.output-diff-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.output-diff-row code { padding: 3px var(--space-2); background: var(--surface-soft); border-radius: 6px; font-family: var(--font-mono), ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+.output-diff-row.differs code:first-child { background: var(--green-soft); }
+.output-diff-row.differs code:last-child { color: var(--red); background: var(--red-soft); }
+
+.coach-actions button.primary { color: #171812; background: var(--lime); border-color: var(--lime); font-weight: 600; }
+.coach-more > summary { color: var(--muted); font-size: var(--type-caption); cursor: pointer; }
+.coach-more > div { margin-top: var(--space-2); display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* The mobile pane switch is hidden until the layout actually stacks. */
+.code-mobile-switch { display: none; }
+
+/* §9 Tablet (768–1099px): two panes, not three. `/code` overflowed horizontally
+   at 834px because it fell between the desktop three-pane layout and the mobile
+   stack and was served well by neither. */
+@media (max-width: 1399px) {
+  .code-screen .code-rail { flex-direction: row; flex-wrap: wrap; align-items: center; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .code-screen .code-rail-files { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
+  .code-screen .code-rail-files button { width: auto; }
+  .code-screen .code-rail-file-actions { display: flex; gap: var(--space-1); padding-top: 0; border-top: 0; }
+  .code-screen .code-rail-file-actions button { width: auto; }
+  .code-screen .code-rail .studio-save-status { margin-top: 0; margin-inline-start: auto; }
+  .code-screen .editor-pane { min-height: 420px; }
+  .code-screen .execution-pane { min-height: 380px; border-top: 1px solid var(--line); }
+  .code-screen .editor-pane .code-editor-shell .cm-scroller { min-height: 360px; }
+  .code-screen .code-panel-resizer { display: none; }
+  .code-screen .code-panel-open { display: none; }
+}
+
+@media (max-width: 767px) {
+  .code-mobile-switch { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-1); padding: var(--space-1); background: var(--surface-soft); border: 1px solid var(--line); border-radius: 10px; }
+  .code-mobile-switch button { min-height: 40px; color: var(--muted-strong); background: transparent; border: 0; border-radius: 8px; font-size: var(--type-body); font-weight: 600; cursor: pointer; }
+  .code-mobile-switch button.active { color: var(--ink); background: var(--surface); box-shadow: var(--shadow); }
+  /* One pane at a time — stacking put the output below a full-height editor,
+     underneath the bottom nav. */
+  .code-screen.mobile-pane-editor .execution-pane,
+  .code-screen.mobile-pane-output .editor-pane { display: none; }
+  .code-screen .code-studio { grid-template-areas: "rail" "editor" "execution"; }
+  .code-screen .page-header-actions { width: 100%; flex-wrap: wrap; }
+  /* Touch targets and a Run bar that clears the bottom nav. */
+  .code-screen .page-header-actions .button { min-height: 44px; }
+  .pointer-only { display: none !important; }
+}
+
+/* §8.1 Density — the page opened ~48px down and stretched full-bleed on wide
+   screens, which made cards uncomfortable to read. */
+.content-wrap > .screen,
+.content-wrap > .page-stack { max-width: 1440px; margin-inline: auto; padding-top: var(--space-6); }
+
+/* §8.2 Type scale — six sizes, minimum body 13px, nothing below 12px. The old
+   scale ran down to 8px on week blocks and connection chips. */
+.week-block small { font-size: var(--type-caption); }
+.week-block strong { font-size: var(--type-small); line-height: 1.35; }
+.week-block span { font-size: var(--type-caption); }
+.week-day > header span { font-size: var(--type-caption); }
+.plan-toolbar-meta > span { font-size: var(--type-caption); }
+.plan-toolbar-meta strong { font-size: var(--type-small); }
+.code-rail-files > strong { font-size: var(--type-caption); }
+.connection-card-head p { font-size: var(--type-small); }
+.draft-block small,
+.draft-commitment small { font-size: var(--type-caption); }
+.draft-block strong,
+.draft-commitment strong { font-size: var(--type-small); }
+.draft-block span,
+.draft-commitment span { font-size: var(--type-caption); }
+
+/* §8.3 Contrast — muted-on-surface metadata was the likely WCAG AA failure.
+   These two tokens carry nearly all small text in the workspace. */
+:root { --muted-text: #5c5f54; --muted-strong: #43463d; }
+html[data-theme="dark"] { --muted-text: #b3b5a8; --muted-strong: #d2d1c7; }
+
+/* §8.4 Buttons — one height scale, one visual weight per role. */
+.button { min-height: 36px; font-size: var(--type-body); border-radius: 10px; transition: background var(--motion-fast) ease-out, border-color var(--motion-fast) ease-out, color var(--motion-fast) ease-out; }
+.button.compact-button { min-height: 32px; font-size: var(--type-small); }
+.button.button-large { min-height: 44px; }
+.button:focus-visible,
+.nav-item:focus-visible,
+.section-tabs > button:focus-visible,
+.scholarly-card-main:focus-visible { outline: 2px solid var(--primary-hover); outline-offset: 2px; }
+
+/* §8.4 Cards — one radius, one border, elevation only for overlays. */
+.card { border-radius: var(--radius-card); }
+.modal-content, .command-panel, .page-header-popover, .page-header-menu { box-shadow: var(--shadow-md); }
+
+/* §6.4 Assistant — grouped conversation list with previews, and an overflow for
+   the rare destructive actions. */
+.assistant-session-open > span { min-width: 0; display: grid; gap: 2px; text-align: start; }
+.assistant-session-open strong { display: block; overflow: hidden; font-size: var(--type-small); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-session-open small { display: block; overflow: hidden; color: var(--muted); font-size: var(--type-caption); text-overflow: ellipsis; white-space: nowrap; }
+.assistant-overflow { position: relative; }
+.assistant-overflow > summary { width: 32px; height: 32px; display: grid; place-items: center; color: var(--muted); border-radius: 8px; cursor: pointer; list-style: none; }
+.assistant-overflow > summary::-webkit-details-marker { display: none; }
+.assistant-overflow > summary:hover { color: var(--ink); background: var(--surface-soft); }
+.assistant-overflow > div { position: absolute; inset-inline-end: 0; top: calc(100% + var(--space-1)); z-index: 30; min-width: 220px; padding: var(--space-2); display: grid; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow-md); }
+.assistant-overflow .button { width: 100%; justify-content: flex-start; }
+.assistant-used-context p { margin: var(--space-2) 0; color: var(--muted-strong); font-size: var(--type-caption); }
+.assistant-used-context li > span { margin-inline-end: var(--space-2); padding: 1px 6px; color: var(--muted-strong); background: var(--surface-soft); border-radius: 999px; font-size: var(--type-caption); }
+
+/* §6.7 Connections — one row per integration, expanded on click. */
+.connection-card > summary { display: flex; align-items: center; gap: var(--space-3); cursor: pointer; list-style: none; }
+.connection-card > summary::-webkit-details-marker { display: none; }
+.connection-card-chevron { margin-inline-start: var(--space-2); color: var(--muted); transition: transform var(--motion-panel) ease-out; }
+.connection-card[open] .connection-card-chevron { transform: rotate(180deg); }
+.connection-card-body { padding-top: var(--space-4); display: grid; gap: var(--space-3); }
+.connection-card-head h2 { font-size: var(--type-heading); }
+
+/* §6.8 Review — superseded proposals collapse instead of repeating. */
+.proposal-superseded { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding-top: var(--space-3); border-top: 1px solid var(--line); }
+.proposal-superseded > button { color: var(--muted-strong); background: transparent; border: 0; font-size: var(--type-small); text-decoration: underline; cursor: pointer; }
+.proposal-superseded ul { flex-basis: 100%; margin: 0; padding-inline-start: var(--space-4); color: var(--muted); font-size: var(--type-caption); }
+.event-filter select { min-height: 32px; padding: 0 var(--space-2); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font-size: var(--type-small); }
+
+/* §6.8 Account — the session list is capped and the current session is pinned. */
+.session-current { border-color: var(--primary) !important; }
+.session-older > summary { padding: var(--space-2) 0; color: var(--muted-strong); font-size: var(--type-small); cursor: pointer; }
+
+/* §6.3 Learn — three bands, with the tools in tabs. */
+.learn-secondary-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); }
+.learn-secondary-actions button { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--muted-strong); background: transparent; border: 0; font-size: var(--type-small); cursor: pointer; }
+.learn-secondary-actions button:hover:not(:disabled) { color: var(--ink); text-decoration: underline; }
+.learn-tools { display: grid; gap: var(--space-4); }
+
+/* §6.2 Research — dashboard overview, inline project switcher, templates. */
+.page-header-project { max-width: 420px; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.research-project-switcher-inline { display: inline-flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-2); background: var(--surface-soft); border: 1px solid var(--line); border-radius: 10px; }
+.research-project-switcher-inline select { min-height: 32px; max-width: 320px; color: var(--ink); background: transparent; border: 0; font-size: var(--type-small); }
+.research-unresolved-card ul,
+.research-activity-card ul { margin: 0; padding-inline-start: var(--space-4); display: grid; gap: var(--space-2); font-size: var(--type-small); }
+.research-activity-card li { display: grid; gap: 2px; }
+.research-activity-card small { color: var(--muted); font-size: var(--type-caption); }
+.research-coming-next > div { display: grid; gap: var(--space-2); }
+.research-coming-next article { padding: var(--space-3); display: flex; align-items: flex-start; gap: var(--space-3); border: 1px dashed var(--line); border-radius: var(--radius-card); }
+.research-coming-next article p { margin: var(--space-1) 0 0; color: var(--muted); font-size: var(--type-small); }
+.research-templates { padding-top: var(--space-4); display: grid; gap: var(--space-2); }
+.research-templates > p { margin: 0; color: var(--muted); font-size: var(--type-small); }
+.research-templates > div { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.research-templates button { padding: var(--space-3); display: grid; gap: var(--space-1); text-align: start; background: var(--surface-soft); border: 1px solid var(--line); border-radius: var(--radius-card); cursor: pointer; transition: border-color var(--motion-fast) ease-out; }
+.research-templates button:hover:not(:disabled) { border-color: var(--primary); }
+.research-templates small { color: var(--muted-strong); font-size: var(--type-caption); line-height: 1.45; }
+
+/* §10 First run — welcome route, tour, shortcut sheet. */
+.welcome-shell { display: block; }
+.welcome-shell .main-area { max-width: 900px; margin-inline: auto; }
+.welcome-skip { padding: var(--space-6) 0; text-align: center; }
+.welcome-skip button { color: var(--muted-strong); background: transparent; border: 0; font-size: var(--type-small); text-decoration: underline; cursor: pointer; }
+.tour-mark { position: fixed; inset-block-end: calc(var(--space-6) + env(safe-area-inset-bottom)); inset-inline-start: var(--space-6); z-index: 70; max-width: 320px; padding: var(--space-4); display: grid; gap: var(--space-2); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow-md); }
+.tour-mark p { margin: 0; color: var(--muted-strong); font-size: var(--type-small); line-height: 1.5; }
+.tour-mark footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); color: var(--muted); font-size: var(--type-caption); }
+.tour-mark footer > div { display: flex; gap: var(--space-2); }
+.tour-mark footer button { padding: 6px var(--space-3); color: var(--muted-strong); background: transparent; border: 1px solid var(--line); border-radius: 8px; font-size: var(--type-caption); cursor: pointer; }
+.tour-mark footer .tour-next { color: #171812; background: var(--lime); border-color: var(--lime); font-weight: 600; }
+.shortcut-sheet dl { margin: 0; display: grid; gap: var(--space-3); }
+.shortcut-sheet dl > div { display: flex; align-items: center; gap: var(--space-3); }
+.shortcut-sheet dt { min-width: 64px; }
+.shortcut-sheet dd { margin: 0; color: var(--muted-strong); font-size: var(--type-small); }
+
+/* §3.13 Theme control — three explicit states, showing the resolved theme. */
+.theme-toggle { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 10px; }
+.theme-toggle button { width: 30px; height: 28px; display: grid; place-items: center; color: var(--muted); background: transparent; border: 0; border-radius: 8px; cursor: pointer; transition: color var(--motion-fast) ease-out, background var(--motion-fast) ease-out; }
+.theme-toggle button:hover { color: var(--ink); }
+.theme-toggle button.active { color: var(--ink); background: var(--surface); box-shadow: var(--shadow); }
+
+/* §9 Responsiveness — touch targets, sticky bars clearing the bottom nav, and no
+   horizontal page scroll at any width. */
+@media (max-width: 767px) {
+  .content-wrap > .screen,
+  .content-wrap > .page-stack { padding-inline: var(--space-6); padding-bottom: calc(56px + env(safe-area-inset-bottom) + var(--space-6)); }
+  .button, .nav-item, .section-tabs > button { min-height: 44px; }
+  .tour-mark { inset-inline: var(--space-4); inset-block-end: calc(56px + env(safe-area-inset-bottom) + var(--space-4)); max-width: none; }
+  .page-header-stats { gap: var(--space-2); }
+  .library-saved-row { align-items: flex-start; flex-direction: column; }
+}
+@media (min-width: 768px) and (max-width: 1099px) {
+  .content-wrap > .screen,
+  .content-wrap > .page-stack { padding-inline: var(--space-8); }
+}
+@media (min-width: 1100px) {
+  .content-wrap > .screen,
+  .content-wrap > .page-stack { padding-inline: var(--space-12); }
+}
+/* Wide content scrolls inside its own container, never the page. */
+.runtime-result pre,
+.sql-result > div,
+.state-detail p,
+.output-diff { max-width: 100%; overflow-x: auto; }
+
+/* §8.5 Motion — and no entrance animation on data that just loaded. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+  .skeleton-row { animation: none; background: var(--surface-soft); }
+}
+
+/* In-dialog discard confirmation — replaces the native `window.confirm`. */
+.modal-discard { margin: 0 var(--space-6); padding: var(--space-3); display: grid; gap: var(--space-3); background: var(--red-soft); border: 1px solid color-mix(in srgb, var(--red) 30%, transparent); border-radius: var(--radius-card); }
+.modal-discard p { margin: 0; color: var(--muted-strong); font-size: var(--type-small); }
+.modal-discard > div { display: flex; gap: var(--space-2); }
+
+/* §8.2 The next action is the one thing to read on Today, but at 38px it was
+   display type inside a card. `title` is the largest size a workspace screen
+   uses. */
+.next-action-card h2 { margin: var(--space-4) 0 var(--space-2); font-size: var(--type-title); line-height: 1.25; letter-spacing: -.01em; }
+.next-action-card { min-height: 0; }
+.next-action-card > p { font-size: var(--type-body); }
+
+/* The page header must wrap rather than push the page sideways: a long project
+   title plus a phase badge plus two actions exceeded 390px on Research. */
+.page-header { min-width: 0; }
+.page-header-line { min-width: 0; }
+.page-header-line h1 { min-width: 0; overflow-wrap: anywhere; }
+.page-header-context { min-width: 0; flex: 1 1 auto; flex-wrap: wrap; }
+.page-header-project { max-width: 100%; }
+.page-header-actions { flex-wrap: wrap; }
+.page-header-stats { min-width: 0; }
+.research-project-switcher-inline { max-width: 100%; }
+.research-project-switcher-inline select { max-width: 100%; min-width: 0; }
+@media (max-width: 767px) {
+  .page-header-actions { width: 100%; margin-inline-start: 0; }
+  .page-header-actions .button { flex: 1 1 auto; }
+}
+
+/* §8.3 WCAG AA contrast — axe found these three failing combinations at 2.35,
+   3.53, and 3.71:1 against a 4.5:1 requirement for small text. */
+kbd { color: var(--muted-strong); opacity: 1; font-size: var(--type-caption); }
+.week-empty { color: var(--muted); font-size: var(--type-caption); }
+/* CodeMirror's default light theme paints string literals at #ee4400 on cream. */
+.code-editor-shell .cm-editor .ͼf { color: #b8330b; }
+html[data-theme="dark"] .code-editor-shell .cm-editor .ͼf { color: #ff9a6b; }
+.output-tabs { display: flex; align-items: center; }
+.output-tab-strip { display: flex; align-items: center; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: none; }
+.output-tab-strip::-webkit-scrollbar { display: none; }
+
+/* The next-action card is dark in both themes, so text inside it cannot use the
+   page's muted token — that combination measured 2.71:1. */
+.next-action-card .today-technical summary { color: #c9cdbe; }
+.next-action-card .today-technical p { color: #d8dccd; }

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, cosineDistance, desc, eq, gt, ilike, inArray, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import type { MasteryState, MemoryEvent, OutcomeReceipt, ResourceActivity, ResourceRegistryEntry } from "@continuum/schemas";
 import { getDatabase } from "./client";
+import { deriveConversationTitle } from "./conversation-title";
 import {
   auditLog,
   aiRequestLeases,
@@ -441,7 +442,7 @@ export class NeonRepository {
       occurredAt: event.occurredAt.toISOString(),
     }));
 
-    if (view === "integrations" || view === "account" || view === "zotero" || view === "openalex") return empty;
+    if (["integrations", "account", "zotero", "openalex", "library"].includes(view)) return empty;
     if (view === "today") {
       const [goalRows, taskRows, milestoneRows, projectRows, receiptRows, activityRows, scheduleRows, constraintRows] = await Promise.all([
         userGoals(), userTasks(), userMilestones(), userProjects(), userReceipts(4),
@@ -1019,6 +1020,7 @@ export class NeonRepository {
       )).limit(1);
       if (!session) throw new Error("Assistant session not found or not accessible");
       const now = new Date();
+      const derivedTitle = deriveConversationTitle(session.title, input.role, input.content);
       const [message] = await tx.insert(assistantMessages).values({
         ...input,
         provider: input.provider ?? null,
@@ -1029,7 +1031,7 @@ export class NeonRepository {
         lastMessageAt: now,
         updatedAt: now,
         version: sql`${assistantSessions.version} + 1`,
-        ...(session.title === "New conversation" && input.role === "user" ? { title: input.content.trim().replace(/\s+/g, " ").slice(0, 72) } : {}),
+        ...(derivedTitle ? { title: derivedTitle } : {}),
       }).where(eq(assistantSessions.id, input.sessionId));
       return message;
     });
@@ -1390,7 +1392,29 @@ export class NeonRepository {
     return this.db.select().from(sessionReceipts).where(eq(sessionReceipts.userId, userId)).orderBy(desc(sessionReceipts.createdAt)).limit(Math.max(1, Math.min(limit, 50)));
   }
 
+  /**
+   * Creates a proposal, or refreshes an identical pending one.
+   *
+   * Re-running the same generator produced a new row every time, so the demo's
+   * review queue held four byte-identical "Commit the generated academic plan"
+   * proposals differing only by timestamp. An identical pending proposal is the
+   * same request, so it is updated in place rather than duplicated.
+   */
   async createProposal(input: { id: string; userId: string; clientId?: string; kind: string; entityId?: string; summary: string; payload: Record<string, unknown>; risk: string; expiresAt: string }) {
+    const existing = await this.db.select({ id: memoryProposals.id }).from(memoryProposals).where(and(
+      eq(memoryProposals.userId, input.userId),
+      eq(memoryProposals.kind, input.kind),
+      eq(memoryProposals.summary, input.summary),
+      eq(memoryProposals.status, "pending"),
+      gt(memoryProposals.expiresAt, new Date()),
+    )).limit(1);
+    const duplicate = existing[0];
+    if (duplicate) {
+      await this.db.update(memoryProposals)
+        .set({ payload: input.payload, risk: input.risk, expiresAt: new Date(input.expiresAt), updatedAt: new Date() })
+        .where(eq(memoryProposals.id, duplicate.id));
+      return duplicate.id;
+    }
     await this.db.insert(memoryProposals).values({ ...input, status: "pending", expiresAt: new Date(input.expiresAt) });
     return input.id;
   }

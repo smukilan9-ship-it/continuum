@@ -1,10 +1,10 @@
 "use client";
 
 import type { AuthUser } from "@continuum/db";
-import { Download, KeyRound, Laptop, LogOut, ShieldAlert, UserRound, Trash2 } from "lucide-react";
+import { Compass, Download, KeyRound, Laptop, LogOut, ShieldAlert, UserRound, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Button, Card, LoadingButton, Modal } from "@/components/ui";
-import { PageIntro } from "./page-intro";
+import { PageHeader } from "./page-header";
 
 type Toast = (message: string | null) => void;
 type Session = { id: string; current: boolean; device: string; createdAt: string; lastActivityAt: string; expiresAt: string; status: string };
@@ -54,14 +54,43 @@ export function AccountScreen({ user, showToast }: { user: AuthUser; showToast: 
     window.location.assign("/login?deleted=1");
   }
 
+  const orderedSessions = [...sessions].sort((left, right) => {
+    if (left.current !== right.current) return left.current ? -1 : 1;
+    return Date.parse(right.lastActivityAt) - Date.parse(left.lastActivityAt);
+  });
+  const recentSessions = orderedSessions.slice(0, 5);
+  const olderSessions = orderedSessions.slice(5);
+  const sessionRow = (session: Session) => (
+    <article key={session.id} className={session.current ? "session-current" : undefined}>
+      <span><Laptop size={17} aria-hidden="true" /></span>
+      <div><strong>{session.device}{session.current ? " · This session" : ""}</strong><small>Created {new Date(session.createdAt).toLocaleString()} · Active {new Date(session.lastActivityAt).toLocaleString()}</small></div>
+      <em>{session.status}</em>
+      {session.status === "active" && !session.current ? <button disabled={Boolean(busy)} onClick={() => void sessionAction("revoke", session.id)}>Sign out</button> : null}
+    </article>
+  );
+
   return <div className="screen account-screen">
-    <PageIntro eyebrow="ACCOUNT & SECURITY" title="Your account, sessions, and exit are under your control." description="Continuum uses a native username-and-password account for the hackathon. Sessions are revocable and exports exclude secrets." />
+    <PageHeader title="Account & Security" description="Your account, sessions, and exit are under your control. Continuum uses a native username-and-password account; sessions are revocable and exports exclude secrets." />
     <div className="account-grid">
       <Card className="account-card"><div className="account-card-heading"><UserRound size={20} /><div><h2>Username</h2><p>{user.username}</p></div></div><div className="account-status verified">Active account</div><small className="field-hint">Email verification and self-service recovery are planned after the hackathon.</small></Card>
       <Card className="account-card"><div className="account-card-heading"><KeyRound size={20} /><div><h2>Password</h2><p>Changing it revokes every other active session.</p></div></div><Button className="button-secondary" onClick={() => setPasswordOpen(true)}>Change password</Button></Card>
+      <Card className="account-card"><div className="account-card-heading"><Compass size={20} aria-hidden="true" /><div><h2>Getting started tour</h2><p>The three-step introduction to Today, Plan, and ⌘K.</p></div></div><Button className="button-secondary" onClick={() => { window.localStorage.removeItem("continuum.tour.completed.v1"); showToast("The tour will start again on your next screen."); }}>Restart tour</Button></Card>
       <Card className="account-card account-export"><div className="account-card-heading"><Download size={20} /><div><h2>Download your data</h2><p>A structured ZIP of your workspace, learning, research, Assistant, Zotero, and sync records. Secrets are excluded.</p></div></div><a className="button button-primary" href="/api/account/export"><Download size={14} />Download export</a></Card>
     </div>
-    <Card className="sessions-card"><header><div><Laptop size={20} /><div><h2>Active sessions</h2><p>Device names are approximate and raw session IDs are never displayed.</p></div></div><div><Button className="button-secondary" disabled={Boolean(busy)} onClick={() => void sessionAction("revoke_others")}>Sign out other sessions</Button><Button className="button-quiet danger" disabled={Boolean(busy)} onClick={() => void sessionAction("revoke_all")}><LogOut size={14} />Sign out all</Button></div></header><div className="session-list">{sessions.map((session) => <article key={session.id}><span><Laptop size={17} /></span><div><strong>{session.device}{session.current ? " · This session" : ""}</strong><small>Created {new Date(session.createdAt).toLocaleString()} · Active {new Date(session.lastActivityAt).toLocaleString()}</small></div><em>{session.status}</em>{session.status === "active" ? <button disabled={Boolean(busy)} onClick={() => void sessionAction("revoke", session.id)}>Sign out</button> : null}</article>)}</div></Card>
+    {/* The demo account rendered fifty session rows, each with its own Sign out
+        button. The current session is pinned first, the five most recent follow,
+        and everything older collapses. The bulk action stays prominent. */}
+    <Card className="sessions-card">
+      <header>
+        <div><Laptop size={20} aria-hidden="true" /><div><h2>Active sessions</h2><p>Device names are approximate and raw session IDs are never displayed.</p></div></div>
+        <div><Button className="button-secondary" disabled={Boolean(busy)} onClick={() => void sessionAction("revoke_others")}>Sign out other sessions</Button><Button className="button-quiet danger" disabled={Boolean(busy)} onClick={() => void sessionAction("revoke_all")}><LogOut size={14} aria-hidden="true" />Sign out all</Button></div>
+      </header>
+      <div className="session-list">{recentSessions.map(sessionRow)}</div>
+      {olderSessions.length ? <details className="session-older">
+        <summary>{olderSessions.length} older session{olderSessions.length === 1 ? "" : "s"}</summary>
+        <div className="session-list">{olderSessions.map(sessionRow)}</div>
+      </details> : null}
+    </Card>
     <Card className="danger-zone"><div><ShieldAlert size={22} /><div><h2>Delete account</h2><p>Download an export first. Deletion removes private server data, credentials, sessions, uploads, queues, and caches. You explicitly choose what happens to local Obsidian notes.</p></div></div><Button className="button-quiet danger" onClick={() => { setDeleteReady(false); setDeleteOpen(true); }}><Trash2 size={15} />Delete account</Button></Card>
 
     <Modal open={passwordOpen} onOpenChange={setPasswordOpen} title="Change password" description="Confirm the current password, then choose one you have not used recently.">

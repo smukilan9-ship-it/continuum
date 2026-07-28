@@ -6,7 +6,7 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { clsx, type ClassValue } from "clsx";
 import { AlertCircle, CheckCircle2, Inbox, LoaderCircle, X } from "lucide-react";
 import { twMerge } from "tailwind-merge";
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import { useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -79,11 +79,18 @@ export function Modal({
   dirty?: boolean;
   dirtyMessage?: string;
 }) {
+  // The discard prompt is rendered in the dialog rather than raised as a native
+  // `window.confirm`: native dialogs are unstyled, block the main thread, cannot
+  // be tested, and are suppressed outright in some embedded contexts.
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+
   function requestClose() {
-    if (!dirty || window.confirm(dirtyMessage)) onOpenChange(false);
+    if (!dirty) { onOpenChange(false); return; }
+    setConfirmingDiscard(true);
   }
+
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={(next) => next ? onOpenChange(true) : requestClose()}>
+    <DialogPrimitive.Root open={open} onOpenChange={(next) => { if (next) { setConfirmingDiscard(false); onOpenChange(true); } else requestClose(); }}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="modal-backdrop" />
         <DialogPrimitive.Content
@@ -98,6 +105,15 @@ export function Modal({
             </div>
             <button className="modal-close" type="button" aria-label={`Close ${title}`} onClick={requestClose}><X size={18} /></button>
           </header>
+          {confirmingDiscard ? (
+            <div className="modal-discard" role="alertdialog" aria-label={dirtyMessage}>
+              <p>{dirtyMessage}</p>
+              <div>
+                <Button className="button-secondary" onClick={() => setConfirmingDiscard(false)}>Keep editing</Button>
+                <Button className="button-danger" onClick={() => { setConfirmingDiscard(false); onOpenChange(false); }}>Discard</Button>
+              </div>
+            </div>
+          ) : null}
           <div className="modal-body">{children}</div>
           {footer ? <footer className="modal-footer">{footer}</footer> : null}
         </DialogPrimitive.Content>
@@ -130,12 +146,75 @@ function FeedbackState({
   );
 }
 
-export function EmptyState({ title, body, action, className }: { title: string; body?: string; action?: ReactNode; className?: string }) {
-  return <FeedbackState tone="empty" icon={<Inbox size={20} />} title={title} body={body} action={action} className={className} />;
+export function EmptyState({ title, body, action, icon, className }: { title: string; body?: string; action?: ReactNode; icon?: ReactNode; className?: string }) {
+  return <FeedbackState tone="empty" icon={icon ?? <Inbox size={20} />} title={title} body={body} action={action} className={className} />;
 }
 
-export function ErrorState({ title, body, action, className }: { title: string; body?: string; action?: ReactNode; className?: string }) {
-  return <FeedbackState tone="error" icon={<AlertCircle size={20} />} title={title} body={body} action={action} className={className} />;
+/**
+ * Three properties are required of every error the user sees: plain language, a
+ * way forward, and reassurance where it is true. Anything technical belongs in
+ * `detail`, which is collapsed and must already be safe to display.
+ */
+export function ErrorState({ title, body, action, detail, className }: { title: string; body?: string; action?: ReactNode; detail?: string; className?: string }) {
+  return (
+    <FeedbackState
+      tone="error"
+      icon={<AlertCircle size={20} />}
+      title={title}
+      body={body}
+      className={className}
+      action={detail || action ? <>{action}{detail ? <details className="state-detail"><summary>Technical details</summary><p>{detail}</p></details> : null}</> : undefined}
+    />
+  );
+}
+
+/**
+ * Skeletons match the shape of what is loading so the layout does not jump; a
+ * spinner is only right for indeterminate in-place work.
+ */
+export function LoadingState({ variant = "skeleton", rows = 3, label = "Loading", className }: { variant?: "skeleton" | "spinner"; rows?: number; label?: string; className?: string }) {
+  if (variant === "spinner") {
+    return <div className={cn("loading-state loading-state-spinner", className)} role="status" aria-label={label}><LoaderCircle className="spin" size={18} aria-hidden="true" /><span>{label}</span></div>;
+  }
+  return (
+    <div className={cn("loading-state loading-state-skeleton", className)} role="status" aria-label={label}>
+      {Array.from({ length: rows }, (_, index) => <span key={index} className="skeleton-row" />)}
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
+export type RegionStatus = "idle" | "loading" | "error" | "empty" | "ready";
+
+/**
+ * One state machine for every data-backed region — `idle → loading → (empty |
+ * error | ready)` — with exactly one branch on screen. OpenAlex used to render
+ * an error banner, an invitation to search, and a "select an entity" prompt at
+ * the same time, all disagreeing about what had happened.
+ */
+export function DataRegion({
+  status,
+  idle,
+  loading,
+  error,
+  empty,
+  children,
+  className,
+}: {
+  status: RegionStatus;
+  idle?: ReactNode;
+  loading?: ReactNode;
+  error?: ReactNode;
+  empty?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  const branch = status === "idle" ? idle ?? null
+    : status === "loading" ? loading ?? <LoadingState />
+    : status === "error" ? error ?? null
+    : status === "empty" ? empty ?? null
+    : children;
+  return <div className={cn("data-region", `data-region-${status}`, className)}>{branch}</div>;
 }
 
 export function SuccessState({ title, body, action, className }: { title: string; body?: string; action?: ReactNode; className?: string }) {

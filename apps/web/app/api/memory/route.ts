@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { getStore } from "@/lib/store";
+import { logRequestFailure, publicErrorMessage } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 
@@ -37,7 +38,8 @@ export async function POST(request: Request) {
       const pack = await getStore(user.id).read("get_context_pack", { packId: parsed.data.packId, maxTokens: parsed.data.maxTokens }, "standalone-memory");
       return NextResponse.json({ pack, generatedAt: new Date().toISOString() }, { headers: { "cache-control": "private, no-store" } });
     } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : "Context pack could not be loaded" }, { status: 404 });
+      logRequestFailure("memory_pack_failed", {}, error);
+    return NextResponse.json({ error: publicErrorMessage(error, "Context pack could not be loaded") }, { status: 404 });
     }
   }
   const results = await getStore(user.id).searchMemory(parsed.data);

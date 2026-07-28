@@ -24,7 +24,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button, Card } from "@/components/ui";
 import { contextPackMarkdown, type ContextPack, type ContextPackMetadata } from "@/lib/context-packs";
 import { conceptLabel, eventTypeLabel, formatLabel, masteryLabel, statusTone } from "@/lib/labels";
-import { PageIntro } from "./page-intro";
+import { PageHeader } from "./page-header";
 import { formatDate, list, text, type Row, type WorkspaceState } from "./types";
 
 type Toast = (message: string | null) => void;
@@ -113,12 +113,13 @@ export function MemoryScreen({ state, showToast }: { state: WorkspaceState; show
 
   return (
     <div className="screen memory-screen premium-screen">
-      <PageIntro
-        eyebrow="MEMORY"
-        title="Your academic state, ready when it matters."
-        description="Continuum keeps current goals, evidence, decisions, and outcomes canonical in your account. Assistants retrieve a small relevant pack—not a transcript dump."
-        action={<div className="memory-header-actions"><div className="segmented-control" aria-label="Memory view">{(["overview", "packs", "history"] as MemoryView[]).map((item) => <button key={item} className={view === item ? "active" : ""} onClick={() => setView(item)}>{item === "packs" ? "Context packs" : formatLabel(item)}</button>)}</div><Button className="button-secondary" onClick={exportMemory}><Download size={15} />Export all</Button></div>}
-      />
+      <PageHeader
+        title="Memory"
+        description="Continuum keeps current goals, evidence, decisions, and outcomes canonical in your account. Canonical memory is the durable state assistants retrieve from — a small relevant pack, never a transcript dump."
+        actions={<Button className="button-secondary compact-button" onClick={exportMemory}><Download size={15} aria-hidden="true" />Export all</Button>}
+      >
+        <nav className="section-tabs" role="tablist" aria-label="Memory sections">{(["overview", "packs", "history"] as MemoryView[]).map((item) => <button key={item} type="button" role="tab" aria-selected={view === item} className={view === item ? "active" : ""} onClick={() => setView(item)}>{item === "packs" ? "Context packs" : formatLabel(item)}</button>)}</nav>
+      </PageHeader>
 
       <Card className="memory-search-card"><form onSubmit={search}><Search size={19} /><label htmlFor="memory-query" className="sr-only">Search academic memory</label><input id="memory-query" value={query} onChange={(event) => setQuery(event.target.value)} minLength={2} maxLength={2000} placeholder="Find a decision, misconception, result, or unresolved question" /><Button className="button-primary" disabled={busy || query.trim().length < 2}>{busy ? <LoaderCircle className="spin" size={15} /> : null}{busy ? "Searching…" : "Search memory"}</Button></form><div><ShieldCheck size={15} /><span>Private account scope · semantic + lexical retrieval · relevance and token budget applied</span></div></Card>
 

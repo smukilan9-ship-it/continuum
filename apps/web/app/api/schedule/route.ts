@@ -5,6 +5,7 @@ import { z } from "zod";
 import { scheduleSeed } from "@/lib/demo-data";
 import { getStore } from "@/lib/store";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
+import { logRequestFailure, publicErrorMessage } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 
@@ -171,7 +172,8 @@ export async function POST(request: Request) {
       await store.write("reject_proposal", { proposalId: parsed.data.proposalId }, now, "standalone_app").catch(() => undefined);
       return NextResponse.json({ committed: committed.data, schedule: await store.read("load_schedule", { maxTokens: 4000 }) });
     } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : "Schedule could not be committed" }, { status: 409 });
+      logRequestFailure("schedule_commit_failed", {}, error);
+    return NextResponse.json({ error: publicErrorMessage(error, "Schedule could not be committed") }, { status: 409 });
     }
   }
 

@@ -16,7 +16,6 @@ import {
   LogOut,
   Menu,
   MessageCircle,
-  Network,
   Search,
   ShieldCheck,
   X,
@@ -27,23 +26,24 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { normalizeWorkspaceState, WorkspaceScreens, type WorkspaceState } from "@/components/workspace-screens";
-import { workspaceMeta, workspacePath, workspaceViews, type WorkspaceView } from "@/lib/workspace-routes";
-
-const pathToView = new Map<string, WorkspaceView>(workspaceViews.map((value) => [workspacePath[value] as string, value]));
-function viewFromPath(pathname: string): WorkspaceView {
-  return pathToView.get(pathname) ?? "today";
-}
+import { canonicalView, viewFromPath, workspaceMeta, workspacePath, type WorkspaceView } from "@/lib/workspace-routes";
 
 export type View = WorkspaceView;
 
 type NavItem = { id: WorkspaceView; label: string; icon: typeof CalendarDays };
-type NavGroup = { label: string; items: NavItem[] };
+type NavGroup = { label: string; items: NavItem[]; variant?: "primary" | "utility" };
 
+/**
+ * Grouped by intent ("what am I doing?") rather than by storage. Today is
+ * ungrouped and visually primary because it is the intended daily entry point;
+ * Zotero and OpenAlex are two halves of one job and share the Library
+ * destination; the occasional destinations sit below a divider.
+ */
 const navGroups: NavGroup[] = [
+  { label: "", variant: "primary", items: [{ id: "today", label: "Today", icon: CalendarDays }] },
   {
-    label: "Workspace",
+    label: "Work",
     items: [
-      { id: "today", label: "Today", icon: CalendarDays },
       { id: "assistant", label: "Assistant", icon: MessageCircle },
       { id: "goals", label: "Plan", icon: Goal },
       { id: "learn", label: "Learn", icon: BookOpen },
@@ -52,24 +52,29 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: "Library",
+    label: "Sources",
     items: [
+      { id: "library", label: "Library", icon: Library },
       { id: "memory", label: "Memory", icon: Database },
-      { id: "zotero", label: "Zotero", icon: Library },
-      { id: "openalex", label: "OpenAlex", icon: Network },
-      { id: "activity", label: "Review", icon: Activity },
     ],
   },
   {
-    label: "Account",
+    label: "",
+    variant: "utility",
     items: [
+      { id: "activity", label: "Review", icon: Activity },
       { id: "integrations", label: "Connections", icon: Link2 },
       { id: "account", label: "Account & Security", icon: ShieldCheck },
     ],
   },
 ];
 
-const mobileItems = navGroups[0]!.items.filter((item) => ["today", "assistant", "learn", "code"].includes(item.id));
+const mobileItems: NavItem[] = [
+  { id: "today", label: "Today", icon: CalendarDays },
+  { id: "assistant", label: "Assistant", icon: MessageCircle },
+  { id: "learn", label: "Learn", icon: BookOpen },
+  { id: "code", label: "Code", icon: Code2 },
+];
 
 const IntegrationsScreen = dynamic(() => import("@/components/integrations-screen").then((module) => module.IntegrationsScreen), { loading: () => <ScreenLoading /> });
 
@@ -81,11 +86,23 @@ function initials(name: string) {
   return name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
 }
 
-export function ContinuumApp({ user, initialState, view, serverNow }: { user: AuthUser; initialState: Record<string, unknown>; view: WorkspaceView; serverNow: string }) {
+const SKIP_ONBOARDING_KEY = "continuum.onboarding.skipped.v1";
+const TOUR_KEY = "continuum.tour.completed.v1";
+
+/** The three things a new user needs to know before the app makes sense. */
+const TOUR_STEPS = [
+  { title: "Today is your next action", body: "One decided next step, with the reasoning behind it — not a blank page to plan from." },
+  { title: "Plan is your week", body: "A deterministic draft you can move, resize, and edit before anything is saved." },
+  { title: "⌘K jumps anywhere", body: "Search sections, goals, tasks, projects, and receipts from any screen." },
+] as const;
+
+export function ContinuumApp({ user, initialState, view, serverNow, needsOnboarding = false }: { user: AuthUser; initialState: Record<string, unknown>; view: WorkspaceView; serverNow: string; needsOnboarding?: boolean }) {
   const [mobileNav, setMobileNav] = useState(false);
   const [compactNavigation, setCompactNavigation] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [tourStep, setTourStep] = useState<number>();
   const [currentView, setCurrentView] = useState<WorkspaceView>(view);
   const sidebarRef = useRef<HTMLElement>(null);
   const closeNavigationRef = useRef<HTMLButtonElement>(null);
@@ -101,6 +118,8 @@ export function ContinuumApp({ user, initialState, view, serverNow }: { user: Au
   const [, bumpCache] = useReducer((count: number) => count + 1, 0);
   const meta = workspaceMeta[currentView];
   const state = cacheRef.current.get(currentView);
+  const pendingProposals = state?.proposals.filter((proposal) => proposal.status === "pending").length ?? 0;
+  const moreActive = !mobileItems.some((item) => canonicalView(currentView) === item.id);
 
   const refreshView = useCallback(async (target: WorkspaceView) => {
     if (target === "integrations" || inflight.current.has(target)) return;
@@ -148,11 +167,33 @@ export function ContinuumApp({ user, initialState, view, serverNow }: { user: Au
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setCommandOpen((open) => !open);
+        return;
+      }
+      // `?` opens the shortcut sheet, but never while the user is typing.
+      const target = event.target as HTMLElement | null;
+      const typing = target?.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target?.tagName ?? "");
+      if (event.key === "?" && !typing && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        setShortcutsOpen((open) => !open);
       }
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
   }, []);
+
+  // First run: point an un-onboarded user at /welcome unless they chose to explore.
+  useEffect(() => {
+    if (!needsOnboarding) return;
+    if (window.localStorage.getItem(SKIP_ONBOARDING_KEY) === "1") return;
+    window.location.assign("/welcome");
+  }, [needsOnboarding]);
+
+  // The tour runs once, after a plan exists, and is resumable from Account.
+  useEffect(() => {
+    if (needsOnboarding || !state?.goals.length) return;
+    if (window.localStorage.getItem(TOUR_KEY) === "1") return;
+    setTourStep(0);
+  }, [needsOnboarding, state?.goals.length]);
 
   useEffect(() => {
     const query = window.matchMedia("(max-width: 840px)");
@@ -222,17 +263,18 @@ export function ContinuumApp({ user, initialState, view, serverNow }: { user: Au
         </div>
 
         <nav className="main-nav" aria-label="Primary navigation">
-          {navGroups.map((group) => (
-            <div className="nav-group" key={group.label}>
-              <p>{group.label}</p>
+          {navGroups.map((group, index) => (
+            <div className={`nav-group${group.variant ? ` nav-group-${group.variant}` : ""}`} key={group.label || `group-${index}`}>
+              {group.label ? <p>{group.label}</p> : null}
               {group.items.map((item) => {
                 const Icon = item.icon;
                 const count = item.id === "activity" ? (state?.proposals.filter((proposal) => proposal.status === "pending").length ?? 0) : undefined;
+                const active = canonicalView(currentView) === item.id;
                 return (
-                  <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={currentView === item.id ? "nav-item active" : "nav-item"} aria-current={currentView === item.id ? "page" : undefined} onClick={linkHandler(item.id)} onMouseEnter={() => void refreshView(item.id)} onFocus={() => void refreshView(item.id)}>
+                  <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={active ? "nav-item active" : "nav-item"} aria-current={active ? "page" : undefined} onClick={linkHandler(item.id)} onMouseEnter={() => void refreshView(item.id)} onFocus={() => void refreshView(item.id)}>
                     <Icon size={18} strokeWidth={1.8} />
                     <span>{item.label}</span>
-                    {typeof count === "number" && count > 0 ? <small>{count}</small> : null}
+                    {typeof count === "number" && count > 0 ? <small aria-label={`${count} pending`}>{count}</small> : null}
                   </Link>
                 );
               })}
@@ -271,12 +313,53 @@ export function ContinuumApp({ user, initialState, view, serverNow }: { user: Au
       <nav ref={mobileNavigationRef} className="mobile-bottom-nav" aria-label="Mobile navigation" aria-hidden={compactNavigation && mobileNav ? true : undefined}>
         {mobileItems.map((item) => {
           const Icon = item.icon;
-          return <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={currentView === item.id ? "active" : ""} aria-current={currentView === item.id ? "page" : undefined} onClick={linkHandler(item.id)}><Icon size={19} /><span>{item.label}</span></Link>;
+          const active = canonicalView(currentView) === item.id;
+          return <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={active ? "active" : ""} aria-current={active ? "page" : undefined} onClick={linkHandler(item.id)}><Icon size={19} /><span>{item.label}</span></Link>;
         })}
-        <button className={["goals", "research", "openalex", "zotero", "memory", "integrations", "account", "activity"].includes(currentView) ? "active" : ""} onClick={() => setMobileNav(true)}><Menu size={19} /><span>More</span></button>
+        <button className={moreActive ? "active" : ""} onClick={() => setMobileNav(true)} aria-label={pendingProposals ? `More sections, ${pendingProposals} pending in Review` : "More sections"}><Menu size={19} /><span>More</span>{pendingProposals ? <i className="nav-dot" aria-hidden="true" /> : null}</button>
       </nav>
 
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} state={state} onNavigate={navigate} />
+
+      <Dialog.Root open={shortcutsOpen} onOpenChange={setShortcutsOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="modal-backdrop" />
+          <Dialog.Content className="modal-content shortcut-sheet">
+            <Dialog.Title>Keyboard shortcuts</Dialog.Title>
+            <Dialog.Description>Available from anywhere in the workspace.</Dialog.Description>
+            <dl>
+              <div><dt><kbd>⌘K</kbd></dt><dd>Jump to any section, goal, task, project, or receipt</dd></div>
+              <div><dt><kbd>⌘↵</kbd></dt><dd>Run your program in Code</dd></div>
+              <div><dt><kbd>Esc</kbd></dt><dd>Stop a running program, or close a panel</dd></div>
+              <div><dt><kbd>?</kbd></dt><dd>Open this sheet</dd></div>
+            </dl>
+            <Dialog.Close className="button button-secondary">Close</Dialog.Close>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* A three-step coach-mark tour, dismissible and resumable from Account. */}
+      {typeof tourStep === "number" && TOUR_STEPS[tourStep] ? <div className="tour-mark" role="dialog" aria-label="Getting started tour">
+        <strong>{TOUR_STEPS[tourStep]!.title}</strong>
+        <p>{TOUR_STEPS[tourStep]!.body}</p>
+        <footer>
+          <span>{tourStep + 1} of {TOUR_STEPS.length}</span>
+          <div>
+            <button onClick={() => { window.localStorage.setItem(TOUR_KEY, "1"); setTourStep(undefined); }}>Skip</button>
+            <button
+              className="tour-next"
+              onClick={() => {
+                if (tourStep + 1 >= TOUR_STEPS.length) { window.localStorage.setItem(TOUR_KEY, "1"); setTourStep(undefined); return; }
+                if (tourStep === 0) navigate("goals");
+                setTourStep(tourStep + 1);
+              }}
+            >
+              {tourStep + 1 >= TOUR_STEPS.length ? "Done" : "Next"}
+            </button>
+          </div>
+        </footer>
+      </div> : null}
+
       {toast ? <div className="toast" role="status"><span className="toast-icon">✓</span><span>{toast}</span><button onClick={() => setToast(null)} aria-label="Dismiss"><X size={16} /></button></div> : null}
     </div>
   );

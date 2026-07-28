@@ -21,6 +21,7 @@ import {
   type ZoteroItem,
 } from "@/lib/zotero";
 import { getStore } from "@/lib/store";
+import { logRequestFailure, publicErrorMessage } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -118,7 +119,8 @@ export async function GET(request: Request) {
       libraryVersion: page.libraryVersion,
     }, { headers: { "cache-control": "private, no-store" } });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Zotero request failed" }, { status: 502 });
+    logRequestFailure("zotero_request_failed", {}, error);
+    return NextResponse.json({ error: publicErrorMessage(error, "Zotero request failed") }, { status: 502 });
   }
 }
 
@@ -225,6 +227,7 @@ export async function POST(request: Request) {
       lastSyncAt,
     });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Zotero action failed" }, { status: 502 });
+    logRequestFailure("zotero_action_failed", {}, error);
+    return NextResponse.json({ error: publicErrorMessage(error, "Zotero action failed") }, { status: 502 });
   }
 }

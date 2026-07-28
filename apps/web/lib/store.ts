@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  deriveConversationTitle,
   DEMO_USER_ID,
   NeonRepository,
   type AssistantSessionMemory,
@@ -215,6 +216,7 @@ class MemoryStore implements Store {
       code: ["goals", "tasks", "projects", "learningState", "receipts"],
       assistant: ["goals", "tasks", "projects", "learningState", "sources", "papers", "receipts", "assistantSessions"],
       integrations: [],
+      library: [],
     };
     return Object.fromEntries((selected[view] ?? []).map((key) => [
       key,
@@ -441,7 +443,7 @@ class MemoryStore implements Store {
     Object.assign(session, {
       lastMessageAt: now,
       updatedAt: now,
-      ...(session.title === "New conversation" && input.role === "user" ? { title: input.content.trim().replace(/\s+/g, " ").slice(0, 72) } : {}),
+      ...(deriveConversationTitle(String(session.title ?? ""), input.role, input.content) ? { title: deriveConversationTitle(String(session.title ?? ""), input.role, input.content)! } : {}),
     });
     return message;
   }
@@ -617,9 +619,11 @@ class NeonStore implements Store {
       const id = opaqueId("proposal");
       const kind = name.replace(/^propose_/, "");
       const summary = String(args.summary ?? `Proposed ${kind.replaceAll("_", " ")}`);
-      await this.repo.createProposal({ id, userId: this.userId, clientId, kind, entityId: args.entityId ? String(args.entityId) : undefined, summary, payload: args, risk: name.includes("schedule") || name.includes("goal") ? "high" : "medium", expiresAt: new Date(Date.parse(now) + 24 * 3600_000).toISOString() });
-      await this.appendEvent({ type: "proposal.created", summary, entityIds: [id], payload: { kind, risk: name.includes("schedule") || name.includes("goal") ? "high" : "medium" }, source: { surface } }, now);
-      return { data: { id, kind, summary, status: "pending", confirmationRequired: true }, entityIds: [id], summary: "Proposal saved without changing current state. Explicit confirmation is required." };
+      // An identical pending proposal is refreshed rather than duplicated, so
+      // the returned id may be the existing row's.
+      const proposalId = await this.repo.createProposal({ id, userId: this.userId, clientId, kind, entityId: args.entityId ? String(args.entityId) : undefined, summary, payload: args, risk: name.includes("schedule") || name.includes("goal") ? "high" : "medium", expiresAt: new Date(Date.parse(now) + 24 * 3600_000).toISOString() });
+      await this.appendEvent({ type: "proposal.created", summary, entityIds: [proposalId], payload: { kind, risk: name.includes("schedule") || name.includes("goal") ? "high" : "medium" }, source: { surface } }, now);
+      return { data: { id: proposalId, kind, summary, status: "pending", confirmationRequired: true }, entityIds: [proposalId], summary: "Proposal saved without changing current state. Explicit confirmation is required." };
     }
     if (name === "confirm_proposal") {
       assertRecentConfirmation(args.confirmedAt, now);

@@ -119,14 +119,19 @@ export function CodeEditor({
 
   const CM = mod.CM;
   return (
-    <div className="code-editor-shell" aria-label={ariaLabel}>
+    <div className="code-editor-shell">
       <CM
         value={value}
         onChange={onChange}
         editable={editable}
         placeholder={placeholder}
         extensions={extensions}
-        onCreateEditor={(view: typeof viewRef.current) => { viewRef.current = view; }}
+        // CodeMirror gives `.cm-content` role="textbox"; a label on the wrapper
+        // does not reach it, so the name has to be set on the editable element.
+        onCreateEditor={(view: typeof viewRef.current) => {
+          viewRef.current = view;
+          (view as { contentDOM?: HTMLElement } | undefined)?.contentDOM?.setAttribute("aria-label", ariaLabel);
+        }}
         minHeight={`${minHeight}px`}
         basicSetup={{
           lineNumbers: true,

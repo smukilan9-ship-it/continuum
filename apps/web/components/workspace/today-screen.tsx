@@ -1,11 +1,24 @@
 "use client";
 
 import { ArrowRight, CalendarClock, Clock3, FileCheck2, Link2, Play, Target } from "lucide-react";
-import { Badge, Button, Card } from "@/components/ui";
+import { Button, Card } from "@/components/ui";
 import { OnboardingFlow } from "./onboarding-flow";
-import { PageIntro } from "./page-intro";
-import { formatDate, list, text, type WorkspaceState } from "./types";
+import { PageHeader } from "./page-header";
+import { formatDate, list, text, type Row, type WorkspaceState } from "./types";
 import type { WorkspaceView } from "@/lib/workspace-routes";
+
+// Raw internal ids leaked into user copy ("…after verified resource activity
+// activity_d61e36a01a9e4275aa1c3368"). They belong in the technical disclosure.
+const INTERNAL_ID = /\b(?:activity|task|goal|receipt|block|concept|project|record|event)_[a-z0-9]{8,}\b/gi;
+
+function humanReason(value: string) {
+  return value.replace(INTERNAL_ID, "").replace(/\s{2,}/g, " ").replace(/\s+([.,;:])/g, "$1").trim();
+}
+
+function technicalIds(row: Row) {
+  const source = `${text(row, "description")} ${text(row, "completionEvidence")} ${text(row, "id")}`;
+  return [...new Set(source.match(INTERNAL_ID) ?? [])];
+}
 
 function greetingAt(instant: string, timeZone: string) {
   const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", hourCycle: "h23" }).format(new Date(instant)));
@@ -18,24 +31,31 @@ export function TodayScreen({ state, userName, timeZone, serverNow, onNavigate, 
   const nextBlock = upcoming[0];
   const latestReceipt = state.receipts[0];
   const recentExternal = state.resourceActivities.find((activity) => !["verified", "abandoned"].includes(text(activity, "status")));
-  if (!state.goals.length) return <OnboardingFlow userName={userName} onRefresh={onRefresh} />;
+  if (!state.goals.length) return <OnboardingFlow userName={userName} onRefresh={onRefresh} onNavigate={onNavigate} />;
 
   return (
     <div className="screen">
-      <PageIntro eyebrow="TODAY" title={`Good ${greetingAt(serverNow, timeZone)}, ${userName}.`} description="Resume from verified state, not from a blank chat. Your plan and connected assistants use the same current context." />
+      <PageHeader
+        title={`Good ${greetingAt(serverNow, timeZone)}, ${userName}`}
+        description="Resume from verified state, not from a blank chat. Your plan and connected assistants use the same current context."
+        stats={[
+          { label: "active goals", value: state.goals.filter((goal) => text(goal, "status", "active") === "active").length },
+          { label: "open tasks", value: state.tasks.filter((task) => text(task, "status") !== "done").length },
+          { label: "projects", value: state.projects.length },
+          { label: "receipts", value: state.receipts.length },
+        ]}
+      />
 
       <section className="today-grid">
+        {/* The single primary element on this screen. "At a glance" moved into the
+            page header so it no longer competes with the next action. */}
         <Card className="next-action-card">
-          <div className="card-kicker"><Target size={16} /><span>Best next action</span></div>
+          <div className="card-kicker"><Target size={16} aria-hidden="true" /><span>Best next action</span></div>
           <h2>{nextTask ? text(nextTask, "title") : "Choose the next outcome"}</h2>
-          <p>{nextTask ? text(nextTask, "description", text(nextTask, "completionEvidence", "Complete the task and record evidence.")) : "No unfinished task is recorded. Add a task to an active goal."}</p>
-          {nextTask ? <div className="action-evidence"><FileCheck2 size={15} /><span>{text(nextTask, "completionEvidence", "Record completion evidence")}</span></div> : null}
-          <Button className="button-primary button-large" onClick={() => onNavigate(nextTask ? "learn" : "goals")}><Play size={16} />{nextTask ? "Find the best resource" : "Open goals"}</Button>
-        </Card>
-
-        <Card className="summary-card">
-          <div className="card-heading-row"><div><p className="eyebrow">CURRENT STATE</p><h2>At a glance</h2></div><Badge tone="blue">Shared</Badge></div>
-          <div className="workspace-metrics"><div><strong>{state.goals.filter((goal) => text(goal, "status", "active") === "active").length}</strong><span>active goals</span></div><div><strong>{state.tasks.filter((task) => text(task, "status") !== "done").length}</strong><span>open tasks</span></div><div><strong>{state.projects.length}</strong><span>projects</span></div><div><strong>{state.receipts.length}</strong><span>receipts</span></div></div>
+          <p>{humanReason(nextTask ? text(nextTask, "description", text(nextTask, "completionEvidence", "Complete the task and record evidence.")) : "No unfinished task is recorded. Add a task to an active goal.")}</p>
+          {nextTask ? <div className="action-evidence"><FileCheck2 size={15} aria-hidden="true" /><span>{humanReason(text(nextTask, "completionEvidence", "Record completion evidence"))}</span></div> : null}
+          <Button className="button-primary button-large" onClick={() => onNavigate(nextTask ? "learn" : "goals")}><Play size={16} aria-hidden="true" />{nextTask ? "Find the best resource" : "Open goals"}</Button>
+          {nextTask && technicalIds(nextTask).length ? <details className="today-technical"><summary>Technical details</summary><p>{technicalIds(nextTask).join(" · ")}</p></details> : null}
         </Card>
 
         <Card className="schedule-card">

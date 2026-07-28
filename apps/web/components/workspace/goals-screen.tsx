@@ -1,10 +1,10 @@
 "use client";
 
 import type { ScheduleBlock, ScheduleProposal } from "@continuum/schemas";
-import { CalendarClock, CalendarDays, Check, Circle, Clock3, Copy, Flag, GripVertical, ListTodo, Pencil, Plus, Save, Sparkles, Target, Trash2, Undo2, WandSparkles } from "lucide-react";
+import { CalendarClock, CalendarDays, Check, ChevronLeft, ChevronRight, Circle, Clock3, Copy, Flag, GripVertical, ListTodo, Pencil, Plus, Save, Sparkles, Target, Trash2, Undo2, WandSparkles } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { Badge, Button, Card, ConfirmationDialog, ErrorState, LoadingButton, Modal } from "@/components/ui";
-import { PageIntro } from "./page-intro";
+import { Badge, Button, Card, ConfirmationDialog, EmptyState, ErrorState, LoadingButton, Modal } from "@/components/ui";
+import { PageHeader } from "./page-header";
 import { formatLabel, priorityLabel, statusTone } from "@/lib/labels";
 import { formatDate, number, postState, text, type Row, type WorkspaceState } from "./types";
 
@@ -55,10 +55,20 @@ function dayKey(value: string | Date, timeZone: string) {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-function dateRange(instant: string, timeZone: string) {
+/** The seven days the grid renders, `weekOffset` weeks from the current one. */
+function dateRange(instant: string, timeZone: string, weekOffset = 0) {
   const [year, month, day] = dayKey(instant, timeZone).split("-").map(Number);
-  const start = Date.UTC(year!, month! - 1, day!, 12);
+  const start = Date.UTC(year!, month! - 1, day!, 12) + weekOffset * 7 * 24 * 3600_000;
   return Array.from({ length: 7 }, (_, index) => new Date(start + index * 24 * 3600_000));
+}
+
+function weekRangeLabel(days: Date[], timeZone: string) {
+  const first = days[0]!;
+  const last = days[days.length - 1]!;
+  const sameMonth = first.toLocaleDateString("en-GB", { month: "short", timeZone }) === last.toLocaleDateString("en-GB", { month: "short", timeZone });
+  const from = first.toLocaleDateString("en-GB", sameMonth ? { day: "numeric", timeZone } : { day: "numeric", month: "short", timeZone });
+  const to = last.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone });
+  return `${from} – ${to}`;
 }
 
 function localDateInput(value: string) {
@@ -105,15 +115,25 @@ export function GoalsScreen({ state, timeZone, serverNow, showToast, onRefresh }
   const [undoStack, setUndoStack] = useState<ScheduleBlock[][]>([]);
   const [editingBlock, setEditingBlock] = useState<DraftEditor>();
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
-  const week = useMemo(() => dateRange(serverNow, timeZone), [serverNow, timeZone]);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const week = useMemo(() => dateRange(serverNow, timeZone, weekOffset), [serverNow, timeZone, weekOffset]);
   const fixedCommitments = useMemo(() => intakeCommitments(intake.fixedCommitments, week), [intake.fixedCommitments, week]);
   const selectedGoal = state.goals.find((goal) => text(goal, "id") === selectedGoalId) ?? state.goals[0];
   const activeTasks = state.tasks.filter((task) => text(task, "status") !== "done");
-  const committedMinutes = state.schedule.reduce((total, item) => {
+  const weekDayKeys = useMemo(() => new Set(week.map((day) => dayKey(day, timeZone))), [week, timeZone]);
+  // The header stat must describe the week the grid is showing. Summing every
+  // block regardless of date made "7.2h scheduled" sit above an empty grid the
+  // moment the saved blocks aged out of the visible window.
+  const visibleSchedule = useMemo(
+    () => state.schedule.filter((item) => weekDayKeys.has(dayKey(isoValue(item, "startsAt") || isoValue(item, "start"), timeZone))),
+    [state.schedule, weekDayKeys, timeZone],
+  );
+  const committedMinutes = visibleSchedule.reduce((total, item) => {
     const start = Date.parse(isoValue(item, "startsAt") || isoValue(item, "start"));
     const end = Date.parse(isoValue(item, "endsAt") || isoValue(item, "end"));
     return total + (Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, Math.round((end - start) / 60_000)) : 0);
   }, 0);
+  const totalScheduledBlocks = state.schedule.length;
   const draftBlocks = useMemo(() => proposal?.proposal.blocks ?? [], [proposal]);
   const overlapIds = useMemo(() => {
     const ids = new Set<string>();
@@ -325,11 +345,19 @@ export function GoalsScreen({ state, timeZone, serverNow, showToast, onRefresh }
 
   return (
     <div className={`screen plan-screen premium-screen${proposal ? " editing-schedule" : ""}`}>
-      <PageIntro eyebrow="PLAN" title="A week that respects real life." description="See commitments and study blocks together, keep every task tied to an outcome, and approve schedule changes before they become current." action={<><Button className="button-secondary" onClick={() => setForm(form === "task" ? undefined : "task")} disabled={!state.goals.length}><Plus size={16} />New task</Button><Button className="button-primary" onClick={() => setForm(form === "goal" ? undefined : "goal")}><Plus size={16} />New goal</Button></>} />
+      <PageHeader
+        title="Plan"
+        description="See commitments and study blocks together, keep every task tied to an outcome, and approve schedule changes before they become current."
+        stats={[{ label: "goals", value: state.goals.length }, { label: "open tasks", value: activeTasks.length }, { label: "blocks", value: totalScheduledBlocks }]}
+        actions={<><Button className="button-secondary compact-button" onClick={() => setForm(form === "task" ? undefined : "task")} disabled={!state.goals.length}><Plus size={15} aria-hidden="true" />New task</Button><Button className="button-primary compact-button" onClick={() => setForm(form === "goal" ? undefined : "goal")}><Plus size={15} aria-hidden="true" />New goal</Button></>}
+      />
 
-      <div className="plan-toolbar"><div className="plan-view-tabs" aria-label="Plan views"><button className={view === "week" ? "active" : ""} onClick={() => setView("week")}><CalendarDays size={15} />Week</button><button className={view === "goals" ? "active" : ""} onClick={() => setView("goals")}><Target size={15} />Goals</button><button className={view === "backlog" ? "active" : ""} onClick={() => setView("backlog")}><ListTodo size={15} />Backlog</button></div><div className="plan-toolbar-meta"><span><strong>{Math.round(committedMinutes / 60 * 10) / 10}h</strong> scheduled</span><span><strong>{activeTasks.length}</strong> active tasks</span><Button className="button-secondary compact-button" disabled={proposalBusy || !activeTasks.length} onClick={() => setOnboardingOpen(true)}><WandSparkles size={14} />Build my week</Button></div></div>
+      <div className="plan-toolbar"><div className="plan-view-tabs" aria-label="Plan views"><button className={view === "week" ? "active" : ""} onClick={() => setView("week")}><CalendarDays size={15} />Week</button><button className={view === "goals" ? "active" : ""} onClick={() => setView("goals")}><Target size={15} />Goals</button><button className={view === "backlog" ? "active" : ""} onClick={() => setView("backlog")}><ListTodo size={15} />Backlog</button></div><div className="plan-toolbar-meta">{view === "week" ? <div className="week-nav" role="group" aria-label="Week navigation"><button type="button" aria-label="Previous week" onClick={() => setWeekOffset((offset) => offset - 1)}><ChevronLeft size={15} /></button><span aria-live="polite">{weekOffset === 0 ? "This week" : weekRangeLabel(week, timeZone)}</span><button type="button" aria-label="Next week" onClick={() => setWeekOffset((offset) => offset + 1)}><ChevronRight size={15} /></button>{weekOffset !== 0 ? <button type="button" className="week-nav-today" onClick={() => setWeekOffset(0)}>Today</button> : null}</div> : null}<span><strong>{Math.round(committedMinutes / 60 * 10) / 10}h</strong> scheduled this week</span><span><strong>{activeTasks.length}</strong> active tasks</span><Button className="button-primary compact-button" disabled={proposalBusy || !activeTasks.length} onClick={() => setOnboardingOpen(true)}><WandSparkles size={14} />Build my week</Button></div></div>
 
-      <section className="planning-independence-note"><CalendarClock size={19} /><div><strong>Build your week in Continuum</strong><span>Enter school, sleep, and free-time limits once. Continuum builds an editable schedule you can move, resize, and save here.</span></div><Button className="button-secondary compact-button" disabled={!activeTasks.length} onClick={() => setOnboardingOpen(true)}>Set availability</Button></section>
+      {/* One invitation, shown only while there is genuinely nothing to look at.
+          It used to sit above an editable draft, inviting the user to redo the
+          thing they had just done. */}
+      {!proposal && !visibleSchedule.length && !totalScheduledBlocks ? <section className="planning-independence-note"><CalendarClock size={19} /><div><strong>Build your week in Continuum</strong><span>Enter school, sleep, and free-time limits once. Continuum builds an editable schedule you can move, resize, and save here.</span></div><Button className="button-secondary compact-button" disabled={!activeTasks.length} onClick={() => setOnboardingOpen(true)}>Set availability</Button></section> : null}
 
       {form === "goal" ? <Card className="inline-form-card"><div className="inline-form-heading"><div><h2>Create a goal</h2><p>Define the outcome before creating work.</p></div><button onClick={() => setForm(undefined)}>Cancel</button></div><form className="workspace-form form-grid" onSubmit={submitGoal}><label>Goal title<input name="title" required minLength={3} maxLength={120} placeholder="Complete the statistics module" /></label><label>Target date<input name="date" type="date" required /></label><label className="full-field">Successful outcome<textarea name="outcome" required minLength={3} maxLength={500} placeholder="Pass the final assessment and explain each core method" /></label><div className="form-actions"><Button className="button-primary" disabled={busy}>{busy ? "Saving…" : "Save goal"}</Button></div></form></Card> : null}
 
@@ -410,7 +438,14 @@ export function GoalsScreen({ state, timeZone, serverNow, showToast, onRefresh }
         </form> : null}
       </Modal>
 
-      {view === "week" ? <section className="week-board" aria-label="Seven day plan">{week.map((day, index) => { const key = dayKey(day, timeZone); const schedule = state.schedule.filter((item) => dayKey(isoValue(item, "startsAt") || isoValue(item, "start"), timeZone) === key); const constraints = state.calendarConstraints.filter((item) => dayKey(isoValue(item, "startsAt"), timeZone) === key); return <div className={`week-day ${index === 0 ? "today" : ""}`} key={key}><header><span>{day.toLocaleDateString("en-IN", { weekday: "short", timeZone })}</span><strong>{day.toLocaleDateString("en-IN", { day: "numeric", timeZone })}</strong></header><div className="week-day-blocks">{constraints.map((item) => <article className="week-block commitment" key={text(item, "id")}><small>{formatDate(item.startsAt, { hour: "numeric", minute: "2-digit" }, timeZone)}</small><strong>{text(item, "title", "Calendar commitment")}</strong><span>Busy</span></article>)}{schedule.map((item) => { const task = state.tasks.find((candidate) => text(candidate, "id") === text(item, "taskId")); return <article className="week-block study" key={text(item, "id")}><small>{formatDate(item.startsAt ?? item.start, { hour: "numeric", minute: "2-digit" }, timeZone)}</small><strong>{text(task, "title", "Study block")}</strong><span>{formatLabel(text(item, "status", "planned"))}</span></article>;})}{!schedule.length && !constraints.length ? <div className="week-empty">Open</div> : null}</div></div>;})}</section> : null}
+      {view === "week" ? <>
+        <section className="week-board" aria-label={weekOffset === 0 ? "This week's plan" : `Plan for ${weekRangeLabel(week, timeZone)}`}>{week.map((day, index) => { const key = dayKey(day, timeZone); const schedule = state.schedule.filter((item) => dayKey(isoValue(item, "startsAt") || isoValue(item, "start"), timeZone) === key); const constraints = state.calendarConstraints.filter((item) => dayKey(isoValue(item, "startsAt"), timeZone) === key); return <div className={`week-day ${weekOffset === 0 && index === 0 ? "today" : ""}`} key={key}><header><span>{day.toLocaleDateString("en-IN", { weekday: "short", timeZone })}</span><strong>{day.toLocaleDateString("en-IN", { day: "numeric", timeZone })}</strong></header><div className="week-day-blocks">{constraints.map((item) => <article className="week-block commitment" key={text(item, "id")}><small>{formatDate(item.startsAt, { hour: "numeric", minute: "2-digit" }, timeZone)}</small><strong title={text(item, "title", "Calendar commitment")}>{text(item, "title", "Calendar commitment")}</strong><span>Busy</span></article>)}{schedule.map((item) => { const task = state.tasks.find((candidate) => text(candidate, "id") === text(item, "taskId")); const title = text(task, "title", "Study block"); return <article className="week-block study" key={text(item, "id")}><small>{formatDate(item.startsAt ?? item.start, { hour: "numeric", minute: "2-digit" }, timeZone)}</small><strong title={title}>{title}</strong><span>{formatLabel(text(item, "status", "planned"))}</span></article>;})}{!schedule.length && !constraints.length ? <div className="week-empty">Open</div> : null}</div></div>;})}</section>
+        {/* "Nothing scheduled" and "nothing scheduled *this* week" are different
+            problems and need different next actions. */}
+        {!visibleSchedule.length ? (totalScheduledBlocks
+          ? <EmptyState title={weekOffset === 0 ? "Nothing scheduled this week" : `Nothing scheduled for ${weekRangeLabel(week, timeZone)}`} body={`You have ${totalScheduledBlocks} saved block${totalScheduledBlocks === 1 ? "" : "s"} in other weeks.`} action={<><Button className="button-secondary compact-button" onClick={() => setWeekOffset((offset) => offset - 1)}><ChevronLeft size={14} />Previous week</Button><Button className="button-primary compact-button" disabled={proposalBusy || !activeTasks.length} onClick={() => setOnboardingOpen(true)}><WandSparkles size={14} />Build this week</Button></>} />
+          : <EmptyState title="No schedule yet" body="Tell Continuum when you are actually free and it will draft an editable week you can move, resize, and save." action={<Button className="button-primary compact-button" disabled={!activeTasks.length} onClick={() => setOnboardingOpen(true)}><WandSparkles size={14} />Build my week</Button>} />) : null}
+      </> : null}
 
       {view === "goals" ? <section className="plan-goals-layout"><div className="plan-goal-index">{state.goals.map((goal) => { const tasks = state.tasks.filter((task) => text(task, "goalId") === text(goal, "id")); const done = tasks.filter((task) => text(task, "status") === "done").length; const progress = Math.max(number(goal, "progress"), tasks.length ? done / tasks.length : 0); return <button key={text(goal, "id")} className={text(goal, "id") === text(selectedGoal, "id") ? "active" : ""} onClick={() => setSelectedGoalId(text(goal, "id"))}><span><Target size={16} /></span><div><strong>{text(goal, "title")}</strong><small>{Math.round(progress * 100)}% · {tasks.length} tasks</small></div></button>;})}</div>{selectedGoal ? <Card className="plan-goal-detail"><header><div><Badge tone={statusTone(text(selectedGoal, "status", "active"))}>{formatLabel(text(selectedGoal, "status", "active"))}</Badge><h2>{text(selectedGoal, "title")}</h2><p>{text(selectedGoal, "outcome")}</p></div><div><strong>{Math.round(number(selectedGoal, "progress", 0) * 100)}%</strong><span>goal progress</span></div></header><div className="plan-goal-meta"><span><CalendarClock size={14} />Due {formatDate(selectedGoal.targetDate ?? selectedGoal.date, { dateStyle: "medium" }, timeZone)}</span><button onClick={() => setForm("task")}><Plus size={14} />Add task</button></div><div className="plan-task-list">{state.tasks.filter((task) => text(task, "goalId") === text(selectedGoal, "id")).map((task) => { const done = text(task, "status") === "done"; return <article key={text(task, "id")}><button className={done ? "task-check done" : "task-check"} disabled={done || busy} onClick={() => void completeTask(text(task, "id"))} aria-label={done ? `${text(task, "title")} completed` : `Mark ${text(task, "title")} complete`}>{done ? <Check size={14} /> : <Circle size={14} />}</button><div><strong>{text(task, "title")}</strong><span>{number(task, "estimatedMinutes", 30)} min · {text(task, "completionEvidence", "No evidence rule set")}</span></div><Badge tone={statusTone(text(task, "status", "backlog"))}>{formatLabel(text(task, "status", "backlog"))}</Badge></article>;})}</div></Card> : null}</section> : null}
 
