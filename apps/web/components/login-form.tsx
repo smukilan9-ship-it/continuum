@@ -3,6 +3,7 @@
 import { ArrowRight, Eye, EyeOff, PlayCircle, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
+import { BrandMark } from "@/components/brand-mark";
 import { PASSWORD_HELP, PASSWORD_MIN_LENGTH, USERNAME_HELP, USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from "@/lib/password-policy";
 
 type Mode = "login" | "register";
@@ -57,7 +58,7 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailab
     return (
       <main className="login-shell">
         <section className="login-card">
-          <div className="brand-mark">C</div>
+          <BrandMark className="brand-mark" title="Continuum" />
           <p className="eyebrow">CONTINUUM · LOCAL MODE</p>
           <h1>Pick up your academic work with the context intact.</h1>
           <p>This local development workspace uses an in-memory account. Production requires persistent accounts and never enables this bypass.</p>
@@ -71,7 +72,7 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailab
   return (
     <main className="login-shell">
       <section className="login-card auth-card">
-        <div className="brand-mark">C</div>
+        <BrandMark className="brand-mark" title="Continuum" />
         <p className="eyebrow">CONTINUUM</p>
         <h1>{mode === "login" ? "Continue with your context intact." : "Create one private academic workspace."}</h1>
         <p className="auth-lead">{mode === "login" ? "Sign in to your private academic state and connected assistants." : "Your password is slow-hashed; sessions are revocable and stored as one-way token hashes."}</p>

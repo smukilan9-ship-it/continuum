@@ -24,6 +24,7 @@ import {
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { normalizeWorkspaceState, WorkspaceScreens, type WorkspaceState } from "@/components/workspace-screens";
 import { workspaceMeta, workspacePath, workspaceViews, type WorkspaceView } from "@/lib/workspace-routes";
@@ -214,8 +215,8 @@ export function ContinuumApp({ user, initialState, view, serverNow }: { user: Au
       >
         <div className="sidebar-head">
           <Link className="brand" href="/" onClick={linkHandler("today")} aria-label="Continuum home">
-            <span className="brand-symbol">C</span>
-            <span>Continuum</span>
+            <BrandMark className="brand-symbol" />
+            <span>continuum</span>
           </Link>
           <button ref={closeNavigationRef} className="icon-button mobile-only" onClick={closeMobileNavigation} aria-label="Close navigation"><X size={20} /></button>
         </div>

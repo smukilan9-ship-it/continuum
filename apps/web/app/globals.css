@@ -152,7 +152,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .sidebar { width: 232px; position: fixed; inset: 0 auto 0 0; z-index: 40; display: flex; flex-direction: column; padding: 19px 14px 14px; color: var(--ink); background: #fff; border-right: 1px solid var(--line); }
 .sidebar-head { display: flex; align-items: center; justify-content: space-between; padding: 0 5px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--navy); font-size: 18px; font-weight: 780; letter-spacing: -.025em; }
-.brand-symbol, .brand-mark { width: 31px; height: 31px; display: inline-grid; place-items: center; color: #fff; background: var(--navy); border-radius: 7px; font-weight: 850; }
+.brand-symbol, .brand-mark { width: 31px; height: 31px; flex: none; display: block; border-radius: 8px; }
 .main-nav { display: grid; gap: 18px; margin-top: 29px; }
 .nav-group { display: grid; gap: 5px; }
 .nav-group > p { margin: 0 10px 5px; color: #8a9aaa; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
@@ -776,7 +776,7 @@ textarea { min-height: 90px; resize: vertical; }
 /* Auth and privacy */
 .login-shell, .privacy-shell { min-height: 100vh; padding: 36px 20px; display: grid; place-items: center; background: var(--canvas); }
 .login-card { width: min(540px, 100%); padding: 42px; background: var(--surface); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow-md); }
-.login-card .brand-mark { margin-bottom: 28px; color: var(--lime); background: #171812; }
+.login-card .brand-mark { width: 44px; height: 44px; margin-bottom: 28px; border-radius: 12px; }
 .login-card h1 { margin: 9px 0 12px; color: var(--navy); font-size: clamp(30px, 5vw, 40px); line-height: 1.12; letter-spacing: -.035em; }
 .login-card > p:not(.eyebrow) { margin: 0 0 22px; color: var(--muted); line-height: 1.6; }
 .auth-tabs { margin: 24px 0 18px; display: grid; grid-template-columns: 1fr 1fr; padding: 3px; background: var(--surface-soft); border-radius: 8px; }
@@ -1829,7 +1829,7 @@ body {
 
 .sidebar { width: 248px; padding: 22px 16px 16px; background: color-mix(in srgb, var(--surface) 90%, var(--canvas)); border-right-color: color-mix(in srgb, var(--line) 78%, transparent); }
 .brand { color: var(--ink); font-size: 19px; letter-spacing: -.04em; }
-.brand-symbol, .brand-mark { color: var(--lime); background: #171812; border-radius: 10px; }
+.brand-symbol, .brand-mark { border-radius: 10px; }
 .main-nav { gap: 20px; margin-top: 34px; }
 .nav-group > p { color: var(--muted); letter-spacing: .16em; }
 .nav-item { min-height: 42px; color: var(--muted); border-radius: 11px; }

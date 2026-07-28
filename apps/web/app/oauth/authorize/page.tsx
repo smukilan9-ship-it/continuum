@@ -3,6 +3,7 @@ import { ArrowLeft, ExternalLink, Shield } from "lucide-react";
 import { redirect } from "next/navigation";
 import { OAuthConsentForm } from "@/components/oauth-consent-form";
 import { getServerUser } from "@/lib/auth";
+import { BrandMark } from "@/components/brand-mark";
 import { issueOAuthConsent, parseAuthorizationRequest } from "@/lib/oauth";
 
 const errorMessages: Record<string, { title: string; body: string }> = {
@@ -142,8 +143,8 @@ function OAuthHeader() {
   return (
     <header className="oauth-header">
       <a className="brand" href="/integrations" aria-label="Continuum Connections">
-        <span className="brand-symbol">C</span>
-        <span>Continuum</span>
+        <BrandMark className="brand-symbol" />
+        <span>continuum</span>
       </a>
       <nav aria-label="Connection context">
         <span>Connections</span>

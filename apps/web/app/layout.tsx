@@ -13,8 +13,9 @@ export const metadata: Metadata = {
     title: "Continuum — Never restart your academic context",
     description: "Diagnose. Teach. Verify. Remember. One academic memory across every AI tool.",
     type: "website",
+    images: [{ url: "/continuum-hackathon-thumbnail.png", width: 1536, height: 1024, alt: "Continuum keeps academic context moving across plans, learning, research, code, and AI tools." }],
   },
-  twitter: { card: "summary_large_image", title: "Continuum", description: "Your academic memory, in motion." },
+  twitter: { card: "summary_large_image", title: "Continuum", description: "Your academic memory, in motion.", images: ["/continuum-hackathon-thumbnail.png"] },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
