@@ -3,7 +3,7 @@ export const workspaceViews = ["today", "assistant", "goals", "learn", "code", "
 export type WorkspaceView = (typeof workspaceViews)[number];
 
 export const workspacePath: Record<WorkspaceView, Route> = {
-  today: "/",
+  today: "/today" as Route,
   assistant: "/assistant" as Route,
   goals: "/goals",
   learn: "/learn",

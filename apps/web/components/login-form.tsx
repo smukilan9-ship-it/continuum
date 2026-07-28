@@ -3,17 +3,18 @@
 import { ArrowRight, Eye, EyeOff, PlayCircle, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { BrandMark } from "@/components/brand-mark";
 import { PASSWORD_HELP, PASSWORD_MIN_LENGTH, USERNAME_HELP, USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from "@/lib/password-policy";
 
 type Mode = "login" | "register";
 
-export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailable, authError }: { returnTo?: string; demoMode: boolean; registrationEnabled: boolean; demoAvailable: boolean; authError?: string }) {
-  const [mode, setMode] = useState<Mode>("login");
+export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailable, authError, initialMode = "login" }: { returnTo?: string; demoMode: boolean; registrationEnabled: boolean; demoAvailable: boolean; authError?: string; initialMode?: Mode }) {
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [error, setError] = useState<string | null>(authError ?? null);
   const [busy, setBusy] = useState<null | "form" | "demo">(null);
   const [showPassword, setShowPassword] = useState(false);
-  const destination = returnTo?.startsWith("/") ? returnTo : "/";
+  const destination = returnTo?.startsWith("/") ? returnTo : "/today";
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -62,7 +63,7 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailab
           <p className="eyebrow">CONTINUUM · LOCAL MODE</p>
           <h1>Pick up your academic work with the context intact.</h1>
           <p>This local development workspace uses an in-memory account. Production requires persistent accounts and never enables this bypass.</p>
-          <Link className="button button-primary button-large" href="/">Open local workspace <ArrowRight size={17} /></Link>
+          <Link className="button button-primary button-large" href={"/today" as Route}>Open local workspace <ArrowRight size={17} /></Link>
           <span className="privacy-note">Local process only · no production authentication bypass</span>
         </section>
       </main>

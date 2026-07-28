@@ -10,7 +10,7 @@ const sizes = [
 ];
 const requestedRoutes = process.env.CONTINUUM_VISUAL_ROUTES?.split(",").map((value) => value.trim()).filter(Boolean);
 const routes = [
-  ["today", "/"],
+  ["today", "/today"],
   ["assistant", "/assistant"],
   ["plan", "/goals"],
   ["learn", "/learn"],
@@ -67,7 +67,7 @@ for (const engine of engines) {
         }, { timeout: 20_000 });
         await page.screenshot({ path: new URL(`${engine.name}-login-${theme}-${viewport.width}x${viewport.height}.png`, outputDirectory).pathname });
         await page.getByRole("button", { name: /Explore the demo/ }).click();
-        await page.waitForURL((url) => url.pathname === "/", { timeout: 30_000 });
+        await page.waitForURL((url) => url.pathname === "/today", { timeout: 30_000 });
         await page.waitForLoadState("load");
         await page.locator(".app-shell").waitFor({ state: "visible", timeout: 20_000 });
         await page.waitForTimeout(500);

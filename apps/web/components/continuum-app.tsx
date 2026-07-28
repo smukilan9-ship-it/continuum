@@ -214,7 +214,7 @@ export function ContinuumApp({ user, initialState, view, serverNow }: { user: Au
         aria-hidden={compactNavigation && !mobileNav ? true : undefined}
       >
         <div className="sidebar-head">
-          <Link className="brand" href="/" onClick={linkHandler("today")} aria-label="Continuum home">
+          <Link className="brand" href={workspacePath.today} onClick={linkHandler("today")} aria-label="Continuum workspace home">
             <BrandMark className="brand-symbol" />
             <span>continuum</span>
           </Link>

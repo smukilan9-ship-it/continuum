@@ -6,16 +6,25 @@ import "./globals.css";
 const sans = DM_Sans({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Continuum — Your academic memory, in motion",
-  description: "An evidence-backed academic operating system that diagnoses, plans, remembers, and moves learning forward across every AI tool.",
-  metadataBase: new URL(process.env.APP_BASE_URL ?? "http://localhost:3000"),
-  openGraph: {
-    title: "Continuum — Never restart your academic context",
-    description: "Diagnose. Teach. Verify. Remember. One academic memory across every AI tool.",
-    type: "website",
-    images: [{ url: "/continuum-hackathon-thumbnail.png", width: 1536, height: 1024, alt: "Continuum keeps academic context moving across plans, learning, research, code, and AI tools." }],
+  title: {
+    default: "Continuum — One Workspace. Infinite Learning.",
+    template: "%s | Continuum",
   },
-  twitter: { card: "summary_large_image", title: "Continuum", description: "Your academic memory, in motion.", images: ["/continuum-hackathon-thumbnail.png"] },
+  description: "Continuum connects AI conversations, research, notes, code, projects, and mastery in one continuous learning workspace.",
+  metadataBase: new URL(process.env.APP_BASE_URL ?? "http://localhost:3000"),
+  applicationName: "Continuum",
+  keywords: ["AI learning workspace", "academic research", "persistent memory", "OpenAlex", "Zotero", "knowledge graph", "adaptive learning"],
+  authors: [{ name: "Continuum" }],
+  creator: "Continuum",
+  category: "education",
+  openGraph: {
+    title: "Continuum — One Workspace. Infinite Learning.",
+    description: "The operating system for modern learning and research.",
+    type: "website",
+    siteName: "Continuum",
+    images: [{ url: "/og.png", width: 1536, height: 1024, alt: "Continuum brings fragmented learning tools into one connected workspace." }],
+  },
+  twitter: { card: "summary_large_image", title: "Continuum — One Workspace. Infinite Learning.", description: "The operating system for modern learning and research.", images: ["/og.png"] },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
