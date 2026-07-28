@@ -1419,7 +1419,7 @@ html[data-theme="dark"] .workflow-step-list button.active i {
 .workflow-window-content > p {
   max-width: 620px;
   margin: 0;
-  color: #8f9b92;
+  color: #aeb8b0;
   font-size: 14px;
   line-height: 1.6;
 }
@@ -1440,7 +1440,7 @@ html[data-theme="dark"] .workflow-step-list button.active i {
   display: flex;
   align-items: center;
   gap: 7px;
-  color: #8f9b92;
+  color: #aeb8b0;
   font-size: 10px;
 }
 
@@ -1470,7 +1470,7 @@ html[data-theme="dark"] .workflow-step-list button.active i {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: #89958c;
+  color: #aab4ac;
   background: #19231c;
   border: 1px solid #2a382f;
   border-radius: 6px;

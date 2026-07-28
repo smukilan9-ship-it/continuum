@@ -367,9 +367,9 @@ export function WorkflowShowcase() {
           <motion.div
             key={active.id}
             className="workflow-window-content"
-            initial={reduceMotion ? false : { opacity: 0, x: 16 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={reduceMotion ? undefined : { opacity: 0, x: -12 }}
+            initial={reduceMotion ? false : { x: 16 }}
+            animate={{ x: 0 }}
+            exit={reduceMotion ? undefined : { x: -12 }}
             transition={{ duration: 0.3 }}
           >
             <div className="workflow-window-label"><span>{String(activeStep + 1).padStart(2, "0")}</span>{active.label}</div>
