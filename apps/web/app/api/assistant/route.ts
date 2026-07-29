@@ -8,7 +8,8 @@ import { getStore } from "@/lib/store";
 import { assistantMemoryMarkdown, assistantMemoryVaultPath } from "@/lib/assistant-memory-note";
 import { assistantMemorySyncStatuses, enqueueContinuumRecord, type RecordSyncStatus } from "@/lib/obsidian-sync-engine";
 import { publicErrorMessage } from "@/lib/api-errors";
-import { createReasoningFilter, isConversationalFiller } from "@/lib/reasoning-filter";
+import { createOutputFilter, isConversationalFiller, redactIdentifiers } from "@/lib/assistant/output-filter";
+import { fromAttachments, fromMemoryChunks, fromWorkspaceContext, labelMap, mergeProvenance } from "@/lib/assistant/provenance";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -323,14 +324,16 @@ export async function POST(request: Request) {
     reference: chunk.reference,
     text: chunk.text.slice(0, 4_000),
   }));
-  const usedContext = [
-    ...selectedSources.map((source) => ({ type: "attachment", id: String(source.id), label: String(source.title ?? "Attached source") })),
-    ...requestedScopes.filter((scope) => scope !== "conversation" && scope !== "selected_files").map((scope) => ({
-      type: "scope",
-      id: scope,
-      label: scope.replaceAll("_", " "),
-    })),
-  ];
+  // Provenance is the records that were actually retrieved, not the scopes the
+  // user ticked. The previous version reported scope names, so a reply that
+  // retrieved nothing still claimed "Answered using 2 records from your
+  // workspace" — the 2 counted checkboxes.
+  const usedContext = mergeProvenance([
+    fromAttachments(selectedSources, sourceChunks as unknown as Array<Record<string, unknown>>),
+    fromMemoryChunks(relevantMemory as unknown as Array<Record<string, unknown>>),
+    fromWorkspaceContext(context),
+  ]);
+  const contextLabels = labelMap(usedContext);
   await Promise.all([
     store.appendAssistantMessage({
       id: id("assistant_message"),
@@ -347,14 +350,28 @@ export async function POST(request: Request) {
     role: message.role === "assistant" ? "assistant" : "user",
     content: String(message.content ?? "").slice(0, 4_000),
   }));
+  // Identifiers are stripped from the context before the model ever sees them.
+  // Filtering only the output is not enough: a model that never receives
+  // `goal_demo_sat` cannot echo it, and the labels remain readable.
+  const safeContext = JSON.parse(
+    redactIdentifiers(JSON.stringify({ workspace: context, relevantMemory, selectedFiles: attachmentContext }), contextLabels),
+  ) as unknown;
+
   const prompt = buildAcademicPrompt({
     surface: "assistant",
     taskClass: "conversational_support",
     userRequest: userMessage,
     educationLevel: user.educationLevel,
-    relevantContext: { workspace: context, relevantMemory, selectedFiles: attachmentContext },
+    relevantContext: safeContext,
     previousAttempts: history,
-    outputContract: "Answer in calm, plain Markdown. Use only relevant supplied context. Cite selected files using their supplied [Source: title · passage N] reference when making source-grounded claims. Clearly distinguish saved facts from suggestions. Do not claim to change workspace records.",
+    outputContract: [
+      "Answer in calm, plain Markdown, beginning with the first sentence of the answer itself.",
+      "Never output a plan, outline, or analysis of the request. Never write a heading such as 'Thinking Process', 'Analysis', 'Step 1', 'Persona', 'Constraints', 'Approach', or 'Synthesize'.",
+      "Never restate the question before answering, and never describe what you are about to do.",
+      "Refer to any record by its title. Never write an internal identifier.",
+      "Use only relevant supplied context. Cite selected files using their supplied [Source: title · passage N] reference when making source-grounded claims.",
+      "Clearly distinguish saved facts from suggestions. Do not claim to change workspace records.",
+    ].join(" "),
   });
   try {
     const streamed = await runStreamingAi({
@@ -372,7 +389,7 @@ export async function POST(request: Request) {
     const responseStream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          const filter = createReasoningFilter();
+          const filter = createOutputFilter({ labels: contextLabels });
           for await (const part of streamed.result.textStream) {
             const visible = filter.push(part);
             if (visible) {
@@ -384,6 +401,14 @@ export async function POST(request: Request) {
           if (tail) {
             answer += tail;
             controller.enqueue(encoder.encode(tail));
+          }
+          // The whole response was narration, so the user is looking at an empty
+          // reply. Say so rather than leaving a blank turn; the client's Retry
+          // re-sends without duplicating the user message.
+          if (!answer.trim() && filter.suppressedNarration) {
+            const notice = "I couldn't produce a clean answer for that. Try asking again, or rephrase it.";
+            answer = notice;
+            controller.enqueue(encoder.encode(notice));
           }
           if (answer.trim()) {
             await store.appendAssistantMessage({
