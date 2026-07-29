@@ -1,0 +1,458 @@
+/* ==========================================================================
+   Plan surfaces (redesign.md §14.2).
+
+   Composes design tokens only — no literal colour, radius, spacing, or duration
+   value appears below. Class names are namespaced `plan-` and are new, so the
+   old `.week-block` / `.draft-block` blocks in globals.css cannot reach them.
+   That is deliberate: `.week-block span { text-transform: uppercase }` is what
+   printed "COMMITTED" on every block (S15), and nothing here reintroduces it.
+   ========================================================================== */
+
+.plan-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+/* --- Toolbar and draft bar ------------------------------------------------ */
+
+.plan-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.plan-weeknav {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+.plan-weeknav > span {
+  min-width: 88px;
+  text-align: center;
+  font-size: var(--t-small);
+  color: var(--ink-2);
+}
+
+.plan-toolbar-stat {
+  font-size: var(--t-small);
+  color: var(--ink-2);
+}
+.plan-toolbar-stat strong { color: var(--ink); }
+
+.plan-draft-bar {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface-raised);
+  font-size: var(--t-small);
+  color: var(--ink-2);
+}
+.plan-draft-bar strong { color: var(--ink); }
+.plan-draft-bar > div {
+  margin-left: auto;
+  display: inline-flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.plan-warning-count {
+  padding: var(--s-0\.5) var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--warning-surface);
+  color: var(--warning);
+  font-size: var(--t-micro);
+}
+
+/* --- Desktop / mobile switch ---------------------------------------------- */
+
+/* Below 900px the grid is removed from the layout entirely, not shrunk. Seven
+   columns is the wrong shape for a phone at any track width (C6). */
+.plan-week-mobile { display: none; }
+
+@media (max-width: 899px) {
+  .plan-week-desktop { display: none; }
+  .plan-week-mobile { display: block; }
+}
+
+/* --- Week grid ------------------------------------------------------------ */
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: var(--s-2);
+  --plan-grid-h: 720px;
+}
+
+.plan-grid-hours {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: var(--plan-grid-h);
+  margin-top: var(--s-8);
+  font-size: var(--t-micro);
+  line-height: 1;
+  color: var(--ink-3);
+  text-align: right;
+}
+
+.plan-grid-days {
+  display: grid;
+  /* `minmax(0, 1fr)` is load-bearing: a track that can grow past its share is
+     exactly how the previous board painted Thursday on top of Wednesday. */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--s-1);
+}
+
+.plan-day { min-width: 0; }
+
+.plan-day-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--s-1);
+  height: var(--s-8);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.plan-day-head strong { font-size: var(--t-small); color: var(--ink-2); }
+.plan-day.is-today .plan-day-head strong { color: var(--accent); }
+
+.plan-day-column {
+  position: relative;
+  height: var(--plan-grid-h);
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+}
+.plan-day:last-child .plan-day-column { border-right: 1px solid var(--line); }
+.plan-day.is-today .plan-day-column { background: var(--surface-raised); }
+
+.plan-hour-line {
+  display: block;
+  height: calc(100% / 18);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Fixed commitments are flat bands behind the study blocks: a clash reads as an
+   overlap rather than as a badge you have to notice. */
+.plan-commitment {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 0;
+  overflow: hidden;
+  padding: var(--s-0\.5) var(--s-1);
+  background: var(--surface-sunken);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-micro);
+  line-height: var(--t-micro-lh);
+  color: var(--ink-3);
+}
+
+.plan-block-list {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.plan-block {
+  position: absolute;
+  left: var(--s-0\.5);
+  right: var(--s-0\.5);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-0\.5);
+  padding: var(--s-1) var(--s-1) var(--s-1) var(--s-2);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--plan-goal, var(--accent));
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  transition: box-shadow var(--d-fast) var(--e-out);
+}
+
+.plan-block small {
+  font-size: var(--t-micro);
+  line-height: 1;
+  color: var(--ink-3);
+}
+
+/* Two lines, then ellipsis (§14.2). */
+.plan-block strong {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--t-micro);
+  line-height: var(--t-micro-lh);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.plan-block-grip { position: absolute; top: var(--s-1); right: var(--s-1); color: var(--ink-3); }
+
+/* Draft is dashed; committed is the solid default and carries no label. */
+.plan-grid-draft .plan-block {
+  border-top-style: dashed;
+  border-right-style: dashed;
+  border-bottom-style: dashed;
+  cursor: grab;
+}
+.plan-grid-draft .plan-block:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.plan-grid-draft .plan-block:active { cursor: grabbing; }
+
+.plan-block.is-fixed { border-top-style: solid; border-right-style: solid; border-bottom-style: solid; }
+
+.plan-block.is-overlapping {
+  border-color: var(--warning);
+  border-left-color: var(--warning);
+  background: var(--warning-surface);
+}
+
+.plan-block.is-moving {
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-2);
+  z-index: 2;
+}
+
+.plan-block-warning {
+  font-size: var(--t-micro);
+  line-height: 1;
+  color: var(--warning);
+}
+
+.plan-block-resize {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 7px;
+  border: 0;
+  background: transparent;
+  cursor: ns-resize;
+}
+.plan-block-resize:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* --- Mobile agenda -------------------------------------------------------- */
+
+.plan-agenda { display: flex; flex-direction: column; gap: var(--s-3); }
+
+/* The strip is the only thing that scrolls sideways; the agenda never does. */
+.plan-datestrip {
+  display: flex;
+  gap: var(--s-1);
+  overflow-x: auto;
+  padding-bottom: var(--s-1);
+  scrollbar-width: none;
+}
+.plan-datestrip::-webkit-scrollbar { display: none; }
+
+.plan-datestrip button {
+  position: relative;
+  flex: 1 0 auto;
+  min-width: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-0\.5);
+  padding: var(--s-2) var(--s-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+  cursor: pointer;
+}
+.plan-datestrip button strong { font-size: var(--t-body); color: var(--ink-2); }
+.plan-datestrip button.is-today strong { color: var(--accent); }
+.plan-datestrip button.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-quiet);
+}
+.plan-datestrip button.is-selected strong { color: var(--accent); }
+.plan-datestrip button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.plan-datestrip button i {
+  width: 4px;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+}
+
+.plan-agenda-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+/* Full-width rows in one column: nothing is positioned, so nothing can overlap
+   and nothing can push the page sideways (AC-PL1). */
+.plan-agenda-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  min-width: 0;
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--plan-goal, var(--accent));
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.plan-agenda-row:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.plan-agenda-row.is-busy {
+  border-left-color: var(--line-strong);
+  background: var(--surface-sunken);
+}
+.plan-agenda-row.is-overlapping { border-color: var(--warning); background: var(--warning-surface); }
+.plan-agenda-row.is-moving { box-shadow: 0 0 0 2px var(--accent); }
+
+.plan-agenda-time {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-width: 52px;
+  font-size: var(--t-small);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.plan-agenda-time small { font-size: var(--t-micro); color: var(--ink-3); }
+
+.plan-agenda-copy { flex: 1 1 auto; min-width: 0; }
+.plan-agenda-copy strong {
+  display: block;
+  font-size: var(--t-body);
+  line-height: var(--t-body-lh);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.plan-agenda-copy small {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.plan-agenda-warning { color: var(--warning) !important; }
+
+.plan-agenda-empty {
+  margin: 0;
+  padding: var(--s-6) var(--s-4);
+  text-align: center;
+  font-size: var(--t-small);
+  color: var(--ink-3);
+}
+
+/* --- Build my week -------------------------------------------------------- */
+
+.plan-build-form { display: flex; flex-direction: column; gap: var(--s-6); }
+.plan-build-form fieldset { border: 0; margin: 0; padding: 0; }
+.plan-build-form legend {
+  padding: 0;
+  margin-bottom: var(--s-3);
+  font-size: var(--t-h3);
+  line-height: var(--t-h3-lh);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.plan-build-hint {
+  margin: 0 0 var(--s-3);
+  font-size: var(--t-small);
+  color: var(--ink-3);
+}
+
+.plan-build-pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-4); }
+.plan-build-chips { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+
+.plan-chip {
+  min-height: 32px;
+  padding: 0 var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--t-small);
+  line-height: 1;
+  cursor: pointer;
+}
+.plan-chip:hover { border-color: var(--line-strong); color: var(--ink); }
+.plan-chip-on { border-color: var(--accent); background: var(--accent-quiet); color: var(--accent); font-weight: 500; }
+.plan-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Structured rows replace the regex-parsed textarea (feature #22). */
+.plan-commitment-rows {
+  list-style: none;
+  margin: 0 0 var(--s-3);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.plan-commitment-rows > li {
+  display: grid;
+  grid-template-columns: 96px 108px 108px minmax(0, 1fr) auto;
+  gap: var(--s-2);
+  align-items: end;
+}
+
+@media (max-width: 720px) {
+  .plan-build-pair { grid-template-columns: 1fr; }
+  .plan-commitment-rows > li { grid-template-columns: 1fr 1fr; }
+  .plan-commitment-rows > li > :nth-child(4) { grid-column: 1 / -1; }
+}
+
+/* --- Forms ---------------------------------------------------------------- */
+
+.plan-block-form { display: flex; flex-direction: column; gap: var(--s-4); }
+.plan-block-form-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3); }
+.plan-block-form-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: flex-end; }
+
+@media (max-width: 620px) {
+  .plan-block-form-row { grid-template-columns: 1fr; }
+}
+
+.plan-fixed-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.plan-fixed-choice strong { display: block; font-size: var(--t-body); color: var(--ink); }
+.plan-fixed-choice small { font-size: var(--t-micro); color: var(--ink-3); }
+
+/* --- Goals and backlog ---------------------------------------------------- */
+
+.plan-backlog { display: flex; flex-direction: column; gap: var(--s-6); }
+.plan-backlog h3 {
+  margin: 0 0 var(--s-2);
+  font-size: var(--t-h3);
+  line-height: var(--t-h3-lh);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.plan-backlog-meta { display: inline-flex; align-items: center; gap: var(--s-1); }
+
+.plan-goal-meta { display: flex; flex-direction: column; gap: var(--s-1); max-width: 320px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-block { transition: none; }
+}

@@ -375,3 +375,31 @@ export const imageExtractions = pgTable("image_extractions", {
   uniqueIndex("image_extractions_user_hash_idx").on(table.userId, table.contentHash),
   index("image_extractions_user_status_idx").on(table.userId, table.status),
 ]);
+
+/**
+ * One study session (redesign.md §14.1, §16.11 migration 2).
+ *
+ * Replaces the 20-field localStorage draft the Learn screen used to write on
+ * every keystroke. That blob was per-browser, so a session started on a phone
+ * was invisible on a laptop, and a corrupt entry silently reset the workspace.
+ *
+ * `lesson` and `checkpoint` are deliberately nullable with no default: an empty
+ * object and "not generated yet" are different states, and the resume path has
+ * to tell them apart. `checkpoint` holds the generated assessment item
+ * *including its answer key*, which is why grading stays on the server.
+ */
+export const studySessions = pgTable("study_sessions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").references(() => users.id).notNull(),
+  goalId: text("goal_id").references(() => goals.id),
+  conceptId: text("concept_id").references(() => concepts.id),
+  phase: text("phase").default("learn").notNull(),
+  lesson: jsonb("lesson").$type<Record<string, unknown>>(),
+  checkpoint: jsonb("checkpoint").$type<Record<string, unknown>>(),
+  answer: text("answer"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, (table) => [
+  index("study_sessions_user_time_idx").on(table.userId, table.updatedAt),
+]);

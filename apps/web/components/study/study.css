@@ -1,0 +1,564 @@
+/* ==========================================================================
+   Study surfaces (redesign.md §14.1).
+
+   Composes design tokens only — no literal colour, radius, spacing, or duration
+   value appears below. Every class is namespaced `study-` so nothing here can
+   collide with the per-screen blocks still living in globals.css.
+   ========================================================================== */
+
+/* --- Study view ----------------------------------------------------------- */
+
+.study-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+}
+
+.study-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.study-section-heading {
+  margin: 0;
+  font-size: var(--t-h2);
+  line-height: var(--t-h2-lh);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* --- Continue ------------------------------------------------------------- */
+
+/* One row, not a hero card: the action is the point, not the frame. */
+.study-continue {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.study-continue-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-md);
+  background: var(--accent-quiet);
+  color: var(--accent);
+}
+
+.study-continue-copy { flex: 1 1 auto; min-width: 0; }
+.study-continue-copy strong {
+  display: block;
+  font-size: var(--t-h3);
+  line-height: var(--t-h3-lh);
+  color: var(--ink);
+}
+.study-continue-copy p {
+  margin: var(--s-1) 0 0;
+  font-size: var(--t-small);
+  line-height: var(--t-small-lh);
+  color: var(--ink-2);
+}
+
+@media (max-width: 720px) {
+  .study-continue { flex-wrap: wrap; }
+  .study-continue-copy { flex-basis: 100%; order: 2; }
+  .study-continue .button { flex-basis: 100%; order: 4; }
+}
+
+/* --- Concept list --------------------------------------------------------- */
+
+.study-concept-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+/* The amber dot is an indicator; it never exceeds 4px in any dimension, and it
+   never travels without the label beside it (§15.2, WCAG 1.4.1). */
+.study-misconception-dot {
+  flex: none;
+  width: 4px;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: var(--warning);
+}
+
+.study-misconception-label {
+  font-style: normal;
+  font-size: var(--t-micro);
+  line-height: var(--t-micro-lh);
+  padding: var(--s-0\.5) var(--s-2);
+  border-radius: var(--r-full);
+  color: var(--warning);
+  background: var(--warning-surface);
+}
+
+/* Three segments, weakest one named. A bar with no number on it is decoration. */
+.study-minibar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.study-minibar-segment {
+  display: block;
+  width: 28px;
+  height: 3px;
+  border-radius: var(--r-full);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.study-minibar-segment i {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--line-strong);
+}
+
+.study-minibar-segment.is-weakest i { background: var(--accent); }
+
+.study-minibar em {
+  font-style: normal;
+  margin-left: var(--s-1);
+  font-size: var(--t-micro);
+  line-height: var(--t-micro-lh);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.study-concept-when {
+  font-size: var(--t-micro);
+  line-height: var(--t-micro-lh);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .study-concept-when { display: none; }
+}
+
+/* --- Material and practice ------------------------------------------------ */
+
+.study-material-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-6);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .study-material-grid { grid-template-columns: 1fr; }
+}
+
+.study-subhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.study-subhead h3 {
+  margin: 0;
+  font-size: var(--t-h3);
+  line-height: var(--t-h3-lh);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.study-subhead > div { display: inline-flex; gap: var(--s-2); }
+
+/* --- Resource panel ------------------------------------------------------- */
+
+.study-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+}
+
+.study-chip-set { border: 0; margin: 0; padding: 0; }
+.study-chip-set legend {
+  padding: 0;
+  margin-bottom: var(--s-3);
+  font-size: var(--t-h3);
+  line-height: var(--t-h3-lh);
+  font-weight: 600;
+  color: var(--ink);
+}
+.study-chip-set > div,
+.study-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.study-chip {
+  min-height: 32px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--t-small);
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color var(--d-fast) var(--e-out), border-color var(--d-fast) var(--e-out), color var(--d-fast) var(--e-out);
+}
+.study-chip:hover { border-color: var(--line-strong); color: var(--ink); }
+.study-chip-on {
+  border-color: var(--accent);
+  background: var(--accent-quiet);
+  color: var(--accent);
+  font-weight: 500;
+}
+.study-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.study-options > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-2) 0;
+  cursor: pointer;
+  font-size: var(--t-small);
+  color: var(--ink-2);
+}
+.study-options > summary span { color: var(--ink-3); }
+.study-options > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.study-options-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-3) 0 var(--s-1);
+  border-top: 1px solid var(--line);
+}
+
+.study-result-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.study-result-list > li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.study-result-copy { flex: 1 1 auto; min-width: 0; }
+.study-result-copy strong { display: block; font-size: var(--t-body); color: var(--ink); }
+.study-result-copy small {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin-top: var(--s-0\.5);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.study-result-copy p {
+  margin: var(--s-2) 0 0;
+  font-size: var(--t-small);
+  line-height: var(--t-small-lh);
+  color: var(--ink-2);
+}
+
+.study-result-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  flex: none;
+}
+
+.study-more {
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  line-height: 1;
+}
+.study-more:hover { background: var(--surface-raised); color: var(--ink); }
+.study-more:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.study-result-note {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  border: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+
+/* One card, four states — the four-step stepper collapsed into what it described. */
+.study-active-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.study-active-card > header { display: flex; flex-direction: column; gap: var(--s-2); align-items: flex-start; }
+.study-active-card > header h3 { margin: 0; font-size: var(--t-h3); line-height: var(--t-h3-lh); color: var(--ink); }
+
+.study-active-steps { margin: 0; display: flex; flex-direction: column; gap: var(--s-3); }
+.study-active-steps > div { display: flex; flex-direction: column; gap: var(--s-0\.5); }
+.study-active-steps dt {
+  font-size: var(--t-eyebrow);
+  line-height: var(--t-eyebrow-lh);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.study-active-steps dd { margin: 0; font-size: var(--t-small); line-height: var(--t-small-lh); color: var(--ink-2); }
+
+.study-active-actions { display: flex; flex-direction: column; gap: var(--s-3); align-items: stretch; }
+.study-active-note {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: var(--t-small);
+  color: var(--success);
+}
+
+/* --- Study session (/study/[sessionId]) ----------------------------------- */
+
+/* No sidebar, one column. The frame is deliberately not the workspace shell. */
+.study-session {
+  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+.study-session-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  height: var(--topbar-h);
+  padding: 0 var(--s-5);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.study-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  text-decoration: none;
+  border-radius: var(--r-sm);
+}
+.study-back:hover { color: var(--ink); }
+.study-back:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+
+.study-session-concept {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-small);
+  color: var(--ink-3);
+}
+
+.study-dots { display: inline-flex; gap: var(--s-1); list-style: none; margin: 0; padding: 0; }
+.study-dots li {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--line-strong);
+}
+.study-dots li.is-done { background: var(--accent); }
+.study-dots li.is-current { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-quiet); }
+
+.study-session-column {
+  max-width: var(--reading-max);
+  margin: 0 auto;
+  padding: var(--s-8) var(--s-5) var(--s-16);
+}
+
+.study-lesson h1,
+.study-check h1,
+.study-result h1,
+.study-next h1 {
+  margin: 0 0 var(--s-3);
+  font-size: var(--t-h1);
+  line-height: var(--t-h1-lh);
+  font-weight: 600;
+  color: var(--ink);
+}
+.study-lesson h1:focus-visible,
+.study-check h1:focus-visible,
+.study-result h1:focus-visible,
+.study-next h1:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: var(--r-sm); }
+
+.study-result h1 { display: flex; align-items: center; gap: var(--s-2); }
+
+.study-lesson-lede {
+  margin: 0 0 var(--s-6);
+  font-size: var(--t-body-lg);
+  line-height: var(--t-body-lg-lh);
+  color: var(--ink-2);
+}
+
+.study-objectives,
+.study-example {
+  margin-bottom: var(--s-6);
+  padding: var(--s-4);
+  border-radius: var(--r-lg);
+  background: var(--surface-raised);
+}
+.study-objectives h2,
+.study-example h2,
+.study-contrast h2 {
+  margin: 0 0 var(--s-2);
+  font-size: var(--t-h3);
+  line-height: var(--t-h3-lh);
+  font-weight: 600;
+  color: var(--ink);
+}
+.study-objectives ul { margin: 0; padding-left: var(--s-5); }
+.study-objectives li,
+.study-example p {
+  font-size: var(--t-body);
+  line-height: var(--t-body-lh);
+  color: var(--ink-2);
+}
+.study-example p { margin: 0; }
+
+/* Two columns of contrast on desktop, one on mobile — the structure carries the
+   meaning ("potential belongs to a place" vs "energy belongs to a charge"). */
+.study-contrast {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-4);
+  margin-bottom: var(--s-6);
+}
+@media (max-width: 720px) {
+  .study-contrast { grid-template-columns: 1fr; }
+}
+
+.study-contrast section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.study-contrast-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-full);
+  background: var(--accent-quiet);
+  color: var(--accent);
+  font-size: var(--t-micro);
+  font-weight: 600;
+}
+.study-contrast p { margin: 0; font-size: var(--t-body); line-height: var(--t-body-lh); color: var(--ink-2); }
+
+.study-provenance {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-6);
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+  font-size: var(--t-small);
+  line-height: var(--t-small-lh);
+  color: var(--ink-2);
+}
+.study-provenance strong { color: var(--ink); margin-right: var(--s-1); }
+
+.study-advance {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--line);
+}
+.study-advance small { font-size: var(--t-micro); line-height: var(--t-micro-lh); color: var(--ink-3); }
+
+.study-check-prompt {
+  margin: 0 0 var(--s-5);
+  padding: var(--s-4);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  background: var(--surface-raised);
+  font-size: var(--t-body-lg);
+  line-height: var(--t-body-lg-lh);
+  color: var(--ink);
+}
+
+.study-choices { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-bottom: var(--s-5); }
+
+.study-delta {
+  font-size: var(--t-body);
+  line-height: var(--t-body-lh);
+  color: var(--ink-2);
+}
+.study-delta strong { color: var(--ink); }
+
+.study-next-recommendation {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  margin: 0 0 var(--s-2);
+  border-radius: var(--r-lg);
+  background: var(--surface-raised);
+  font-size: var(--t-body);
+  line-height: var(--t-body-lh);
+  color: var(--ink-2);
+}
+
+.study-lesson-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.study-lesson-skeleton p {
+  margin: var(--s-2) 0 0;
+  font-size: var(--t-small);
+  color: var(--ink-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .study-chip { transition: none; }
+}

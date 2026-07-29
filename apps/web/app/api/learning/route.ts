@@ -6,6 +6,8 @@ import { z } from "zod";
 import { getStore } from "@/lib/store";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { evaluateQuestionAnswer } from "@/lib/question-bank";
+import { checkpointNotice, gradeCheckpoint, publicCheckpoint, resolveCheckpointItem, type CheckpointItem } from "./checkpoint";
+import { getStudySession, updateStudySession } from "./sessions";
 
 export const runtime = "nodejs";
 
@@ -25,7 +27,24 @@ const requestSchema = z.discriminatedUnion("action", [
     conceptId: z.string().min(3).max(200).optional(),
   }),
   z.object({ action: z.literal("lesson_read"), conceptId: z.string().min(3).max(200).default("concept_potential") }),
-  z.object({ action: z.literal("checkpoint"), answer: z.union([z.string(), z.number()]) }),
+  // Asks for the unseen item *before* the learner sees it, so the answer key is
+  // stored server-side and the check phase can be resumed on another device.
+  z.object({
+    action: z.literal("checkpoint_item"),
+    conceptId: z.string().min(3).max(200).default("concept_potential"),
+    conceptLabel: z.string().trim().max(300).optional(),
+    conceptDescription: z.string().trim().max(2_000).optional(),
+    sessionId: z.string().min(3).max(200).optional(),
+    liveAi: z.boolean().default(false),
+  }),
+  z.object({
+    action: z.literal("checkpoint"),
+    answer: z.union([z.string(), z.number()]),
+    conceptId: z.string().min(3).max(200).default("concept_potential"),
+    conceptLabel: z.string().trim().max(300).optional(),
+    conceptDescription: z.string().trim().max(2_000).optional(),
+    sessionId: z.string().min(3).max(200).optional(),
+  }),
   z.object({ action: z.literal("ask_question"), selection: z.string().trim().min(8).max(4_000), conceptId: z.string().min(3).max(200).default("concept_potential") }),
   z.object({
     action: z.literal("evaluate_answer"),
@@ -58,6 +77,31 @@ async function tryLiveAi(request: Request, body: Record<string, unknown>) {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The concept a checkpoint is about. Label and description are supplied by the
+ * study surface, which already has them; falling back to the id keeps the
+ * request valid for callers that only know the concept it refers to.
+ */
+function checkpointConcept(input: { conceptId: string; conceptLabel?: string; conceptDescription?: string }) {
+  const label = input.conceptLabel?.trim() || input.conceptId.replace(/^concept_/, "").replace(/[_-]+/g, " ");
+  return {
+    conceptId: input.conceptId,
+    label,
+    description: input.conceptDescription?.trim() || `the core idea behind ${label}`,
+  };
+}
+
+/**
+ * Reads back an item written by `checkpoint_item`. Validated on the way out
+ * because the column is `jsonb` and an older or truncated row must not be
+ * graded against — an unreadable item falls through to a fresh one.
+ */
+function storedCheckpoint(session: { checkpoint?: Record<string, unknown> } | undefined): CheckpointItem | undefined {
+  const value = session?.checkpoint;
+  if (!value || typeof value.prompt !== "string" || typeof value.correctAnswer !== "string" || typeof value.conceptId !== "string") return undefined;
+  return value as unknown as CheckpointItem;
 }
 
 async function potentialGoalId(store: ReturnType<typeof getStore>) {
@@ -236,18 +280,51 @@ export async function POST(request: Request) {
     return NextResponse.json({ mastery, transferChanged: false });
   }
 
-  const numericAnswer = Number(parsed.data.answer);
-  const expected = (9e9 * 2e-9) / 0.75;
-  const correct = Number.isFinite(numericAnswer) && Math.abs(numericAnswer - expected) <= 0.01;
+  if (parsed.data.action === "checkpoint_item") {
+    const concept = checkpointConcept(parsed.data);
+    const item = await resolveCheckpointItem(request, concept, { liveAi: parsed.data.liveAi });
+    // Persisting the item is what keeps the answer key off the client and lets
+    // the check phase survive a reload or a change of device.
+    if (parsed.data.sessionId) await updateStudySession(parsed.data.sessionId, user.id, { phase: "check", checkpoint: item as unknown as Record<string, unknown> });
+    return NextResponse.json({ item: publicCheckpoint(item), notice: checkpointNotice(item.origin), generated: item.origin !== "open_response" });
+  }
+
+  // Grading order: the item stored with this session, else one resolved for the
+  // concept now. The old route compared every answer against a single
+  // electrostatics constant regardless of what was being studied.
+  const conceptForCheck = checkpointConcept(parsed.data);
+  const stored = parsed.data.sessionId ? storedCheckpoint(await getStudySession(parsed.data.sessionId, user.id)) : undefined;
+  const item = stored ?? await resolveCheckpointItem(request, conceptForCheck);
+  const grade = gradeCheckpoint(item, parsed.data.answer);
   const attemptId = `attempt_checkpoint_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
-  const mastery = updateMastery(await store.getLearningState(), { id: attemptId, kind: "assessment", correct, unseen: true, occurredAt: now });
+  // Unchanged mastery rule (§14.1, AC-LN5): transfer moves only on an unseen
+  // assessment, and only when that assessment was answered correctly.
+  const masteryBefore = await store.getLearningState(item.conceptId);
+  const mastery = updateMastery(masteryBefore, {
+    id: attemptId,
+    kind: "assessment",
+    correct: grade.correct,
+    unseen: true,
+    score: grade.score,
+    completeness: grade.completeness,
+    occurredAt: now,
+  });
   await store.saveLearningState(mastery);
+  if (parsed.data.sessionId) await updateStudySession(parsed.data.sessionId, user.id, { phase: "result", answer: String(parsed.data.answer).slice(0, 4_000) });
   await store.appendEvent({
     type: "learning.checkpoint.completed",
-    summary: correct ? "Correct unseen checkpoint raised transfer mastery." : "Unseen checkpoint kept the misconception active.",
-    entityIds: [attemptId, "concept_potential"],
-    payload: { correct, answer: numericAnswer, expected, unseen: true, mastery },
+    summary: grade.correct ? "Correct unseen checkpoint raised transfer mastery." : "Unseen checkpoint kept the misconception active.",
+    entityIds: [attemptId, item.conceptId],
+    payload: { correct: grade.correct, score: grade.score, unseen: true, checkpointOrigin: item.origin, mastery },
     goalId: await potentialGoalId(store),
   }, now);
-  return NextResponse.json({ correct, attemptId, mastery, explanation: mastery.explanation });
+  return NextResponse.json({
+    correct: grade.correct,
+    attemptId,
+    mastery,
+    masteryBefore,
+    explanation: mastery.explanation,
+    checkpointExplanation: grade.explanation,
+    checkpointOrigin: item.origin,
+  });
 }

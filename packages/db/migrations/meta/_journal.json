@@ -64,6 +64,13 @@
       "when": 1785060000000,
       "tag": "0008_completion_systems",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785067200000,
+      "tag": "0009_study_sessions",
+      "breakpoints": true
     }
   ]
 }
