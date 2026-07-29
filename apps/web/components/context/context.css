@@ -1,0 +1,75 @@
+/* /context (redesign.md §9.9). Tokens only. */
+
+.context-page { max-width: var(--content-max); margin: 0 auto; padding: var(--s-8) var(--s-6) var(--s-16); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
+
+.context-head { display: grid; gap: var(--s-3); }
+.context-head h1 { margin: 0; font-size: var(--t-h1); font-weight: 600; }
+.context-head p { margin: 0; max-width: 68ch; color: var(--ink-2); font-size: var(--t-body); }
+
+.context-search { max-width: 640px; }
+.context-search-row { display: flex; align-items: center; gap: var(--s-2); }
+.context-search-row > svg { flex: none; color: var(--ink-3); }
+.context-search-row .input { flex: 1; }
+
+.context-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--s-6); }
+
+.context-section { min-width: 0; display: grid; gap: var(--s-2); align-content: start; }
+.context-section header h2 { margin: 0; font-size: var(--t-h3); font-weight: 600; }
+.context-section header p { margin: 2px 0 0; color: var(--ink-3); font-size: var(--t-small); }
+.context-empty { margin: 0; color: var(--ink-3); font-size: var(--t-small); }
+
+.context-list { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); }
+.context-row {
+  min-width: 0;
+  padding: var(--s-2) 0;
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+.context-row:last-child { border-bottom: 0; }
+.context-row > div { min-width: 0; display: grid; gap: 2px; }
+.context-row strong { color: var(--ink); font-size: var(--t-body); font-weight: 500; }
+.context-row > div > span { color: var(--ink-2); font-size: var(--t-small); }
+.context-row small { flex: none; color: var(--ink-3); font-size: var(--t-micro); }
+
+.pack-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: var(--s-6); align-items: start; }
+.pack-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }
+.pack-intro { margin: 0 0 var(--s-2); color: var(--ink-2); font-size: var(--t-small); }
+.pack-list button {
+  min-width: 0; padding: var(--s-3);
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px;
+  color: inherit; background: none;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  cursor: pointer; text-align: left;
+}
+.pack-list button:hover { background: var(--surface-raised); }
+.pack-list button.active { background: var(--accent-quiet); border-color: var(--line-strong); box-shadow: inset 2px 0 0 var(--accent-mark); }
+.pack-list strong { color: var(--ink); font-size: var(--t-small); font-weight: 500; }
+.pack-list small { color: var(--ink-2); font-size: var(--t-micro); line-height: 1.45; }
+.pack-list span { color: var(--ink-3); font-size: var(--t-micro); }
+
+.pack-detail { min-width: 0; padding: var(--s-5); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.pack-detail header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--s-3); }
+.pack-detail h2 { margin: 0; font-size: var(--t-h2); font-weight: 600; }
+.pack-detail header p { margin: var(--s-1) 0 0; color: var(--ink-2); font-size: var(--t-small); }
+.pack-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.pack-policy { margin: var(--s-4) 0; padding: var(--s-3); color: var(--ink-2); background: var(--surface-sunken); border-radius: var(--r-md); font-size: var(--t-small); }
+
+/* The pack renders as sections with headings and bullets — never as a JSON
+   dump, which was the primary content of this view (C21). */
+.pack-sections { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-5); }
+.pack-sections h3 { margin: 0 0 var(--s-2); color: var(--ink-3); font-size: var(--t-micro); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.pack-sections ul { margin: 0; padding: 0 0 0 var(--s-4); display: grid; gap: var(--s-1); }
+.pack-sections li { color: var(--ink); font-size: var(--t-small); line-height: 1.55; }
+.pack-more { color: var(--ink-3); }
+
+.context-history { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
+.context-audit summary { cursor: pointer; color: var(--ink-2); font-size: var(--t-small); }
+.context-audit summary:hover { color: var(--ink); }
+.context-audit .context-list { margin-top: var(--s-3); }
+.context-audit .context-row > div { display: flex; align-items: center; gap: var(--s-2); }
+
+@media (max-width: 900px) {
+  .context-page { padding: var(--s-6) var(--s-4) var(--s-12); }
+  .pack-layout { grid-template-columns: minmax(0, 1fr); }
+  .context-grid { grid-template-columns: minmax(0, 1fr); }
+}

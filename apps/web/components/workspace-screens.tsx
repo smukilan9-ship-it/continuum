@@ -17,7 +17,7 @@ const GoalsScreen = dynamic(() => import("./workspace/goals-screen").then((modul
 const GoalScreen = dynamic(() => import("./workspace/goal-screen").then((module) => module.GoalScreen), { loading });
 const LearnScreen = dynamic(() => import("./workspace/learn-screen").then((module) => module.LearnScreen), { loading });
 const CodeScreen = dynamic(() => import("./workspace/code-screen").then((module) => module.CodeScreen), { loading });
-const MemoryScreen = dynamic(() => import("./workspace/memory-screen").then((module) => module.MemoryScreen), { loading });
+const ContextPage = dynamic(() => import("./context/context-page").then((module) => module.ContextPage), { loading });
 const LibraryScreen = dynamic(() => import("./workspace/library-screen").then((module) => module.LibraryScreen), { loading });
 const ResearchScreen = dynamic(() => import("./workspace/research-screen").then((module) => module.ResearchScreen), { loading });
 const HomePage = dynamic(() => import("./home/home-page").then((module) => module.HomePage), { loading });
@@ -35,7 +35,7 @@ export function WorkspaceScreens({ view, state, user, userName, serverNow, goalI
   if (view === "library") return <LibraryScreen showToast={showToast} onNavigate={onNavigate} state={state} />;
   if (view === "openalex") return <LibraryScreen initialTab="discover" showToast={showToast} onNavigate={onNavigate} state={state} />;
   if (view === "zotero") return <LibraryScreen initialTab="zotero" showToast={showToast} onNavigate={onNavigate} state={state} />;
-  if (view === "memory") return <MemoryScreen state={state} showToast={showToast} />;
+  if (view === "memory") return <ContextPage state={state} showToast={showToast} />;
   if (view === "activity") return <ReviewPage state={state} timeZone={user.timezone} showToast={showToast} onRefresh={onRefresh} />;
   if (view === "account") return <AccountScreen user={user} showToast={showToast} />;
   return null;
