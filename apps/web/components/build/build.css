@@ -1,0 +1,558 @@
+/* ==========================================================================
+   /build — the coding workspace (redesign.md §14.3)
+
+   A fixed frame with no page scroll. Three regions: a 48px header, a file
+   rail, and an editor stacked above an always-visible resizable console.
+   Only tokens from the §15.2–§15.7 block in globals.css are used here; there
+   is no literal colour, space, radius, or duration in this file.
+   ========================================================================== */
+
+.build-workspace {
+  --build-rail-w: 200px;
+  --build-console-h: 240px;
+  --build-mono: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "header" "main";
+  column-gap: var(--s-4);
+  row-gap: var(--s-3);
+  min-height: 0;
+
+  /* Replaced at runtime by the measured frame height (`useFixedFrame`). This
+     fallback keeps the first paint from overflowing before that measurement. */
+  height: calc(100dvh - 190px);
+}
+
+.build-with-rail {
+  grid-template-columns: var(--build-rail-w) minmax(0, 1fr);
+  grid-template-areas:
+    "header header"
+    "rail   main";
+}
+
+/* -------------------------------------------------------------- header --- */
+
+.build-header {
+  grid-area: header;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 48px;
+  min-width: 0;
+}
+
+.build-identity {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.build-identity h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-h2);
+  line-height: var(--t-h2-lh);
+  font-weight: 600;
+}
+
+.build-file-name {
+  color: var(--ink-2);
+  font-family: var(--build-mono);
+  font-size: var(--t-small);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.build-run-slot {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.build-language select { min-width: 148px; }
+
+.build-run-kbd {
+  margin-left: var(--s-1);
+  padding: 0 var(--s-1);
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--r-sm);
+  font-family: var(--build-mono);
+  font-size: var(--t-micro);
+  opacity: .7;
+}
+
+/* ---------------------------------------------------------------- rail --- */
+
+.build-rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-height: 0;
+  padding: var(--s-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+
+.build-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding-left: var(--s-2);
+}
+
+.build-rail-head h2 {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--t-eyebrow);
+  line-height: var(--t-eyebrow-lh);
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.build-rail-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.build-rail-file {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-2);
+  color: var(--ink-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-md);
+  font-size: var(--t-small);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--d-fast) var(--e-out), color var(--d-fast) var(--e-out);
+}
+
+.build-rail-file span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.build-rail-file:hover { color: var(--ink); background: var(--surface-raised); }
+
+.build-rail-file-active {
+  color: var(--ink);
+  background: var(--surface-raised);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 0 var(--accent-mark);
+}
+
+.build-rail-foot { border-top: 1px solid var(--line); padding-top: var(--s-2); }
+.build-rail-actions { width: 100%; justify-content: flex-start; }
+
+.build-file-dropdown { display: flex; align-items: center; gap: var(--s-1); }
+.build-file-picker select { min-width: 160px; }
+
+/* ---------------------------------------------------------------- main --- */
+
+.build-main {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-height: 0;
+  min-width: 0;
+}
+
+.build-language-note { flex: 0 0 auto; }
+
+.build-editor {
+  flex: 1 1 auto;
+  min-height: 120px;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+
+/* The editor fills its region and scrolls internally; the page never scrolls.
+   These override the shared `.code-editor-shell` rules in globals.css, which
+   cap the scroller at a fixed pixel height. */
+.build-editor .code-editor-shell,
+.build-editor .code-editor-fallback-shell {
+  height: 100%;
+  border: 0;
+  border-radius: var(--r-lg);
+}
+
+.build-editor .code-editor-shell .cm-editor { height: 100%; background: var(--surface); }
+.build-editor .code-editor-shell .cm-scroller { min-height: 0; max-height: none; height: 100%; }
+.build-editor .code-editor-shell .cm-gutters { color: var(--ink-3); background: var(--surface-raised); border-right: 1px solid var(--line); }
+.build-editor .code-editor-shell .cm-activeLineGutter { color: var(--accent); background: var(--accent-quiet); }
+
+/* Line-number gutter for the textarea fallback, which CodeMirror's own gutter
+   does not cover while the editor chunk is still loading or has failed. */
+.build-editor .code-editor-fallback-shell { display: flex; min-height: 0; overflow: hidden; }
+
+.build-editor .code-editor-gutter {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--s-3) var(--s-2);
+  color: var(--ink-3);
+  background: var(--surface-raised);
+  border-right: 1px solid var(--line);
+  font-family: var(--build-mono);
+  font-size: var(--t-small);
+  line-height: 1.6;
+  text-align: right;
+  overflow: hidden;
+  user-select: none;
+}
+
+.build-editor .code-editor-fallback {
+  flex: 1 1 auto;
+  min-height: 0 !important;
+  max-height: none;
+  height: 100%;
+  padding: var(--s-3);
+  color: var(--ink);
+  background: var(--surface);
+  border: 0;
+  border-radius: 0;
+  font-family: var(--build-mono);
+  font-size: var(--t-small);
+  line-height: 1.6;
+  resize: none;
+}
+
+.build-editor .code-editor-fallback::placeholder { color: var(--ink-3); }
+
+/* ------------------------------------------------------------- console --- */
+
+.build-console {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  height: var(--build-console-h);
+  min-height: 120px;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top-color: var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  transition: border-top-color var(--d-base) var(--e-out);
+}
+
+/* Running: a 1px accent edge, so the region itself reports the state change. */
+.build-console-live { border-top-color: var(--accent-mark); }
+
+.build-console-resizer {
+  flex: 0 0 auto;
+  height: var(--s-2);
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.build-console-resizer::after {
+  content: "";
+  display: block;
+  width: var(--s-10);
+  height: var(--s-0\.5);
+  margin: var(--s-1) auto 0;
+  background: var(--line-strong);
+  border-radius: var(--r-full);
+  transition: background var(--d-fast) var(--e-out);
+}
+
+.build-console-resizer:hover::after,
+.build-console-resizer:focus-visible::after { background: var(--accent); }
+.build-console-resizer:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+.build-console-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 36px;
+  padding: 0 var(--s-2) 0 var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.build-console-tabs { flex: 0 0 auto; }
+.build-console-meta { display: flex; align-items: center; gap: var(--s-2); min-width: 0; overflow: hidden; }
+.build-console-controls { margin-left: auto; display: flex; align-items: center; gap: var(--s-1); }
+
+.build-menu-spacer { display: inline-block; width: var(--s-4); }
+
+.build-console-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.build-console-body { padding: var(--s-3); }
+.build-console-running { display: flex; flex-direction: column; gap: var(--s-2); }
+.build-console-running p { margin: 0; color: var(--ink-3); font-size: var(--t-small); }
+
+.build-console-log { display: flex; flex-direction: column; gap: var(--s-3); }
+
+.build-stdout {
+  margin: 0;
+  padding: var(--s-3);
+  color: var(--ink);
+  background: var(--surface-sunken);
+  border-radius: var(--r-md);
+  font-family: var(--build-mono);
+  font-size: var(--t-small);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Error lead — retained verbatim from the previous screen (§14.3). */
+.build-error-lead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: var(--danger-surface);
+  border: 1px solid var(--danger);
+  border-radius: var(--r-md);
+}
+
+.build-error-headline { display: flex; align-items: flex-start; gap: var(--s-2); color: var(--danger); }
+.build-error-headline strong { display: block; color: var(--ink); font-size: var(--t-h3); line-height: var(--t-h3-lh); }
+.build-error-headline span { display: block; margin-top: var(--s-1); color: var(--ink-2); font-size: var(--t-small); }
+.build-error-lead > p { margin: 0; color: var(--ink-2); font-size: var(--t-small); line-height: var(--t-small-lh); }
+.build-error-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+
+.build-success-lead { display: flex; align-items: flex-start; gap: var(--s-2); color: var(--success); }
+.build-success-lead strong { display: block; color: var(--ink); font-size: var(--t-h3); line-height: var(--t-h3-lh); }
+.build-success-lead span { display: block; margin-top: var(--s-1); color: var(--ink-2); font-size: var(--t-small); }
+
+.build-traceback summary,
+.build-technical summary {
+  color: var(--ink-2);
+  font-size: var(--t-small);
+  cursor: pointer;
+}
+
+.build-traceback pre,
+.build-raw-error pre {
+  margin: var(--s-2) 0 0;
+  padding: var(--s-3);
+  color: var(--ink);
+  background: var(--surface-sunken);
+  border-radius: var(--r-md);
+  font-family: var(--build-mono);
+  font-size: var(--t-micro);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.build-technical dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--s-2); margin: var(--s-2) 0 0; }
+.build-technical dt { color: var(--ink-3); font-size: var(--t-micro); }
+.build-technical dd { margin: 0; color: var(--ink); font-size: var(--t-small); }
+.build-raw-error strong { display: block; margin-top: var(--s-3); color: var(--ink-2); font-size: var(--t-micro); }
+
+.build-sql-table h3 { margin: 0 0 var(--s-2); color: var(--ink-2); font-size: var(--t-small); font-weight: 600; }
+.build-sql-table > div { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
+.build-sql-table table { width: 100%; border-collapse: collapse; font-size: var(--t-small); }
+.build-sql-table th, .build-sql-table td { padding: var(--s-1) var(--s-3); text-align: left; border-bottom: 1px solid var(--line); }
+.build-sql-table th { color: var(--ink-2); background: var(--surface-raised); font-weight: 600; }
+.build-sql-table td { color: var(--ink); font-family: var(--build-mono); }
+.build-sql-table em { color: var(--ink-3); }
+
+.build-rows-modified,
+.build-quiet-success { margin: 0; color: var(--ink-2); font-size: var(--t-small); }
+
+/* ----------------------------------------------------------- input tab --- */
+
+.build-stdin { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3); }
+.build-stdin label { color: var(--ink); font-size: var(--t-small); font-weight: 600; }
+.build-stdin textarea { min-height: 84px; font-family: var(--build-mono); font-size: var(--t-small); resize: vertical; }
+.build-stdin p { margin: 0; color: var(--ink-3); font-size: var(--t-micro); line-height: var(--t-micro-lh); }
+.build-stdin code { font-family: var(--build-mono); }
+
+/* ---------------------------------------------------- checkpoint offer --- */
+
+.build-checkpoint-offer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  color: var(--ink-2);
+  background: var(--accent-quiet);
+  border-radius: var(--r-md);
+  font-size: var(--t-small);
+}
+
+.build-checkpoint-offer span { margin-right: auto; }
+
+/* -------------------------------------------------------------- dialogs --- */
+
+.build-import { display: flex; flex-direction: column; gap: var(--s-5); }
+.build-import h3 { margin: 0 0 var(--s-2); color: var(--ink); font-size: var(--t-h3); line-height: var(--t-h3-lh); }
+.build-import ol { margin: 0 0 var(--s-3); padding-left: var(--s-5); color: var(--ink-2); font-size: var(--t-small); line-height: var(--t-body-lh); }
+
+.build-file-drop {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  color: var(--ink-2);
+  background: var(--surface-raised);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.build-file-drop:hover { border-color: var(--accent); }
+.build-file-drop strong { display: block; color: var(--ink); font-size: var(--t-small); }
+.build-file-drop small { display: block; margin-top: var(--s-0\.5); color: var(--ink-3); font-size: var(--t-micro); }
+.build-file-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+
+.build-selected-file {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+  padding: var(--s-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.build-selected-file > div:first-of-type { margin-right: auto; min-width: 0; }
+.build-selected-file strong { display: block; color: var(--ink); font-size: var(--t-small); }
+.build-selected-file span { color: var(--ink-3); font-size: var(--t-micro); }
+.build-selected-file > div:last-child { display: flex; gap: var(--s-2); }
+
+.build-inline-error { margin: var(--s-2) 0 0; color: var(--danger); font-size: var(--t-small); }
+.build-privacy-note { margin: var(--s-2) 0 0; color: var(--ink-3); font-size: var(--t-micro); line-height: var(--t-micro-lh); }
+
+.build-file-form { display: flex; flex-direction: column; gap: var(--s-4); }
+.build-form-actions { display: flex; justify-content: flex-end; gap: var(--s-2); }
+
+.build-run-history { display: flex; flex-direction: column; gap: var(--s-1); margin: 0; padding: 0; list-style: none; }
+
+.build-run-history button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--d-fast) var(--e-out);
+}
+
+.build-run-history button:hover { background: var(--surface-raised); }
+.build-run-history button > span:nth-child(2) { margin-right: auto; }
+.build-run-history strong { display: block; color: var(--ink); font-size: var(--t-small); }
+.build-run-history small { color: var(--ink-3); font-size: var(--t-micro); }
+
+.build-run-mark { width: var(--s-2); height: var(--s-2); border-radius: var(--r-full); background: var(--ink-3); }
+.build-run-mark-success { background: var(--success); }
+.build-run-mark-timeout, .build-run-mark-stopped { background: var(--warning); }
+.build-run-mark-runtime_error, .build-run-mark-compiler_error, .build-run-mark-provider_error { background: var(--danger); }
+
+/* ---------------------------------------------------------- responsive --- */
+
+/* 900–1100px: the rail becomes a dropdown in the header (§14.3). The layout is
+   chosen in JS, but the column collapses here too so the first paint — before
+   `matchMedia` has been read — never flashes a 200px rail on a narrow screen. */
+@media (max-width: 1099px) {
+  .build-workspace,
+  .build-with-rail {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "header" "main";
+  }
+  .build-rail { display: none; }
+}
+
+/* < 900px: two tabs and a sticky Run bar. The Run control is not duplicated —
+   the single `.build-run-slot` node is repositioned here (AC-B2). */
+@media (max-width: 899px) {
+  .build-workspace,
+  .build-with-rail {
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas: "header" "tabs" "main";
+    column-gap: var(--s-3);
+  }
+
+  .build-header { flex-wrap: wrap; min-height: auto; }
+  .build-identity { width: 100%; }
+
+  .build-pane-tabs { grid-area: tabs; }
+
+  .build-compact .build-run-slot {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 20;
+    justify-content: stretch;
+    gap: var(--s-2);
+    padding: var(--s-2) var(--s-3);
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    box-shadow: var(--shadow-2);
+  }
+
+  .build-compact .build-run-slot .build-run { flex: 1 1 auto; justify-content: center; }
+  .build-compact .build-language { flex: 0 0 auto; }
+  .build-compact .build-language select { min-width: 120px; }
+
+  .build-compact.build-pane-editor .build-console { display: none; }
+  .build-compact.build-pane-console .build-editor,
+  .build-compact.build-pane-console .build-checkpoint-offer { display: none; }
+
+  /* In the console tab the console owns the whole pane rather than a strip. */
+  .build-compact.build-pane-console .build-console { flex: 1 1 auto; height: auto; }
+  .build-compact .build-console-resizer { display: none; }
+
+  /* Clear the sticky Run bar. */
+  .build-compact .build-main { padding-bottom: var(--s-12); }
+}
+
+/* At 840px and below the shell's own fixed bottom navigation appears; the Run
+   bar sits directly on top of it rather than behind it. */
+@media (max-width: 840px) {
+  .build-compact .build-run-slot { bottom: calc(72px + env(safe-area-inset-bottom)); }
+}
+
+.build-run-kbd { display: inline-block; }
+
+@media (pointer: coarse) {
+  .build-run-kbd { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .build-console,
+  .build-rail-file,
+  .build-console-resizer::after,
+  .build-run-history button { transition: none; }
+}
