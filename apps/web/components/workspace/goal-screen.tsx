@@ -12,10 +12,13 @@ import {
   ListTodo,
   Target,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Badge, Button, Card, EmptyState } from "@/components/ui";
 import { conceptLabel, formatLabel, masteryLabel, statusTone } from "@/lib/labels";
 import type { WorkspaceView } from "@/lib/workspace-routes";
+import { AskQuestionDialog } from "./ask-question-dialog";
+import { ConceptMap } from "./concept-map";
 import { PageHeader } from "./page-header";
 import { formatDate, list, number, text, type Row, type WorkspaceState } from "./types";
 
@@ -48,15 +51,20 @@ export function GoalScreen({
   state,
   goalId,
   serverNow,
+  showToast,
   onNavigate,
+  onRefresh,
 }: {
   state: WorkspaceState;
   goalId: string;
   serverNow: string;
   showToast: Toast;
   onNavigate: (view: WorkspaceView) => void;
+  onRefresh: () => Promise<void>;
 }) {
+  const router = useRouter();
   const [view, setView] = useState<GoalView>("overview");
+  const [askTarget, setAskTarget] = useState<{ selection: string; conceptId: string }>();
   const now = Date.parse(serverNow);
 
   const goal = state.goals.find((row) => text(row, "id") === goalId) ?? state.goals[0];
@@ -110,6 +118,27 @@ export function GoalScreen({
         <EmptyState title="Nothing to show" body="Pick a goal from the sidebar, or create one." action={<Button className="button-primary compact-button" onClick={() => onNavigate("goals")}>Open plan</Button>} />
       </div>
     );
+  }
+
+  /**
+   * The concept map moves onto the goal Overview (§14.1). It was the strongest
+   * visual artefact in the product and sat behind the first tab of a tool strip,
+   * below the fold (S8); Phase 7's Learn rebuild left it with no caller at all.
+   * Clicking a node opens a real study session for that concept.
+   */
+  async function openConceptSession(conceptId: string) {
+    try {
+      const response = await fetch("/api/learning/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...(resolvedId ? { goalId: resolvedId } : {}), conceptId }),
+      });
+      const body = await response.json() as { session?: { id: string }; error?: string };
+      if (!response.ok || !body.session) throw new Error(body.error ?? "This study session could not be opened");
+      router.push(`/study/${body.session.id}` as never);
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : "This study session could not be opened");
+    }
   }
 
   return (
@@ -206,6 +235,12 @@ export function GoalScreen({
               <button className="goal-inline-link" onClick={() => setView("sources")}>See material <ArrowRight size={13} /></button>
             </Card>
           </div>
+
+          <ConceptMap
+            state={state}
+            onOpenLesson={(node) => void openConceptSession(node.id)}
+            onAskQuestion={(node) => setAskTarget({ selection: node.description || node.name, conceptId: node.id })}
+          />
         </div>
       ) : null}
 
@@ -336,6 +371,14 @@ export function GoalScreen({
       <footer className="goal-footer-meta">
         <span><Clock3 size={13} aria-hidden="true" />Target {formatDate(text(goal, "targetDate", ""), { dateStyle: "medium" })}</span>
       </footer>
+
+      <AskQuestionDialog
+        open={Boolean(askTarget)}
+        onOpenChange={(open) => { if (!open) setAskTarget(undefined); }}
+        selection={askTarget?.selection ?? ""}
+        conceptId={askTarget?.conceptId ?? ""}
+        onRefresh={onRefresh}
+      />
     </div>
   );
 }

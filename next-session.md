@@ -36,7 +36,14 @@ currently-deployed build, which does not reference the new columns:
 pnpm db:migrate
 ```
 
-Run that, then re-check `/memory` and `/research`. The same drift is what breaks
+Run that, then re-check `/memory` and `/research` — **and the Playwright suite**,
+which is blocked by the same drift. `e2e/continuum.spec.ts` was updated for the
+Phase 7 rebuild and now gets as far as rendering the Study view and clicking a
+concept's Study button; it then times out waiting for `/study/[id]` because
+`POST /api/learning/session` inserts into `study_sessions` (migration 0010).
+Two pre-existing spec bugs were fixed on the way: `demoLogin` asserted a URL of
+`/` (the demo lands on `/today`) and required a trailing period the greeting has
+never had, so every test failed before reaching its own assertions. The same drift is what breaks
 preview deployments (note 2 below) — preview is behind by migration 0008.
 
 ---
@@ -126,7 +133,7 @@ agents in isolated worktrees and were merged here.
 | Phase | Was | Now | Commit |
 |---|---|---|---|
 | 1 Design system | ~20% | **Done** | `9192e92` |
-| 4 Home / Goal / Review | Not started | **Home + Review done**; goal page still the Phase 2 version | `849c370` |
+| 4 Home / Goal / Review | Not started | **Home + Review done**; goal Overview now carries the concept map | `849c370` |
 | 5 Build | ~40% | **Done** — C7 verified end to end | merge `worktree-agent-a321…` |
 | 6 Library / sources / Zotero | Not started | **Done** (migration 0009 unapplied) | merge `worktree-agent-ab3e…` |
 | 7 Study / Plan | ~15% | **Done** (migration 0010 unapplied) | merge `worktree-agent-ab49…` |
@@ -170,12 +177,9 @@ Verified green after every merge: **412 tests / 45 files**, `turbo typecheck`,
 - **`⌘J` does not exist**, so Build's *Ask* and Library's *Ask about this* both
   degrade honestly rather than opening a panel. Build passes an `onAskAssistant`
   prop nothing supplies yet.
-- **`concept-map.tsx` is orphaned** — §14.1 moves it to the goal Overview, which
-  lives in `goal-screen.tsx`.
-- **BYOK now appears twice** — Settings › AI is its proper home, but the
-  composer's inline key modal still exists in `assistant-screen.tsx`.
-- **`e2e/continuum.spec.ts` will fail**; it drives the old Learn screen by copy.
-  Playwright is not part of `pnpm test`, so it did not block.
+- **`e2e/continuum.spec.ts` is updated for Phase 7 but still red** — see the
+  migration note at the top. The Build, Connections, and Context tests were not
+  reselected and will also need remapping to the rebuilt screens.
 - **`/start` is not visually verified** — reaching it needs an account with no
   goals, and the demo account has four.
 

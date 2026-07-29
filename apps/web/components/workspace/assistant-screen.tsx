@@ -31,6 +31,7 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -40,7 +41,20 @@ import { text, type WorkspaceState } from "./types";
 
 type Toast = (message: string | null) => void;
 type ContextScope = "conversation" | "selected_files" | "current_project" | "current_learning" | "research_library" | "zotero" | "obsidian" | "approved_memory" | "code_workspace" | "workspace";
-type AssistantMode = "auto" | "fast" | "deep" | "coding" | "document";
+/**
+ * §11.7 reduces the user-facing routing modes to three. `coding` and `document`
+ * are gone as choices because the classifier already infers them from the page
+ * context and the attachments — asking the user to declare what the request
+ * obviously is was work the product could do itself.
+ */
+type AssistantMode = "auto" | "fast" | "deep";
+
+const ASSISTANT_MODES: readonly AssistantMode[] = ["auto", "fast", "deep"];
+
+/** Conversations saved before the reduction can carry `coding` or `document`. */
+function readMode(value: unknown): AssistantMode | undefined {
+  return ASSISTANT_MODES.includes(value as AssistantMode) ? value as AssistantMode : undefined;
+}
 type AssistantMessage = {
   id: string;
   role: "user" | "assistant";
@@ -175,13 +189,10 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
   const [contextOpen, setContextOpen] = useState(false);
   const [attachments, setAttachments] = useState<AssistantAttachment[]>([]);
   const [dragging, setDragging] = useState(false);
-  const [credentialOpen, setCredentialOpen] = useState(false);
-  const [credentialCatalog, setCredentialCatalog] = useState<PersonalCredential[]>([]);
+  // Only enough to decide whether "My API key" can be offered. Adding, testing,
+  // and deleting a key live in Settings > AI (§9.11); the composer keeps the
+  // choice, not the management (C15).
   const [configuredCredentials, setConfiguredCredentials] = useState<PersonalCredential[]>([]);
-  const [credentialProvider, setCredentialProvider] = useState<PersonalProvider>("gemini");
-  const [credentialSecret, setCredentialSecret] = useState("");
-  const [credentialPassword, setCredentialPassword] = useState("");
-  const [credentialBusy, setCredentialBusy] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [memoryBusy, setMemoryBusy] = useState(false);
   const [memory, setMemory] = useState<MemoryDraft>();
@@ -221,8 +232,7 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
   const refreshCredentials = useCallback(async () => {
     const response = await fetch("/api/integrations/credentials", { cache: "no-store" });
     if (!response.ok) return;
-    const payload = await response.json() as { providers?: PersonalCredential[]; configured?: PersonalCredential[] };
-    setCredentialCatalog((payload.providers ?? []).filter((credential) => credential.category === "model"));
+    const payload = await response.json() as { configured?: PersonalCredential[] };
     setConfiguredCredentials((payload.configured ?? []).filter((credential) => credential.category === "model"));
   }, []);
 
@@ -278,7 +288,8 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
 
   useEffect(() => {
     if (active?.contextSettings?.contextScopes?.length) setContextScopes(active.contextSettings.contextScopes);
-    if (active?.contextSettings?.mode) setAssistantMode(active.contextSettings.mode);
+    const savedMode = readMode(active?.contextSettings?.mode);
+    if (savedMode) setAssistantMode(savedMode);
   }, [active?.id, active?.contextSettings]);
 
   async function createSession() {
@@ -349,7 +360,7 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
     setBusy(true);
     setError("");
     setLive("");
-    setRoute(credentialMode === "user" ? "My API key" : ({ auto: "Continuum Auto", fast: "Fast", deep: "Deep Reasoning", coding: "Coding", document: "Document Analysis" } as const)[assistantMode]);
+    setRoute(credentialMode === "user" ? "My API key" : ({ auto: "Continuum Auto", fast: "Fast", deep: "Deep Reasoning" } as const)[assistantMode]);
     const controller = new AbortController();
     abortRef.current = controller;
     let session = active;
@@ -528,70 +539,6 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
     if (lastUser) void send(lastUser.content);
   }
 
-  async function savePersonalCredential(event: FormEvent) {
-    event.preventDefault();
-    setCredentialBusy(true);
-    try {
-      const existing = configuredCredentials.some((credential) => credential.provider === credentialProvider);
-      const response = await fetch("/api/integrations/credentials", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          action: "configure",
-          provider: credentialProvider,
-          secret: credentialSecret,
-          ...(existing ? { currentPassword: credentialPassword } : {}),
-        }),
-      });
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error ?? "The API key could not be saved");
-      setCredentialSecret("");
-      setCredentialPassword("");
-      await refreshCredentials();
-      setCredentialMode("user");
-      setCredentialOpen(false);
-      showToast("Your API key is encrypted and will be used only for Assistant requests you send in My API Key mode.");
-    } catch (cause) {
-      showToast(cause instanceof Error ? cause.message : "The API key could not be saved");
-    } finally {
-      setCredentialBusy(false);
-    }
-  }
-
-  function deletePersonalCredential(provider: PersonalProvider) {
-    if (!credentialPassword) {
-      showToast("Enter your current Continuum password before deleting this key.");
-      return;
-    }
-    setConfirmRequest({
-      title: "Delete this Assistant API key?",
-      description: "Continuum Auto keeps working. Only messages you explicitly send in My API Key mode use a personal key.",
-      confirmLabel: "Delete API key",
-      run: () => performDeleteCredential(provider),
-    });
-  }
-
-  async function performDeleteCredential(provider: PersonalProvider) {
-    setCredentialBusy(true);
-    try {
-      const response = await fetch("/api/integrations/credentials", {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ provider, currentPassword: credentialPassword }),
-      });
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error ?? "The API key could not be deleted");
-      setCredentialMode("platform");
-      setCredentialPassword("");
-      await refreshCredentials();
-      showToast("Assistant API key deleted.");
-    } catch (cause) {
-      showToast(cause instanceof Error ? cause.message : "The API key could not be deleted");
-    } finally {
-      setCredentialBusy(false);
-    }
-  }
-
   const sessionRow = (session: AssistantSession) => <div className={`assistant-session-row ${activeId === session.id ? "active" : ""}`} key={session.id}>
     <button className="assistant-session-open" onClick={() => setActiveId(session.id)}>
       <MessageCircle size={15} aria-hidden="true" />
@@ -704,13 +651,14 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
                 <option value="auto">Continuum Auto — picks the right model per message</option>
                 <option value="fast">Fast — quick answers, lighter reasoning</option>
                 <option value="deep">Deep Reasoning — slower, for hard problems</option>
-                <option value="coding">Coding — code, tests, and debugging</option>
-                <option value="document">Document Analysis — long sources and attachments</option>
                 {hasPersonalCredential ? <option value="byok">My API key — billed to your own provider</option> : null}
               </select>
             </label>
             <button type="button" onClick={() => setContextOpen(true)} title="Choose which parts of your workspace this conversation may retrieve from"><SlidersHorizontal size={13} aria-hidden="true" />{contextScopes.length} context source{contextScopes.length === 1 ? "" : "s"}</button>
-            <button type="button" onClick={() => setCredentialOpen(true)}><KeyRound size={13} />{hasPersonalCredential ? "Manage API key" : "Use my API key"}</button>
+            {/* Adding or removing a key is a settings task, not a composer task. */}
+            {hasPersonalCredential
+              ? null
+              : <Link className="assistant-key-link" href="/account/ai"><KeyRound size={13} aria-hidden="true" />Use my API key</Link>}
           </div>
           <div className="assistant-context-chips">{contextScopes.slice(0, 3).map((scope) => <span key={scope}>{contextOptions.find((option) => option.value === scope)?.label}</span>)}{contextScopes.length > 3 ? <span>+{contextScopes.length - 3}</span> : null}</div>
           <small><Badge tone="neutral">Private workspace</Badge> Enter to send · Shift+Enter for a new line · files use targeted retrieval</small>
@@ -736,7 +684,6 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
         description={confirmRequest?.description ?? ""}
         confirmLabel={confirmRequest?.confirmLabel ?? "Confirm"}
         destructive
-        busy={credentialBusy}
         onConfirm={() => { const request = confirmRequest; setConfirmRequest(undefined); void request?.run(); }}
       />
 
@@ -773,22 +720,6 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
         </div> : null}
       </Modal>
 
-      <Modal open={credentialOpen} onOpenChange={setCredentialOpen} title="Optional Assistant API key" description="Continuum Auto works without setup. A personal key is used only for Workspace Assistant messages sent in My API Key mode." dirty={Boolean(credentialSecret || credentialPassword)} dirtyMessage="Close without saving the API key you entered?">
-        <div className="assistant-credential-panel">
-          {configuredCredentials.map((credential) => <article key={credential.provider}><div><strong>{credential.name}</strong><span>{credential.masked} · {credential.status}</span></div><Badge tone={credential.status === "connected" ? "green" : "orange"}>{credential.status ?? "Saved"}</Badge></article>)}
-          <form onSubmit={savePersonalCredential}>
-            <label>Provider<select value={credentialProvider} onChange={(event) => setCredentialProvider(event.target.value as PersonalProvider)}>{credentialCatalog.map((provider) => <option key={provider.provider} value={provider.provider}>{provider.name}</option>)}</select></label>
-            <label>API key<input type="password" autoComplete="off" minLength={8} maxLength={2_000} required value={credentialSecret} onChange={(event) => setCredentialSecret(event.target.value)} placeholder="Paste a dedicated Assistant key" /></label>
-            {configuredCredentials.some((credential) => credential.provider === credentialProvider) ? <label>Current Continuum password<input type="password" autoComplete="current-password" required value={credentialPassword} onChange={(event) => setCredentialPassword(event.target.value)} /></label> : null}
-            <p>The key is validated server-side, encrypted at rest, masked after saving, and unavailable to Learn, Research, grading, Code, extraction, and background jobs.</p>
-            <div className="modal-inline-actions">
-              {configuredCredentials.some((credential) => credential.provider === credentialProvider) ? <Button className="button-quiet danger" type="button" disabled={credentialBusy} onClick={() => void deletePersonalCredential(credentialProvider)}>Delete key</Button> : null}
-              <Button className="button-secondary" type="button" onClick={() => setCredentialOpen(false)}>Cancel</Button>
-              <LoadingButton className="button-primary" loading={credentialBusy} loadingLabel="Validating…" disabled={credentialSecret.trim().length < 8}>Validate and save</LoadingButton>
-            </div>
-          </form>
-        </div>
-      </Modal>
     </div>
   );
 }

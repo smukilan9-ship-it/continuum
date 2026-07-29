@@ -23,11 +23,12 @@ import {
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { Route } from "next";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { normalizeWorkspaceState, WorkspaceScreens, type WorkspaceState } from "@/components/workspace-screens";
-import { canonicalView, viewFromPath, workspaceMeta, workspacePath, type WorkspaceView } from "@/lib/workspace-routes";
+import { canonicalView, viewFromPath, settingsDestinations, workspaceMeta, workspacePath, type WorkspaceView } from "@/lib/workspace-routes";
 
 export type View = WorkspaceView;
 
@@ -69,7 +70,7 @@ const navGroups: NavGroup[] = [
     items: [
       { id: "activity", label: "Review", icon: Activity },
       { id: "integrations", label: "Connections", icon: Link2 },
-      { id: "account", label: "Account & Security", icon: ShieldCheck },
+      { id: "account", label: "Settings", icon: ShieldCheck },
     ],
   },
 ];
@@ -434,23 +435,38 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
   );
 }
 
-type SearchAction = { id: string; label: string; hint: string; view: WorkspaceView };
+/**
+ * `href` wins over `view` when present. Settings segments are sub-paths of one
+ * view, so navigating by view alone would land every one of them on the default
+ * segment and cost a third click (AC-ST3).
+ */
+type SearchAction = { id: string; label: string; hint: string; view: WorkspaceView; href?: Route };
 
 function rowString(row: Record<string, unknown>, key: string) {
   return typeof row[key] === "string" ? row[key] : undefined;
 }
 
 function workspaceActions(state: WorkspaceState | undefined): SearchAction[] {
-  const destinations = navGroups.flatMap((group) => group.items.map((item) => ({ id: `view-${item.id}`, label: item.label, hint: workspaceMeta[item.id].description, view: item.id })));
-  if (!state) return destinations;
+  const destinations: SearchAction[] = navGroups.flatMap((group) => group.items.map((item) => ({ id: `view-${item.id}`, label: item.label, hint: workspaceMeta[item.id].description, view: item.id })));
+  // One entry per settings segment, replacing the single "Settings" destination
+  // that made every segment a three-click journey.
+  const settings: SearchAction[] = settingsDestinations.map((entry) => ({
+    id: `settings-${entry.segment}`,
+    label: entry.label,
+    hint: entry.description,
+    view: "account" as const,
+    href: entry.href,
+  }));
+  if (!state) return [...destinations.filter((item) => item.view !== "account"), ...settings];
   const goals = state.goals.map((goal) => ({ id: `goal-${rowString(goal, "id")}`, label: rowString(goal, "title") ?? "Untitled goal", hint: "Goal", view: "goals" as const }));
   const tasks = state.tasks.map((task) => ({ id: `task-${rowString(task, "id")}`, label: rowString(task, "title") ?? "Untitled task", hint: "Task", view: "goals" as const }));
   const projects = state.projects.map((project) => ({ id: `project-${rowString(project, "id")}`, label: rowString(project, "title") ?? "Untitled project", hint: "Research project", view: "research" as const }));
   const receipts = state.receipts.map((receipt) => ({ id: `receipt-${rowString(receipt, "id")}`, label: rowString(receipt, "summary") ?? "Outcome receipt", hint: "Memory receipt", view: "memory" as const }));
-  return [...destinations, ...goals, ...tasks, ...projects, ...receipts];
+  return [...destinations.filter((item) => item.view !== "account"), ...settings, ...goals, ...tasks, ...projects, ...receipts];
 }
 
 function CommandPalette({ open, onOpenChange, state, onNavigate }: { open: boolean; onOpenChange: (open: boolean) => void; state: WorkspaceState | undefined; onNavigate: (view: WorkspaceView) => void }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const actions = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -467,7 +483,12 @@ function CommandPalette({ open, onOpenChange, state, onNavigate }: { open: boole
           <div className="command-input"><Search size={19} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sections, goals, tasks, and projects" /><Dialog.Close aria-label="Close search"><X size={17} /></Dialog.Close></div>
           <div className="command-results">
             <p>{query ? "Matches" : "Workspace"}</p>
-            {actions.map((action) => <button key={action.id} onClick={() => onNavigate(action.view)}><span>{action.label}</span><small>{action.hint}</small></button>)}
+            {actions.map((action) => <button key={action.id} onClick={() => {
+              // A sub-path is a real route, so it needs a router navigation —
+              // the view switcher only rewrites history for shell-owned views.
+              if (action.href) { onOpenChange(false); router.push(action.href); return; }
+              onNavigate(action.view);
+            }}><span>{action.label}</span><small>{action.hint}</small></button>)}
             {!actions.length ? <div className="command-empty"><Search size={20} /><span>No workspace item matches “{query}”.</span></div> : null}
           </div>
           <footer><span><kbd>esc</kbd> close</span><span>Search opens the matching workspace; it never changes your data.</span></footer>

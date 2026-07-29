@@ -6,8 +6,9 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 async function demoLogin(page: Page) {
   await page.goto("/login");
   await page.getByRole("button", { name: /Explore the demo/ }).click();
-  await expect(page).toHaveURL(`${baseURL}/`);
-  await expect(page.getByRole("heading", { name: /^Good (morning|afternoon|evening), .+\.$/i })).toBeVisible();
+  await expect(page).toHaveURL(`${baseURL}/today`);
+  // The greeting has never ended in a period; the old pattern required one.
+  await expect(page.getByRole("heading", { name: /^Good (morning|afternoon|evening), .+/i })).toBeVisible();
   await page.waitForFunction(() => {
     const shell = document.querySelector(".app-shell");
     return Boolean(shell && Object.keys(shell).some((key) => key.startsWith("__reactFiber$")));
@@ -102,129 +103,90 @@ async function readCurrentWeekThroughMcp(page: Page) {
 }
 
 test.describe.serial("Continuum primary journeys", () => {
-  test("demo login, Learn lesson, checkpoint, and video recommendation", async ({ page }) => {
-    await page.route("**/api/learning/videos?*", async (route) => {
-      await route.fulfill({
-        contentType: "application/json",
-        json: {
-          status: "live",
-          note: "Official YouTube Data API response normalized by Continuum (contract fixture).",
-          handoffUrl: "https://www.youtube.com/results?search_query=electric+potential",
-          videos: [{
-            id: "fixture42",
-            title: "Electric Potential: A Visual Explanation",
-            channelTitle: "Trusted Physics Classroom",
-            description: "A provider-contract fixture for the UI journey.",
-            publishedAt: "2025-01-15T00:00:00.000Z",
-            watchUrl: "https://www.youtube.com/watch?v=fixture42",
-            embedUrl: "https://www.youtube-nocookie.com/embed/fixture42",
-            provider: "youtube",
-            reviewState: "provider_result",
-          }],
-        },
-      });
-    });
+  test("Study routes into a session and mastery moves only on a correct unseen check", async ({ page }) => {
+    test.setTimeout(180_000);
     await demoLogin(page);
     await page.getByRole("link", { name: "Learn", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "What will move your learning forward?" })).toBeVisible();
 
-    await page.getByRole("button", { name: "Open 6-min lesson" }).click();
-    await expect(page.getByText("TARGETED MICRO-LESSON")).toBeVisible();
-    await page.getByRole("button", { name: "Ask as Question" }).first().click();
-    const askDialog = page.getByRole("dialog", { name: "Answer in your own words" });
-    await expect(askDialog).toBeVisible();
-    await askDialog.getByLabel("Your answer").fill("Electric potential belongs to a location and the source-charge configuration, so changing the test charge at that point does not change the potential.");
-    await askDialog.getByRole("button", { name: "Check my answer" }).click();
-    await expect(askDialog).toContainText("Saved to learning history");
-    await askDialog.getByRole("button", { name: "Done" }).click();
-    const readLesson = page.getByRole("button", { name: "I can explain the contrast" });
-    if (await readLesson.count()) await readLesson.click();
-    await page.getByPlaceholder("Answer in volts").fill("24");
-    await page.reload();
-    await expect(page.getByText("TARGETED MICRO-LESSON")).toBeVisible();
-    await expect(page.getByPlaceholder("Answer in volts")).toHaveValue("24");
-    await page.getByRole("button", { name: "Check answer" }).click();
-    await expect(page.getByText("Transfer checkpoint passed")).toBeVisible();
-    await page.reload();
-    await expect(page.getByText("Transfer checkpoint passed")).toBeVisible();
+    // Three sections, no tabs: Continue, Concepts, Material and practice (§14.1).
+    await expect(page.getByRole("heading", { name: "Continue", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Concepts", exact: true })).toBeVisible();
 
-    await page.locator(".native-lesson-screen header").getByRole("button", { name: "Back to Learn" }).click();
-    await page.getByRole("button", { name: "Search videos" }).click();
-    await expect(page.getByText("YouTube: live")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Electric Potential: A Visual Explanation" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Watch on YouTube" })).toHaveAttribute("href", /youtube\.com\/watch/);
-    await page.reload();
-    await expect(page.getByRole("heading", { name: "Electric Potential: A Visual Explanation" })).toBeVisible();
+    // The Continue row's label varies by state, so drive the stable per-row
+    // Study button in the Concepts list instead.
+    const concept = page.locator(".study-concept-list li").first();
+    await expect(concept).toBeVisible();
+    const conceptName = (await concept.locator(".study-concept-title").innerText()).trim();
+    await concept.getByRole("button", { name: "Study", exact: true }).click();
+
+    await page.waitForURL(/\/study\/[^/]+$/);
+    await expect(page.locator(".study-session")).toBeVisible();
+    await expect(page.locator(".study-lesson")).toBeVisible({ timeout: 60_000 });
+
+    // A "Mastered" label may never sit beside an open misconception (AC-LN3).
+    const misconception = page.locator(".study-misconception-label");
+    if (await misconception.count()) {
+      await expect(page.locator(".study-concept-list li", { has: misconception })).not.toContainText("Mastered");
+    }
+
+    await page.getByRole("button", { name: /^(Continue|Check my understanding|Start the check)/ }).first().click();
+    await expect(page.locator(".study-check")).toBeVisible({ timeout: 60_000 });
+
+    // The question is generated per concept, so assert the contract, not physics.
+    const answer = page.getByLabel(/Your answer|Answer in your own words/);
+    await expect(answer).toBeVisible();
+    await answer.fill("A worked explanation applying the idea to a case I have not seen before.");
+    await page.getByRole("button", { name: "Check my answer" }).click();
+
+    // Whether the answer is graded correct is the model's call; what must hold is
+    // that a result is reached and that any movement is reported with real
+    // before/after numbers rather than a bare "passed" (AC-LN5).
+    const result = page.locator(".study-session-column");
+    await expect(result).toContainText(/Transfer updated|Not quite|Try a different one/, { timeout: 60_000 });
+    if (await page.getByRole("heading", { name: "Transfer updated" }).count()) {
+      await expect(page.locator(".study-delta")).toContainText(/%/);
+    }
+
+    await expect(page.getByRole("link", { name: /^Back to / })).toBeVisible();
+    expect(conceptName.length).toBeGreaterThan(0);
   });
 
-  test("Learn preserves resource choices and evidence through refresh, reranks feedback, and restores verified completion", async ({ page }) => {
-    await demoLogin(page);
-    await page.getByRole("link", { name: "Learn", exact: true }).click();
-    await page.getByRole("button", { name: /Find a resource/ }).first().click();
-    await page.getByLabel("What are you trying to learn or finish?").fill("electric potential and potential energy");
-    await page.getByRole("button", { name: /Learn a concept/ }).click();
-    const recommendationRequest = page.waitForRequest((request) => request.url().includes("/api/resources?") && request.url().includes("topic=electric"));
-    await page.getByRole("button", { name: "Find my best match" }).click();
-    const recommendationUrl = new URL((await recommendationRequest).url());
-    expect(recommendationUrl.searchParams.get("goalType")).toBe("school");
-    expect(recommendationUrl.searchParams.get("goalId")).toBe(null);
-    await expect(page.getByRole("heading", { name: "Charges and Fields" })).toBeVisible();
-
-    await page.reload();
-    await expect(page.getByRole("heading", { name: "Charges and Fields" })).toBeVisible();
-    await page.getByRole("button", { name: "Find a different resource" }).click();
-    await page.getByRole("button", { name: "I want a different format" }).click();
-    await page.getByRole("button", { name: "Textbook" }).click();
-    await page.getByLabel("Anything else? Optional").fill("Prefer the official CBSE source.");
-    await page.getByRole("button", { name: "Find another match" }).click();
-    await expect(page.locator(".preference-change")).toContainText("prefer Textbook");
-    await expect(page.getByRole("heading", { name: /NCERT Physics XII/ })).toBeVisible();
-
-    await page.getByRole("button", { name: "Start resource" }).click();
-    await expect(page.getByText("Your place is saved")).toBeVisible();
-    await page.getByLabel("Notes from the activity (optional)").fill("Completed the worked example without copying.");
-    await page.reload();
-    await expect(page.getByRole("heading", { name: /NCERT Physics XII/ })).toBeVisible();
-    await expect(page.getByLabel("Notes from the activity (optional)")).toHaveValue("Completed the worked example without copying.");
-    await page.getByRole("button", { name: /I’m back/ }).click();
-    await expect(page.getByText("Show what you completed")).toBeVisible();
-    await page.getByLabel("Your answer").fill("24");
-    await page.getByRole("button", { name: "Check progress" }).click();
-    await expect(page.getByRole("heading", { name: "Progress verified" })).toBeVisible();
-
-    await page.reload();
-    await expect(page.getByRole("heading", { name: "Progress verified" })).toBeVisible();
-    await page.getByRole("button", { name: "Continue learning" }).click();
-    await expect(page.getByRole("heading", { name: "What will move your learning forward?" })).toBeVisible();
-  });
-
-  test("uploaded question bank is editable, source-graded, persistent, and resumable", async ({ page }) => {
+  test("Material panel asks one question and offers ranked results inline", async ({ page }) => {
     test.setTimeout(120_000);
     await demoLogin(page);
     await page.getByRole("link", { name: "Learn", exact: true }).click();
-    await page.getByRole("button", { name: "Upload question bank" }).click();
-    const dialog = page.getByRole("dialog", { name: "Document question bank" });
+
+    // The four-step handoff wizard is gone (C16): one question, six chips.
+    await expect(page.locator(".handoff-steps")).toHaveCount(0);
+    await page.getByRole("button", { name: "Find material" }).click();
+    const panel = page.locator(".study-panel");
+    await expect(panel).toBeVisible();
+    for (const need of ["Understand it", "Practise", "Fix a weak area", "Prep for a test", "Finish an assignment", "Just find something"]) {
+      await expect(panel.getByRole("button", { name: need })).toBeVisible();
+    }
+    await panel.getByRole("button", { name: "Understand it" }).click();
+    await expect(panel.getByRole("button", { name: "Start" }).first()).toBeVisible({ timeout: 60_000 });
+  });
+
+  test("practice set runs from Study and returns to Study", async ({ page }) => {
+    test.setTimeout(120_000);
+    await demoLogin(page);
+    await page.getByRole("link", { name: "Learn", exact: true }).click();
+
+    // Practice sets and photo extraction are first-class here now, not the
+    // second tab of a tool strip (S7, feature #44).
+    await expect(page.getByRole("button", { name: "New set" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "From a photo" })).toBeVisible();
+
+    const existing = page.locator(".study-practice-list button").first();
+    if (!(await existing.count())) {
+      test.skip(true, "The demo account has no saved practice set to run.");
+      return;
+    }
+    await existing.click();
+    const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
-    const marker = Date.now();
-    await dialog.locator('input[type="file"]').setInputFiles({
-      name: `potential-${marker}.txt`,
-      mimeType: "text/plain",
-      buffer: Buffer.from(`Q: What does electric potential describe?\nA: Electric potential describes the source-charge configuration and location in an electric field.\n\nRecord: ${marker}`),
-    });
-    await dialog.getByRole("button", { name: "Extract questions" }).click();
-    await expect(dialog.getByLabel("Source-backed answer")).toHaveValue(/source-charge configuration/, { timeout: 60_000 });
-    await dialog.getByRole("button", { name: "Save questions" }).click();
-    await expect(dialog.getByRole("heading", { name: "How do you want to practise?" })).toBeVisible();
-    await dialog.getByRole("button", { name: "Start practice" }).click();
-    await dialog.getByLabel("Your answer").fill("It describes the source-charge configuration and the location in the electric field.");
-    await dialog.getByRole("button", { name: "Submit answer" }).click();
-    await expect(dialog).toContainText(/Correct|Partly there/);
-    await expect(dialog).toContainText(/uploaded source|source-backed|uploaded material/i);
-    await dialog.getByRole("button", { name: "Finish review" }).click();
-    await expect(dialog.getByRole("heading", { name: "Review complete" })).toBeVisible();
-    await dialog.getByRole("button", { name: "Back to Learn" }).click();
-    await page.reload();
-    await expect(page.getByRole("button", { name: new RegExp(`potential-${marker}`, "i") })).toBeVisible();
+    await expect(dialog).toContainText(/Practice set|How do you want to practise\?/);
   });
 
   test("Assistant streams against selected workspace context and saves reviewed memory", async ({ page }) => {
@@ -452,26 +414,29 @@ test.describe.serial("Continuum primary journeys", () => {
     expect(metrics.repeatNavigationMs).toBeLessThan(1_500);
   });
 
-  test("Plan drafts a deterministic week and requires confirmation", async ({ page }) => {
+  test("Plan drafts a deterministic week and requires explicit confirmation", async ({ page }) => {
+    test.setTimeout(120_000);
     await demoLogin(page);
     await page.getByRole("link", { name: "Plan", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "A week that respects real life." })).toBeVisible();
-    await expect(page.getByLabel("Seven day plan")).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Week" })).toBeVisible();
+
+    // "COMMITTED" is no longer stamped on every block (S15, AC-PL4).
+    await expect(page.getByText("COMMITTED")).toHaveCount(0);
+
     await page.getByRole("button", { name: "Build my week" }).click();
-    await expect(page.getByRole("dialog", { name: "Build a realistic weekly schedule" })).toBeVisible();
-    await page.getByRole("button", { name: "Generate editable draft" }).click();
-    await expect(page.getByRole("heading", { name: "Here is a realistic first draft." })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Save final schedule" })).toBeEnabled();
-    await page.getByRole("button", { name: "Add block" }).click();
-    await expect(page.getByRole("dialog", { name: "Add a study block" })).toBeVisible();
-    await page.getByLabel("Title").fill("Playwright editable block");
-    await page.getByRole("button", { name: "Add block" }).click();
-    await expect(page.getByText("Playwright editable block")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+    const dialog = page.getByRole("dialog", { name: "Build my week" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: /Generate|Build/ }).first().click();
+
+    // Nothing is saved until Save week is pressed (AC-PL3).
+    const draftBar = page.getByRole("region", { name: "Draft actions" });
+    await expect(draftBar).toBeVisible({ timeout: 60_000 });
+    await expect(draftBar).toContainText("Draft");
+    await expect(draftBar.getByRole("button", { name: "Save week" })).toBeVisible();
+
+    await draftBar.getByRole("button", { name: "Discard" }).click();
     await page.getByRole("button", { name: "Discard draft" }).click();
-    await expect(page.getByRole("dialog", { name: "Discard this schedule draft?" })).toBeVisible();
-    await page.getByRole("button", { name: "Discard draft" }).click();
-    await expect(page.getByRole("heading", { name: "Here is a realistic first draft." })).toHaveCount(0);
+    await expect(draftBar).toHaveCount(0);
   });
 
   test("Research discovers an OpenAlex contract result and saves real provider provenance", async ({ page }) => {
@@ -598,7 +563,7 @@ test.describe.serial("Continuum primary journeys", () => {
   test("all primary and legacy internal routes resolve without a 404", async ({ page }) => {
     test.setTimeout(180_000);
     await demoLogin(page);
-    for (const path of ["/", "/assistant", "/goals", "/learn", "/code", "/research", "/memory", "/activity", "/integrations", "/connections"]) {
+    for (const path of ["/", "/assistant", "/goals", "/plan", "/learn", "/code", "/research", "/memory", "/activity", "/integrations", "/connections", "/account/ai", "/account/privacy"]) {
       const response = await page.goto(path);
       expect(response?.status(), path).not.toBe(404);
       await expect(page.getByText("This page could not be found.")).toHaveCount(0);

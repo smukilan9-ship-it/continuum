@@ -24,7 +24,7 @@ const HomePage = dynamic(() => import("./home/home-page").then((module) => modul
 
 export function WorkspaceScreens({ view, state, user, userName, serverNow, goalId, onNavigate, onRefresh, showToast }: { view: WorkspaceView; state: WorkspaceState; user: AuthUser; userName: string; serverNow: string; goalId?: string; onNavigate: (view: WorkspaceView) => void; onRefresh: () => Promise<void>; showToast: Toast }) {
   if (view === "today") return <HomePage state={state} userName={userName} timeZone={user.timezone} serverNow={serverNow} onNavigate={onNavigate} onRefresh={onRefresh} />;
-  if (view === "goal") return <GoalScreen state={state} goalId={goalId ?? ""} serverNow={serverNow} showToast={showToast} onNavigate={onNavigate} />;
+  if (view === "goal") return <GoalScreen state={state} goalId={goalId ?? ""} serverNow={serverNow} showToast={showToast} onNavigate={onNavigate} onRefresh={onRefresh} />;
   if (view === "assistant") return <AssistantScreen state={state} userId={user.id} serverNow={serverNow} showToast={showToast} onRefresh={onRefresh} />;
   if (view === "goals") return <GoalsScreen state={state} timeZone={user.timezone} serverNow={serverNow} showToast={showToast} onRefresh={onRefresh} />;
   if (view === "learn") return <LearnScreen state={state} userId={user.id} showToast={showToast} onRefresh={onRefresh} />;

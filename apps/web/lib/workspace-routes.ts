@@ -34,9 +34,33 @@ export const workspaceMeta: Record<WorkspaceView, { title: string; description: 
   zotero: { title: "Library", description: "Browse connected personal and group libraries, attachments, and citations." },
   memory: { title: "Memory", description: "Durable academic context retrieved by relevance, not transcript replay." },
   integrations: { title: "Connections", description: "Connect the academic tools you use and control what each one can access." },
-  account: { title: "Account & Security", description: "Verification, password, sessions, export, integrations, and deletion." },
+  account: { title: "Settings", description: "Your account, appearance, AI, connections, privacy, security, data, and diagnostics." },
   activity: { title: "Review", description: "Approve assistant proposals and inspect important changes to your academic state." },
 };
+
+/**
+ * The eight settings segments (§9.11), as palette destinations.
+ *
+ * They are deliberately not `WorkspaceView`s. A view is a screen the shell
+ * switches between and must round-trip through `viewFromPath`; these are
+ * sub-paths of one view. Modelling them as views would put eight `/account/*`
+ * entries into `pathToView`, where the prefix lookup already resolves them all
+ * to `account` anyway.
+ *
+ * AC-ST3 requires every settings page to be reachable in two clicks from
+ * anywhere. The palette navigates by view and cannot express a sub-path, so it
+ * reads `href` from here instead.
+ */
+export const settingsDestinations: ReadonlyArray<{ segment: string; label: string; href: Route; description: string }> = [
+  { segment: "account", label: "Settings · Account", href: "/account" as Route, description: "Your name, email, and how Continuum addresses you." },
+  { segment: "appearance", label: "Settings · Appearance", href: "/account/appearance" as Route, description: "Theme and how tightly lists are packed." },
+  { segment: "ai", label: "Settings · AI", href: "/account/ai" as Route, description: "How Continuum picks a model, your own key, and local AI." },
+  { segment: "connections", label: "Settings · Connections", href: "/account/connections" as Route, description: "Claude, your reading, your notes, and your own keys." },
+  { segment: "privacy", label: "Settings · Privacy", href: "/account/privacy" as Route, description: "What the assistant may use, and what Continuum keeps." },
+  { segment: "security", label: "Settings · Security", href: "/account/security" as Route, description: "Password and the devices you are signed in on." },
+  { segment: "data", label: "Settings · Data", href: "/account/data" as Route, description: "Take everything with you, or delete the account." },
+  { segment: "advanced", label: "Settings · Advanced", href: "/account/advanced" as Route, description: "Connector address, model availability, diagnostics." },
+];
 
 /**
  * Views that share a screen. `/openalex` and `/zotero` predate the merged
