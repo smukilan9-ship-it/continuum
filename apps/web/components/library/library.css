@@ -1,0 +1,445 @@
+/* ==========================================================================
+   Library, sources and Zotero (redesign.md §13.2–§13.3).
+
+   Composes design tokens only — no literal colour, radius, spacing or duration
+   anywhere in this file. Everything here either styles a surface that did not
+   exist before Phase 6 (the source list, the result row, the target banner, the
+   add-source dialog, the rebuilt Zotero browser) or corrects the one-line
+   filter set that replaced the six-control wall.
+
+   Loaded by `library-page.tsx` and by `scholarly-search.tsx`, because the
+   search surface is shared with Research and must carry its own styles into
+   that route as well.
+   ========================================================================== */
+
+.library-panel { display: grid; gap: var(--s-4); }
+
+/* --- Shared toolbar ------------------------------------------------------- */
+
+.library-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.library-search {
+  flex: 1 1 260px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding-inline-start: var(--s-3);
+  color: var(--ink-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+}
+.library-search .input {
+  min-height: 34px;
+  background: transparent;
+  border: 0;
+  padding-inline-start: 0;
+}
+.library-search .input:focus { outline: none; }
+.library-search:focus-within { border-color: var(--focus); }
+
+.library-sort { width: auto; min-width: 120px; }
+
+/* An applied filter has to be visible while the filter line is closed, or the
+   user reads an incomplete list as the whole list. Text alone would not fit in
+   the button, so this dot is paired with an accessible name. */
+.library-filter-dot {
+  width: var(--s-2);
+  height: var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--accent-mark);
+}
+
+.library-filter-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.library-filter-line > label {
+  display: grid;
+  gap: var(--s-1);
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+}
+.library-filter-line .input { min-height: 32px; }
+.library-filter-check {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 32px;
+  color: var(--ink-2);
+  font-size: var(--t-small);
+}
+.library-filter-check input { width: 16px; height: 16px; accent-color: var(--accent); }
+
+.library-count {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--t-small);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Collections ---------------------------------------------------------- */
+
+.library-sources,
+.library-saved { display: grid; gap: var(--s-3); }
+
+.library-list-viewport,
+.scholarly-result-viewport {
+  max-height: min(60vh, 680px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.library-virtual { display: block; }
+
+/* Row heights are fixed because the windowing maths depends on them: a row
+   that grows by one line puts every spacer out by that much. */
+.source-row { height: 56px; box-sizing: border-box; overflow: hidden; }
+.result-row { height: 72px; box-sizing: border-box; overflow: hidden; }
+.source-row .row-hit,
+.result-row .row-hit { min-height: 0; height: 100%; }
+
+.source-glyph {
+  display: grid;
+  place-items: center;
+  width: var(--s-8);
+  height: var(--s-8);
+  flex: none;
+  color: var(--ink-2);
+  background: var(--surface-raised);
+  border-radius: var(--r-md);
+}
+
+.source-title,
+.result-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-chips,
+.result-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  flex-wrap: nowrap;
+}
+.source-chip-project { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+
+.result-save { white-space: nowrap; }
+
+/* --- Source detail panel -------------------------------------------------- */
+
+.library-source-detail { display: grid; gap: var(--s-4); }
+.library-source-error {
+  margin: 0;
+  padding: var(--s-3);
+  color: var(--danger);
+  background: var(--danger-surface);
+  border-radius: var(--r-md);
+  font-size: var(--t-small);
+}
+.library-source-note { margin: 0; color: var(--ink-2); font-size: var(--t-small); line-height: var(--t-body-lh); }
+
+.library-facts { margin: 0; display: grid; gap: var(--s-2); }
+.library-facts > div { display: flex; gap: var(--s-3); font-size: var(--t-small); }
+.library-facts dt { min-width: 88px; color: var(--ink-3); }
+.library-facts dd { margin: 0; color: var(--ink); word-break: break-word; }
+
+.library-detail-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+
+.library-saved-group { display: grid; gap: var(--s-2); }
+.library-saved-group > h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--ink-3);
+  font-size: var(--t-eyebrow);
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.library-saved-group > h3 span {
+  padding: 0 var(--s-1);
+  min-width: 18px;
+  color: var(--ink-2);
+  background: var(--surface-raised);
+  border-radius: var(--r-full);
+  font-size: var(--t-micro);
+  letter-spacing: 0;
+  text-align: center;
+}
+.library-saved-group ul {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+/* --- Discover: target banner, bar, one filter line ------------------------ */
+
+.scholarly-target {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  color: var(--ink);
+  background: var(--accent-quiet);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  font-size: var(--t-small);
+}
+
+.scholarly-bar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
+.scholarly-query {
+  flex: 1 1 280px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding-inline-start: var(--s-3);
+  color: var(--ink-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+}
+.scholarly-query:focus-within { border-color: var(--focus); }
+.scholarly-kind { width: auto; min-width: 130px; }
+
+.scholarly-filter-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.scholarly-filter-line > label {
+  display: grid;
+  gap: var(--s-1);
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+}
+.scholarly-filter-line .input,
+.scholarly-filter-line .select { min-height: 32px; }
+.scholarly-years { display: flex; align-items: center; gap: var(--s-1); }
+.scholarly-years .input { width: 84px; }
+
+.scholarly-degraded { align-self: start; }
+.scholarly-hint { color: var(--ink-3); font-size: var(--t-small); }
+.scholarly-more { margin-top: var(--s-2); }
+.scholarly-back { margin-bottom: var(--s-2); }
+
+.scholarly-topics { display: flex; flex-wrap: wrap; gap: var(--s-1); }
+
+.scholarly-zotero-note {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  color: var(--info);
+  background: var(--info-surface);
+  border-radius: var(--r-md);
+  font-size: var(--t-small);
+}
+
+.cache-chip {
+  margin-inline-start: auto;
+  padding: 0 var(--s-2);
+  color: var(--ink-3);
+  background: var(--surface-raised);
+  border-radius: var(--r-full);
+  font-size: var(--t-micro);
+}
+
+/* Below 1000px the detail replaces the list rather than being squeezed beside
+   it (§13.2 Responsive). */
+.scholarly-layout-detail { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 999px) {
+  .scholarly-layout { grid-template-columns: minmax(0, 1fr); }
+  .scholarly-layout:not(.scholarly-layout-detail) .scholarly-detail { display: none; }
+}
+
+/* --- Add source dialog ---------------------------------------------------- */
+
+.add-source-body { display: grid; gap: var(--s-4); padding-top: var(--s-4); }
+
+.add-source-drop {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-2);
+  padding: var(--s-6);
+  color: var(--ink-3);
+  background: var(--surface-sunken);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-lg);
+  text-align: center;
+  transition: border-color var(--d-fast) var(--e-out), background-color var(--d-fast) var(--e-out);
+}
+.add-source-drop.dragging { border-color: var(--accent); background: var(--accent-quiet); }
+.add-source-drop p { margin: 0; color: var(--ink); font-size: var(--t-body); }
+.add-source-drop small { max-width: 44ch; color: var(--ink-3); font-size: var(--t-small); line-height: var(--t-small-lh); }
+
+.add-source-link { display: flex; align-items: center; gap: var(--s-2); color: var(--ink-3); }
+
+.add-source-preview {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.add-source-preview strong { font-size: var(--t-body); line-height: var(--t-body-lh); }
+.add-source-preview span { color: var(--ink-2); font-size: var(--t-small); }
+.add-source-preview-chips { display: flex; flex-wrap: wrap; gap: var(--s-1); }
+
+.add-source-zotero {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-3);
+  padding: var(--s-6);
+  color: var(--ink-3);
+  background: var(--surface-sunken);
+  border-radius: var(--r-lg);
+  text-align: center;
+}
+.add-source-zotero p { margin: 0; max-width: 44ch; color: var(--ink); font-size: var(--t-body); }
+
+/* --- Zotero setup --------------------------------------------------------- */
+
+.zotero-setup { margin: 0; padding: 0 0 0 var(--s-5); display: grid; gap: var(--s-5); }
+.zotero-setup > li { display: grid; gap: var(--s-2); }
+.zotero-setup h3 { margin: 0; color: var(--ink); font-size: var(--t-h3); font-weight: 600; }
+.zotero-setup p { margin: 0; color: var(--ink-2); font-size: var(--t-small); line-height: var(--t-body-lh); }
+.zotero-setup > li > a,
+.zotero-setup > li > button { justify-self: start; }
+
+.zotero-tested {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  color: var(--success);
+  background: var(--success-surface);
+  border-radius: var(--r-md);
+}
+.zotero-tested > div { display: grid; gap: var(--s-2); }
+.zotero-tested strong { color: var(--ink); font-size: var(--t-body); }
+.zotero-tested small { color: var(--ink-2); font-size: var(--t-small); }
+.zotero-tested-chips { display: flex; flex-wrap: wrap; gap: var(--s-1); }
+
+/* --- Zotero browser ------------------------------------------------------- */
+
+.zotero-browser { display: grid; gap: var(--s-3); }
+
+.zotero-layout {
+  display: grid;
+  grid-template-columns: minmax(160px, .5fr) minmax(0, 1.6fr) minmax(240px, .9fr);
+  gap: var(--s-3);
+  align-items: start;
+}
+
+.zotero-rail {
+  display: grid;
+  align-content: start;
+  gap: var(--s-1);
+  padding: var(--s-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  max-height: min(60vh, 680px);
+  overflow-y: auto;
+}
+.zotero-rail button {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  min-height: 32px;
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font-size: var(--t-small);
+  text-align: start;
+}
+.zotero-rail button:hover { color: var(--ink); background: var(--surface-raised); }
+.zotero-rail button.active { color: var(--ink); background: var(--accent-quiet); }
+
+.zotero-items { display: grid; gap: var(--s-2); min-width: 0; }
+.zotero-items > .data-region {
+  max-height: min(52vh, 600px);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+.zotero-item-row { min-height: 56px; }
+
+.zotero-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  color: var(--ink-3);
+  font-size: var(--t-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.zotero-detail {
+  display: grid;
+  align-content: start;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  max-height: min(60vh, 680px);
+  overflow-y: auto;
+}
+.zotero-detail h2 { margin: 0; font-size: var(--t-h2); line-height: var(--t-h2-lh); }
+.zotero-detail h3 { margin: 0 0 var(--s-2); color: var(--ink-3); font-size: var(--t-micro); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.zotero-detail p { margin: 0; color: var(--ink-2); font-size: var(--t-small); line-height: var(--t-body-lh); }
+
+@media (max-width: 1180px) {
+  .zotero-layout { grid-template-columns: minmax(150px, .55fr) minmax(0, 1.45fr); }
+  .zotero-detail { grid-column: 1 / -1; max-height: none; }
+}
+@media (max-width: 760px) {
+  .zotero-layout { grid-template-columns: minmax(0, 1fr); }
+  .zotero-rail { max-height: 180px; }
+  .library-toolbar > .select { width: 100%; }
+}
+
+/* §13.1 Responsive: below 900px the source row drops its metadata column. The
+   row height stays fixed at every width — the windowing maths in
+   `virtual-list.tsx` measures in whole rows, so a row that grows by a line puts
+   every spacer below it out by that much. */
+@media (max-width: 900px) {
+  .source-chip-project { display: none; }
+  .result-chips .status-chip-neutral { display: none; }
+}
+@media (max-width: 600px) {
+  .source-row .row-trailing,
+  .result-row .row-trailing { display: none; }
+}

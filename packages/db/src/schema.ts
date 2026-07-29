@@ -70,7 +70,14 @@ export const assessmentAttempts = pgTable("assessment_attempts", { id: text("id"
 export const misconceptions = pgTable("misconceptions", { id: text("id").primaryKey(), userId: text("user_id").references(() => users.id).notNull(), conceptId: text("concept_id").references(() => concepts.id).notNull(), attemptId: text("attempt_id").references(() => assessmentAttempts.id).notNull(), label: text("label").notNull(), status: text("status").notNull(), confidence: real("confidence").notNull(), ...editable });
 export const projects = pgTable("projects", { id: text("id").primaryKey(), userId: text("user_id").references(() => users.id).notNull(), goalId: text("goal_id").references(() => goals.id), title: text("title").notNull(), purpose: text("purpose").notNull(), phase: text("phase").notNull(), ...editable });
 export const projectDecisions = pgTable("project_decisions", { id: text("id").primaryKey(), projectId: text("project_id").references(() => projects.id).notNull(), text: text("text").notNull(), reasoning: text("reasoning").notNull(), status: text("status").notNull(), sourceIds: text("source_ids").array().default([]).notNull(), supersedesId: text("supersedes_id"), ...editable });
-export const sources = pgTable("sources", { id: text("id").primaryKey(), userId: text("user_id").references(() => users.id).notNull(), projectId: text("project_id").references(() => projects.id), title: text("title").notNull(), mimeType: text("mime_type").notNull(), storagePath: text("storage_path"), contentHash: text("content_hash").notNull(), sourceVersion: integer("source_version").default(1).notNull(), parserVersion: text("parser_version").notNull(), ...editable }, (table) => [index("sources_hash_idx").on(table.contentHash)]);
+/**
+ * `processingState` (pending | processing | ready | failed), `processingError`,
+ * and `retention` (library | session) back the source lifecycle the Library
+ * renders (redesign.md §13.3). All three default, so rows written before
+ * migration 0009 read back as a ready, retained library source — which is what
+ * they are, since a row only ever existed after ingestion finished.
+ */
+export const sources = pgTable("sources", { id: text("id").primaryKey(), userId: text("user_id").references(() => users.id).notNull(), projectId: text("project_id").references(() => projects.id), title: text("title").notNull(), mimeType: text("mime_type").notNull(), storagePath: text("storage_path"), contentHash: text("content_hash").notNull(), sourceVersion: integer("source_version").default(1).notNull(), parserVersion: text("parser_version").notNull(), processingState: text("processing_state").default("ready").notNull(), processingError: text("processing_error"), retention: text("retention").default("library").notNull(), ...editable }, (table) => [index("sources_hash_idx").on(table.contentHash), index("sources_user_state_idx").on(table.userId, table.processingState)]);
 export const questionBanks = pgTable("question_banks", {
   id: text("id").primaryKey(),
   userId: text("user_id").references(() => users.id).notNull(),
