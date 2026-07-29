@@ -289,13 +289,6 @@ export async function POST(request: Request) {
   const attachmentIds = parsed.data.attachmentIds;
   const assistantMode = parsed.data.mode;
   const userMessage = parsed.data.message;
-  const taskClass = ({
-    auto: "conversational_support",
-    fast: "conversational_support",
-    deep: "research_synthesis",
-    coding: "code_reasoning",
-    document: "document_understanding",
-  } as const)[assistantMode];
   // What the message needs is inferred from the message, not configured by the
   // user. The scope checkboxes remain accepted for backwards compatibility, but
   // they now only *narrow* an inferred plan — they can never widen it, so a
@@ -311,6 +304,21 @@ export async function POST(request: Request) {
   });
   const plan = retrievalPlan(classification);
   const scopeOptedOut = requestedScopes.length === 1 && requestedScopes[0] === "conversation";
+
+  /**
+   * The model is chosen from what the message actually is, not from a mode the
+   * user may never have touched. An explicit Deep or Coding selection still
+   * wins — that is the user asking for the slower, stronger route on purpose.
+   */
+  const taskClass = assistantMode === "deep"
+    ? "research_synthesis" as const
+    : assistantMode === "coding"
+      ? "code_reasoning" as const
+      : assistantMode === "document" || classification.requestClass === "about_a_document"
+        ? "document_understanding" as const
+        : classification.requestClass === "broad_search"
+          ? "research_synthesis" as const
+          : "conversational_support" as const;
 
   const useWorkspace = plan.useWorkspace && !scopeOptedOut;
   const useMemory = plan.useMemory && !scopeOptedOut;

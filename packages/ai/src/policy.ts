@@ -11,7 +11,25 @@ export interface RouteRequest {
   now?: string;
 }
 
-const fastTasks = new Set<RouteDecision["taskClass"]>(["classification", "extraction", "summarization", "misconception_diagnosis"]);
+/**
+ * Tasks a small model answers well.
+ *
+ * `conversational_support` belongs here. It was falling through to the general
+ * branch, which selects the reasoning model — so an assistant turn as short as
+ * "hi" was answered by a 72B model on a four-unit concurrency plan and took
+ * about half a minute. A chat turn that needs real depth arrives as
+ * `research_synthesis` from Deep mode instead.
+ */
+const fastTasks = new Set<RouteDecision["taskClass"]>([
+  "classification",
+  "extraction",
+  "summarization",
+  "misconception_diagnosis",
+  "conversational_support",
+]);
+
+/** Tasks where a person is waiting on the first token. */
+const interactiveTasks = new Set<RouteDecision["taskClass"]>(["conversational_support"]);
 const deterministicTasks = new Set<RouteDecision["taskClass"]>(["schedule_optimization"]);
 
 export function routeTask(request: RouteRequest): RouteDecision {
@@ -55,6 +73,21 @@ export function routeTask(request: RouteRequest): RouteDecision {
       sourceMode: "retrieval",
       verification: "pending",
       costClass: "medium",
+    });
+  }
+
+  // Someone is watching a cursor blink, so latency outranks everything else.
+  // Featherless queues against a small shared concurrency pool; Groq answers a
+  // short turn in well under a second, so the interactive path prefers it and
+  // falls back to the small shared model when Groq is not configured.
+  if (interactiveTasks.has(request.taskClass) && available.has("groq")) {
+    return routeDecisionSchema.parse({
+      ...base,
+      route: "groq",
+      model: "groq/fast-conversational",
+      reason: "An interactive reply is latency-sensitive, so the lowest-latency qualified route was selected.",
+      verification: "not_required",
+      costClass: "low",
     });
   }
 

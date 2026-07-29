@@ -13,6 +13,48 @@ describe("model routing", () => {
     expect(routeTask({ id: "route_classify", taskClass: "classification" }).route).toBe("featherless");
   });
 
+  /**
+   * A chat turn used to fall through to the general branch and pick the
+   * reasoning model, so "hi" was answered by a 72B model on a four-unit
+   * concurrency plan and took about thirty seconds.
+   */
+  it("never sends an interactive chat turn to the reasoning model", () => {
+    const decision = routeTask({
+      id: "route_chat",
+      taskClass: "conversational_support",
+      availableProviders: ["featherless", "groq", "gemini", "ai_gateway"],
+    });
+    expect(decision.costClass).toBe("low");
+    expect(decision.model).not.toMatch(/reasoning|specialist/i);
+  });
+
+  it("prefers the lowest-latency route for an interactive chat turn", () => {
+    expect(routeTask({
+      id: "route_chat_groq",
+      taskClass: "conversational_support",
+      availableProviders: ["featherless", "groq"],
+    }).route).toBe("groq");
+  });
+
+  it("still answers a chat turn on a small shared model when groq is absent", () => {
+    const decision = routeTask({
+      id: "route_chat_nogroq",
+      taskClass: "conversational_support",
+      availableProviders: ["featherless"],
+    });
+    expect(decision.route).toBe("featherless");
+    expect(decision.costClass).toBe("low");
+  });
+
+  it("keeps the stronger route when the user explicitly asks for depth", () => {
+    const decision = routeTask({
+      id: "route_deep",
+      taskClass: "research_synthesis",
+      availableProviders: ["featherless", "groq"],
+    });
+    expect(decision.costClass).toBe("medium");
+  });
+
   it("uses a multimodal provider for images", () => {
     expect(routeTask({ id: "route_image", taskClass: "image_understanding", modality: "image" }).route).toBe("gemini");
   });

@@ -219,21 +219,29 @@ async function authorizeGatewayRequest(input: GatewayContext) {
   }
   const minuteCap = boundedNumber(process.env.AI_PER_USER_REQUESTS_PER_MINUTE, 6, 1, 120);
   const dailyCap = boundedNumber(process.env.AI_PER_USER_REQUESTS_PER_DAY, 60, 1, 2_000);
-  const [minute, daily] = await Promise.all([
+  const requestedTokens = inputTokens + outputTokens;
+
+  // All four checks are independent reads, so they run as one round trip rather
+  // than two sequential pairs. Every one of them still has to pass — the budget
+  // results are only *read* after the rate limits are confirmed, so a throttled
+  // request cannot spend allowance.
+  const [minute, daily, budgets] = await Promise.all([
     enforceRateLimit(input.request, "ai-gateway-minute", minuteCap, 60_000, input.userId),
     enforceRateLimit(input.request, "ai-gateway-day", dailyCap, 86_400_000, input.userId),
-  ]);
-  if (!minute.allowed) throw new AiGatewayError("service_busy", "You are sending requests too quickly. Please wait a moment and try again.", 429, 60);
-  if (!daily.allowed) throw new AiGatewayError("daily_allowance_reached", "You have reached today’s AI allowance. Your saved work is still available.", 429, 3_600);
-  const requestedTokens = inputTokens + outputTokens;
-  try {
-    const [userBudget, sharedBudget] = await Promise.all([
+    Promise.all([
       checkDailyAiBudget(input.userId, requestedTokens),
       checkSharedAiBudget(requestedTokens),
-    ]);
-    return { inputTokens, outputTokens, conserve: sharedBudget.nearLimit || userBudget.remaining < requestedTokens * 2 };
-  } catch (error) {
-    const shared = error instanceof Error && error.message.includes("Shared");
+    ]).then(
+      ([userBudget, sharedBudget]) => ({ ok: true as const, userBudget, sharedBudget }),
+      (error: unknown) => ({ ok: false as const, error }),
+    ),
+  ]);
+
+  if (!minute.allowed) throw new AiGatewayError("service_busy", "You are sending requests too quickly. Please wait a moment and try again.", 429, 60);
+  if (!daily.allowed) throw new AiGatewayError("daily_allowance_reached", "You have reached today’s AI allowance. Your saved work is still available.", 429, 3_600);
+
+  if (!budgets.ok) {
+    const shared = budgets.error instanceof Error && budgets.error.message.includes("Shared");
     throw new AiGatewayError(
       "daily_allowance_reached",
       shared ? "Continuum’s shared AI allowance is nearly exhausted. Please try again later." : "You have reached today’s AI allowance. Your saved work is still available.",
@@ -241,6 +249,12 @@ async function authorizeGatewayRequest(input: GatewayContext) {
       3_600,
     );
   }
+
+  return {
+    inputTokens,
+    outputTokens,
+    conserve: budgets.sharedBudget.nearLimit || budgets.userBudget.remaining < requestedTokens * 2,
+  };
 }
 
 function decisionFor(input: GatewayContext, environment: ProviderEnvironment, conserve: boolean) {
