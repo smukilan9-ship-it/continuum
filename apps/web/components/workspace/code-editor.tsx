@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ComponentType, type UIEvent } from "react";
 
 // A real code editor (CodeMirror 6) with syntax highlighting, line numbers,
 // auto-indent, bracket completion, Tab-to-indent, and undo/redo.
@@ -18,6 +18,16 @@ type CodeMirrorModule = {
   extensionsFor: (language: string) => unknown[];
 };
 
+type EditorViewLike = {
+  state: { doc: { lines: number; line: (line: number) => { from: number } } };
+  dispatch: (value: unknown) => void;
+  focus: () => void;
+  contentDOM?: HTMLElement;
+};
+
+/** The keyboard contract, announced to assistive tech (redesign.md §14.3). */
+const KEYBOARD_CONTRACT = "Tab indents, Shift+Tab outdents, Escape moves focus out of the editor.";
+
 export function CodeEditor({
   value,
   onChange,
@@ -25,6 +35,7 @@ export function CodeEditor({
   placeholder,
   editable = true,
   minHeight = 260,
+  fill = false,
   ariaLabel = "Code editor",
   focusLine,
 }: {
@@ -34,11 +45,15 @@ export function CodeEditor({
   placeholder?: string;
   editable?: boolean;
   minHeight?: number;
+  /** Fill the parent region and scroll internally, for the fixed Build frame. */
+  fill?: boolean;
   ariaLabel?: string;
   focusLine?: number;
 }) {
   const [mod, setMod] = useState<CodeMirrorModule | null>(null);
-  const viewRef = useRef<{ state: { doc: { lines: number; line: (line: number) => { from: number } } }; dispatch: (value: unknown) => void; focus: () => void } | undefined>(undefined);
+  const viewRef = useRef<EditorViewLike | undefined>(undefined);
+  const gutterRef = useRef<HTMLDivElement>(null);
+  const contractId = useId();
 
   useEffect(() => {
     let alive = true;
@@ -103,23 +118,37 @@ export function CodeEditor({
   }, [focusLine, value]);
 
   if (!mod) {
+    // Tab indents inside CodeMirror, so the fallback keeps Tab as "leave the
+    // field" — and Escape blurs in both, so neither is a keyboard trap.
+    const lines = value.split("\n").length;
     return (
-      <textarea
-        className="code-editor-fallback"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        spellCheck={false}
-        aria-label={ariaLabel}
-        readOnly={!editable}
-        style={{ minHeight }}
-      />
+      <div className={fill ? "code-editor-fallback-shell code-editor-fill" : "code-editor-fallback-shell"}>
+        <div className="code-editor-gutter" aria-hidden="true" ref={gutterRef}>
+          {Array.from({ length: Math.max(lines, 1) }, (_, index) => <span key={index}>{index + 1}</span>)}
+        </div>
+        <textarea
+          className="code-editor-fallback"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onScroll={(event: UIEvent<HTMLTextAreaElement>) => {
+            if (gutterRef.current) gutterRef.current.scrollTop = event.currentTarget.scrollTop;
+          }}
+          onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); event.currentTarget.blur(); } }}
+          placeholder={placeholder}
+          spellCheck={false}
+          aria-label={ariaLabel}
+          aria-describedby={contractId}
+          readOnly={!editable}
+          style={fill ? undefined : { minHeight }}
+        />
+        <span id={contractId} className="sr-only">{KEYBOARD_CONTRACT}</span>
+      </div>
     );
   }
 
   const CM = mod.CM;
   return (
-    <div className="code-editor-shell">
+    <div className={fill ? "code-editor-shell code-editor-fill" : "code-editor-shell"}>
       <CM
         value={value}
         onChange={onChange}
@@ -128,11 +157,25 @@ export function CodeEditor({
         extensions={extensions}
         // CodeMirror gives `.cm-content` role="textbox"; a label on the wrapper
         // does not reach it, so the name has to be set on the editable element.
-        onCreateEditor={(view: typeof viewRef.current) => {
+        onCreateEditor={(view: EditorViewLike) => {
           viewRef.current = view;
-          (view as { contentDOM?: HTMLElement } | undefined)?.contentDOM?.setAttribute("aria-label", ariaLabel);
+          const content = view.contentDOM;
+          if (!content) return;
+          content.setAttribute("aria-label", ariaLabel);
+          content.setAttribute("aria-describedby", contractId);
+          // Escape must release focus — an editor that swallows Tab and never
+          // yields focus is a keyboard trap (§14.3, WCAG 2.1.2). Registered on
+          // the DOM node in the capture phase so it wins over CodeMirror's own
+          // Escape binding without needing a precedence wrapper.
+          content.addEventListener("keydown", (event: KeyboardEvent) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            content.blur();
+          }, { capture: true });
         }}
-        minHeight={`${minHeight}px`}
+        minHeight={fill ? undefined : `${minHeight}px`}
+        height={fill ? "100%" : undefined}
         basicSetup={{
           lineNumbers: true,
           highlightActiveLine: true,
@@ -146,6 +189,7 @@ export function CodeEditor({
         }}
         theme="light"
       />
+      <span id={contractId} className="sr-only">{KEYBOARD_CONTRACT}</span>
     </div>
   );
 }
