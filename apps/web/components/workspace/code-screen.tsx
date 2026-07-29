@@ -3,7 +3,6 @@
 import type { AuthUser } from "@continuum/db";
 import {
   AlertTriangle,
-  BookOpenCheck,
   Braces,
   Check,
   CheckCircle2,
@@ -31,7 +30,6 @@ import {
   TerminalSquare,
   Trash2,
   WandSparkles,
-  X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
@@ -50,7 +48,7 @@ import {
   type ExecutionTest,
   type RunnableLanguage,
 } from "@/lib/code-execution";
-import { languageLabel } from "@/lib/labels";
+import { conceptLabel, languageLabel } from "@/lib/labels";
 import { resolveLocalOllamaConfiguration } from "@/lib/ollama-client";
 import { buildAcademicPrompt } from "@/lib/prompt-context";
 import { CODE_FILE_ACCEPT, downloadSource, validateCodeFile, validateCodeSourceText } from "@/lib/code-file";
@@ -62,7 +60,7 @@ import { useCodeSession } from "./use-code-session";
 type Toast = (message: string | null) => void;
 type Provider = "auto" | "ollama";
 type Mode = "explain" | "debug" | "practice" | "review";
-type OutputPanel = "console" | "io" | "assistant" | "tests";
+type OutputPanel = "console" | "io" | "assistant";
 
 const starters: Array<{ mode: Mode; label: string; prompt: string }> = [
   { mode: "explain", label: "Explain my code", prompt: "Explain this code in plain language, using the actual result when available." },
@@ -101,7 +99,7 @@ function compactContext(state: WorkspaceState, user: AuthUser) {
     expectedAnswerStyle: "CBSE-aligned, concise first, worked explanation on request",
     activeGoals: state.goals.slice(0, 4).map((goal) => ({ title: text(goal, "title"), outcome: text(goal, "outcome") })),
     currentTasks: state.tasks.filter((task) => text(task, "status") !== "done").slice(0, 6).map((task) => text(task, "title")),
-    learning: state.learningStates.slice(0, 4).map((item) => ({ concept: text(item, "conceptId"), status: text(item, "status"), explanation: text(item, "explanation") })),
+    learning: state.learningStates.slice(0, 4).map((item) => ({ concept: conceptLabel(text(item, "conceptId")), status: text(item, "status"), explanation: text(item, "explanation") })),
   };
 }
 
@@ -195,27 +193,6 @@ function statusLabel(status: ExecutionStatus) {
  * Expected and actual used to be two separate `<pre>` blocks the learner had to
  * compare by eye. This lines them up and marks the differing lines.
  */
-function OutputDiff({ expected, actual }: { expected: string; actual: string }) {
-  const expectedLines = expected.split("\n");
-  const actualLines = actual.split("\n");
-  const rows = Array.from({ length: Math.max(expectedLines.length, actualLines.length) }, (_, index) => ({
-    index,
-    expected: expectedLines[index],
-    actual: actualLines[index],
-    differs: (expectedLines[index] ?? "") !== (actualLines[index] ?? ""),
-  }));
-  return (
-    <div className="output-diff">
-      <div className="output-diff-head"><span>Expected</span><span>Actual</span></div>
-      {rows.map((row) => (
-        <div key={row.index} className={row.differs ? "output-diff-row differs" : "output-diff-row"}>
-          <code>{row.expected ?? <em>— no line —</em>}</code>
-          <code>{row.actual ?? <em>— no line —</em>}</code>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function contextualStarters(outcome: ExecutionOutcome | undefined) {
   if (outcome && outcome !== "success") {
@@ -314,7 +291,7 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
     panelCollapsed: false,
     timeoutMs: 5_000,
   });
-  const { goalId, topic, language, mode, provider, prompt, code, stdin, tests, runtimeResult, runtimeHistory, conversation, fileName, timeoutMs, files, activeFileId, panelWidth, panelCollapsed } = session;
+  const { goalId, topic, language, mode, provider, prompt, code, stdin, runtimeResult, runtimeHistory, conversation, fileName, timeoutMs, files, activeFileId, panelWidth, panelCollapsed } = session;
   const panel = session.panel as OutputPanel;
   const runnableLanguage = normalizeRunnableLanguage(language);
 
@@ -449,13 +426,13 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
     update({ files: remaining, activeFileId: next.id, fileName: next.name, language: next.language, code: next.content, runtimeResult: undefined });
   }
 
-  async function runCode(runTests = false, source = code) {
+  async function runCode(source = code) {
     if (runtimeBusy) return;
     if (!runnableLanguage) { showToast(`${languageLabel(language)} is editor-only until an isolated runtime is configured.`); return; }
-    const request = { id: crypto.randomUUID(), language: runnableLanguage, source, stdin, timeoutMs, tests: runTests ? tests : [] };
+    const request = { id: crypto.randomUUID(), language: runnableLanguage, source, stdin, timeoutMs, tests: [] };
     setRuntimeBusy(true);
     setRuntimeStatus("preparing");
-    setPanel(runTests ? "tests" : "console");
+    setPanel("console");
     // On a phone the output pane is hidden behind the segmented switch, so a run
     // that produced nothing visible would look like nothing happened.
     setMobilePane("output");
@@ -649,7 +626,6 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
           {runtimeBusy
             ? <Button className="button-secondary" type="button" onClick={() => runRef.current?.stop()}><Square size={14} aria-hidden="true" />Stop</Button>
             : <Button className="button-primary" type="button" disabled={!runnableLanguage || !code.trim()} onClick={() => void runCode()}><Play size={15} aria-hidden="true" />Run<kbd className="pointer-only">⌘↵</kbd></Button>}
-          <Button className="button-secondary compact-button" type="button" disabled={!runnableLanguage || !tests.length || runtimeBusy} onClick={() => void runCode(true)}><CheckCircle2 size={14} aria-hidden="true" />Tests{tests.length ? <small>{tests.length}</small> : null}</Button>
         </>}
         overflow={<>
           <Button className="button-quiet" type="button" onClick={() => setLocalFileOpen(true)}><Laptop size={15} aria-hidden="true" />Import file</Button>
@@ -683,16 +659,6 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
             <button type="button" onClick={duplicateActiveFile}><Copy size={12} aria-hidden="true" />Duplicate</button>
             <button type="button" onClick={() => setFileDialog("delete")}><Trash2 size={12} aria-hidden="true" />Delete</button>
           </div>
-          <details className="code-rail-disclosure code-task-brief">
-            <summary><BookOpenCheck size={15} aria-hidden="true" />Task guidance</summary>
-            <div className="code-task-grid">
-              <section><h2>Task</h2><p>Use a threshold to select scores, then print the selected values and their summary.</p></section>
-              <section><h2>Example</h2><code>Input 90 → Selected: [91]</code></section>
-              <section><h2>What success looks like</h2><p>Your program runs without an error and the sample test passes.</p></section>
-              <section><h2>Hint</h2><p>Filter the list first. Calculate the result from the filtered list, not the original one.</p></section>
-              <dl><div><dt>You will practise</dt><dd>Lists, conditions, input, and query results</dd></div><div><dt>To complete this</dt><dd>Show correct output and pass one sample test</dd></div><div><dt>Connected goal</dt><dd>{text(state.goals[1] ?? state.goals[0], "title", "Class 12 Computer Science")}</dd></div></dl>
-            </div>
-          </details>
           <details className="code-rail-disclosure code-advanced-settings" open={advancedOpen} onToggle={(event) => setAdvancedOpen((event.currentTarget as HTMLDetailsElement).open)}>
             <summary><Database size={15} aria-hidden="true" />Setup</summary>
             <div>
@@ -730,7 +696,6 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
             <button type="button" role="tab" aria-selected={panel === "console"} className={panel === "console" ? "active" : ""} onClick={() => setPanel("console")}><TerminalSquare size={15} />Console</button>
             <button type="button" role="tab" aria-selected={panel === "io"} className={panel === "io" ? "active" : ""} onClick={() => setPanel("io")}><Braces size={15} />Input & Output</button>
             <button type="button" role="tab" aria-selected={panel === "assistant"} className={panel === "assistant" ? "active" : ""} onClick={() => setPanel("assistant")}><Sparkles size={15} />Assistant{conversation.length ? <small>{Math.ceil(conversation.length / 2)}</small> : null}</button>
-            <button type="button" role="tab" aria-selected={panel === "tests"} className={panel === "tests" ? "active" : ""} onClick={() => setPanel("tests")}><CheckCircle2 size={15} />Tests{tests.length ? <small>{tests.length}</small> : null}</button>
             </div>
             <button type="button" className="collapse-panel" onClick={() => update({ panelCollapsed: true })} aria-label="Collapse context panel"><PanelRightClose size={15} /></button>
           </div>
@@ -740,10 +705,6 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
 
             {!runtimeBusy && panel === "console" ? <><div className="code-panel-utilities"><Button className="button-secondary" type="button" onClick={() => update({ runtimeResult: undefined })}>Clear</Button><Button className="button-secondary" type="button" disabled={!runtimeResult} onClick={() => void navigator.clipboard.writeText([runtimeResult?.stdout, runtimeResult?.stderr].filter(Boolean).join("\n"))}><Copy size={13} />Copy output</Button><Button className="button-secondary" type="button" disabled={!runnableLanguage || !code.trim()} onClick={() => void runCode()}><RefreshCw size={13} />Rerun</Button></div><RuntimeOutput result={runtimeResult} source={code} onFeedback={() => setPanel("assistant")} onJump={(line) => { setFocusLine(line); setMobilePane("editor"); }} onOpenSettings={() => setAdvancedOpen(true)} />{runtimeHistory.length ? <details className="run-history-details"><summary><History size={14} />Previous runs ({runtimeHistory.length})</summary><div className="run-history">{runtimeHistory.map((run) => <button type="button" key={run.id} onClick={() => restoreRun(run.id)}><span className={`run-mark ${run.result.outcome}`} /><span><strong>{outcomeLabel(run.result.outcome)}</strong><small>{new Date(run.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {run.result.durationMs} ms</small></span><RotateCcw size={14} /></button>)}</div></details> : null}</> : null}
             {!runtimeBusy && panel === "io" ? <div className="code-io-panel"><label><strong>Program input</strong><textarea value={stdin} onChange={(event) => update({ stdin: event.target.value })} placeholder="Put each response on a new line" /><small>Values are provided to input() or the selected runtime. Nothing is sent to AI. Use the Run button in the header to run with this input.</small></label><Button className="button-secondary" type="button" disabled={!runnableLanguage || !code.trim()} onClick={() => void runCode()}><Play size={14} aria-hidden="true" />Apply input &amp; run</Button><section><strong>Output</strong>{runtimeResult?.stdout ? <pre>{runtimeResult.stdout}</pre> : <p>Run the program with the input above. Its output will appear here.</p>}{runtimeResult?.stderr ? <pre className="error">{cleanRuntimeMessage(runtimeResult.stderr)}</pre> : null}</section></div> : null}
-            {!runtimeBusy && panel === "tests" ? <div className="code-tests-panel"><header><div><strong>{runtimeResult?.tests.length ? `${runtimeResult.tests.filter((entry) => entry.passed).length} of ${runtimeResult.tests.length} passing` : "Test cases"}</strong><small>Compare exact output without invoking AI.</small></div><Button className="button-primary" type="button" disabled={!tests.length || !runnableLanguage || !code.trim()} onClick={() => void runCode(true)}><CheckCircle2 size={14} aria-hidden="true" />Run all tests</Button></header>{tests.map((test, index) => {
-              const result = runtimeResult?.tests.find((candidate) => candidate.id === test.id);
-              return <details key={test.id} open={Boolean(result && !result.passed)}><summary><span className={result ? result.passed ? "pass" : "fail" : ""}>{result ? result.passed ? <Check size={13} /> : <X size={13} /> : index + 1}</span><strong>{test.name}</strong>{result ? <Badge tone={result.passed ? "green" : "red"}>{result.passed ? "Passed" : "Failed"}</Badge> : <Badge tone="neutral">Not run</Badge>}</summary><div><label>Name<input value={test.name} onChange={(event) => update({ tests: tests.map((candidate) => candidate.id === test.id ? { ...candidate, name: event.target.value } : candidate) })} /></label><label>Input<textarea value={test.stdin ?? ""} onChange={(event) => update({ tests: tests.map((candidate) => candidate.id === test.id ? { ...candidate, stdin: event.target.value } : candidate) })} /></label><label>Expected output<textarea value={test.expectedOutput} onChange={(event) => update({ tests: tests.map((candidate) => candidate.id === test.id ? { ...candidate, expectedOutput: event.target.value } : candidate) })} /></label>{result && !result.passed ? <OutputDiff expected={test.expectedOutput} actual={result.actualOutput} /> : result ? <label>Actual output<pre>{result.actualOutput}</pre></label> : null}<div><Button className="button-secondary" type="button" onClick={() => update({ tests: [...tests, { ...test, id: `test_${crypto.randomUUID()}`, name: `${test.name} copy` }] })}>Duplicate</Button><Button className="button-quiet danger" type="button" onClick={() => update({ tests: tests.filter((candidate) => candidate.id !== test.id) })}>Delete</Button></div></div></details>;
-            })}<Button className="button-secondary code-add-test" type="button" onClick={() => update({ tests: [...tests, { id: `test_${crypto.randomUUID()}`, name: `Test ${tests.length + 1}`, stdin: "", expectedOutput: "" }] })}><FilePlus2 size={14} aria-hidden="true" />Add test</Button></div> : null}
             {!runtimeBusy && panel === "assistant" ? <form className="feedback-panel" onSubmit={submitForFeedback}>
               <div className="ai-boundary"><WandSparkles size={17} /><div><strong>Get feedback only when you ask</strong><span>{runtimeResult ? "Continuum will use your code and this run’s exact result." : "Run first so feedback can use real output instead of guessing."}</span></div></div>
               {/* Context-sensitive: after an error the first offer is to explain
@@ -841,7 +802,6 @@ function CodeConversation({ messages, live, pendingPrompt, busy }: { messages: A
 
 function RuntimeOutput({ result, source, onFeedback, onJump, onOpenSettings }: { result: ExecutionResult | undefined; source: string; onFeedback: () => void; onJump: (line: number) => void; onOpenSettings: () => void }) {
   if (!result) return <div className="runtime-empty"><TerminalSquare size={28} aria-hidden="true" /><h2>Run your program to see output.</h2><p className="pointer-only">Press <kbd>⌘↵</kbd> or use Run in the header.</p></div>;
-  const passed = result.tests.filter((test) => test.passed).length;
   // The learner-facing message never carries a bundle URL or a JS stack frame;
   // the raw text stays available under Technical details.
   const readableError = cleanRuntimeMessage(result.stderr ?? "");
@@ -850,11 +810,7 @@ function RuntimeOutput({ result, source, onFeedback, onJump, onOpenSettings }: {
   const parsedErrorLine = errorLineFrom(result.language, `${result.stderr}\n${result.technicalStderr ?? ""}`, source);
   const failed = result.outcome !== "success" && result.outcome !== "stopped";
   const guidance = result.outcome === "success"
-    ? result.tests.length && passed === result.tests.length
-      ? `Your program ran and passed ${passed} of ${result.tests.length} tests.`
-      : result.tests.length
-        ? `Your program ran, but ${result.tests.length - passed} test${result.tests.length - passed === 1 ? "" : "s"} still need attention.`
-        : "Your program ran successfully. Check the output against the task."
+    ? "Your program ran successfully. Check the output below."
     : result.outcome === "compiler_error"
       ? "The code could not be translated into a runnable program. Start with the first error below."
       : result.outcome === "runtime_error"

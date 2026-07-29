@@ -442,7 +442,13 @@ export class NeonRepository {
       occurredAt: event.occurredAt.toISOString(),
     }));
 
-    if (["integrations", "account", "zotero", "openalex", "library"].includes(view)) return empty;
+    if (["integrations", "account", "zotero"].includes(view)) return empty;
+    // Library/Discover derives its suggested searches from the user's own work,
+    // so it needs goal and project titles — nothing else.
+    if (["library", "openalex"].includes(view)) {
+      const [goalRows, projectRows] = await Promise.all([userGoals(), userProjects()]);
+      return { ...empty, goals: goalRows, projects: projectRows };
+    }
     if (view === "today") {
       const [goalRows, taskRows, milestoneRows, projectRows, receiptRows, activityRows, scheduleRows, constraintRows] = await Promise.all([
         userGoals(), userTasks(), userMilestones(), userProjects(), userReceipts(4),

@@ -328,10 +328,15 @@ export async function runStructuredAi<T>(input: StructuredGatewayRequest<T>) {
 }
 
 export async function runStreamingAi(input: GatewayContext) {
-  const limits = await authorizeGatewayRequest(input);
+  // The lease is independent of the limit/environment reads, so it is taken
+  // concurrently rather than adding another serial DB round-trip in front of
+  // the first streamed token.
+  const [limits, release] = await Promise.all([
+    authorizeGatewayRequest(input),
+    acquireGlobalLease(input.userId, input.feature),
+  ]);
   const environment = await gatewayEnvironment(limits.conserve, input.userId, input.allowedProviders, input.credentialMode);
   const decision = decisionFor(input, environment, limits.conserve);
-  const release = await acquireGlobalLease(input.userId, input.feature);
   try {
     const abortSignal = AbortSignal.any([input.request.signal, AbortSignal.timeout(requestTimeoutMs())]);
     const result = await streamGeneration({

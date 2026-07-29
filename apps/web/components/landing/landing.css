@@ -13,6 +13,13 @@
   --landing-accent: #d9ff2f;
   --landing-border: #dcded8;
   --landing-border-strong: #c8ccc5;
+  /* Single content grid shared by the header, hero and every section so all
+     left edges line up. Changing this moves the whole page as one. */
+  --landing-max-width: 1280px;
+  --landing-gutter-width: min(var(--landing-max-width), calc(100% - 56px));
+  /* Full-bleed forest bands (journey / quote / final CTA). */
+  --landing-band: #173d2e;
+  --landing-band-border: transparent;
   min-width: 320px;
   overflow: clip;
   color: var(--landing-ink);
@@ -33,6 +40,10 @@ html[data-theme="dark"] .landing-shell {
   --landing-emerald-soft: #20382c;
   --landing-border: #2a3a31;
   --landing-border-strong: #3c5146;
+  /* On a near-black page a #173d2e band reads as a bright foreign slab, so the
+     dark theme uses a band only a step above the page with a hairline edge. */
+  --landing-band: #14261e;
+  --landing-band-border: #2a3f34;
 }
 
 .landing-shell *,
@@ -43,6 +54,19 @@ html[data-theme="dark"] .landing-shell {
 
 .landing-shell a {
   color: inherit;
+}
+
+/* Every in-page target (header nav, "Watch Demo", the footer's feature links)
+   sits under a 76px sticky header. Without this the anchor lands with the
+   section's own heading hidden behind the bar. */
+.landing-shell [id] {
+  scroll-margin-top: 96px;
+}
+
+@media (max-width: 760px) {
+  .landing-shell [id] {
+    scroll-margin-top: 84px;
+  }
 }
 
 .landing-skip-link {
@@ -72,7 +96,7 @@ html[data-theme="dark"] .landing-shell {
 }
 
 .landing-header-inner {
-  width: min(1380px, calc(100% - 56px));
+  width: var(--landing-gutter-width);
   height: 100%;
   margin: 0 auto;
   display: flex;
@@ -227,14 +251,13 @@ html[data-theme="dark"] .landing-button-primary:hover {
 }
 
 .landing-hero {
-  width: min(1380px, calc(100% - 56px));
-  min-height: 790px;
+  width: var(--landing-gutter-width);
   margin: 0 auto;
-  padding: 108px 0 92px;
+  padding: 104px 0 96px;
   display: grid;
-  grid-template-columns: minmax(400px, .8fr) minmax(620px, 1.2fr);
+  grid-template-columns: minmax(430px, .92fr) minmax(540px, 1.08fr);
   align-items: center;
-  gap: clamp(50px, 6vw, 96px);
+  gap: clamp(48px, 5vw, 84px);
 }
 
 .landing-hero-copy {
@@ -267,13 +290,14 @@ html[data-theme="dark"] .landing-button-primary:hover {
 }
 
 .landing-hero h1 {
-  max-width: 720px;
+  max-width: 640px;
   margin: 25px 0 28px;
   color: var(--landing-ink);
-  font-size: clamp(51px, 5.35vw, 82px);
+  font-size: clamp(44px, 4.5vw, 68px);
   font-weight: 670;
-  line-height: .99;
-  letter-spacing: -.062em;
+  line-height: 1.02;
+  letter-spacing: -.05em;
+  text-wrap: balance;
 }
 
 .landing-hero h1 span {
@@ -324,31 +348,35 @@ html[data-theme="dark"] .landing-button-primary:hover {
 
 .landing-stage-orbit {
   position: absolute;
+  z-index: 0;
   pointer-events: none;
   border: 1px solid var(--landing-border-strong);
   border-radius: 50%;
-  opacity: .55;
+  opacity: .45;
 }
 
 .landing-stage-orbit-one {
-  width: 330px;
-  height: 330px;
-  top: -100px;
-  right: -80px;
+  width: 300px;
+  height: 300px;
+  top: -78px;
+  right: -46px;
 }
 
+/* Ambient glow rather than a hard disc — as a solid circle it read as a stray
+   shape poking out from behind the window. */
 .landing-stage-orbit-two {
-  width: 160px;
-  height: 160px;
-  bottom: -54px;
-  left: -64px;
+  width: 190px;
+  height: 190px;
+  bottom: -48px;
+  left: -70px;
   background: var(--landing-emerald-soft);
   border: 0;
-  opacity: .8;
+  opacity: .55;
+  filter: blur(26px);
 }
 
 .landing-product-window {
-  min-height: 540px;
+  min-height: 486px;
   position: relative;
   z-index: 2;
   display: grid;
@@ -387,7 +415,26 @@ html[data-theme="dark"] .landing-button-primary:hover {
   gap: 3px;
 }
 
-.landing-mock-sidebar nav button {
+.landing-mock-nav-group {
+  display: grid;
+  gap: 3px;
+}
+
+.landing-mock-nav-group + .landing-mock-nav-group {
+  margin-top: 13px;
+}
+
+.landing-mock-nav-label {
+  padding: 0 9px 4px;
+  color: #7f8c83;
+  font-size: 7px;
+  font-weight: 850;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+}
+
+.landing-mock-sidebar nav button,
+.landing-mock-nav-static {
   min-height: 35px;
   padding: 0 9px;
   display: flex;
@@ -397,10 +444,19 @@ html[data-theme="dark"] .landing-button-primary:hover {
   background: transparent;
   border: 0;
   border-radius: 7px;
-  cursor: pointer;
   font-size: 10px;
   font-weight: 650;
   text-align: left;
+}
+
+.landing-mock-sidebar nav button {
+  cursor: pointer;
+}
+
+/* Real destinations that have no hero preview — shown so the sidebar matches
+   the product, dimmed so they don't read as clickable. */
+.landing-mock-nav-static {
+  color: #6f7c74;
 }
 
 .landing-mock-sidebar nav button:hover {
@@ -413,29 +469,8 @@ html[data-theme="dark"] .landing-button-primary:hover {
   background: #d9ff2f;
 }
 
-.landing-mock-recent {
-  margin-top: 27px;
-  padding: 0 7px;
-  display: grid;
-  gap: 9px;
-}
 
-.landing-mock-recent > span {
-  color: #8d9991;
-  font-size: 7px;
-  font-weight: 850;
-  letter-spacing: .15em;
-  text-transform: uppercase;
-}
 
-.landing-mock-recent p {
-  margin: 0;
-  overflow: hidden;
-  color: #7f8c83;
-  font-size: 9px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .landing-mock-main {
   min-width: 0;
@@ -497,21 +532,18 @@ html[data-theme="dark"] .landing-button-primary:hover {
 }
 
 .landing-mock-content {
-  padding: 25px 22px 21px;
+  padding: 22px 22px 20px;
 }
 
 .landing-mock-heading {
-  min-height: 96px;
+  min-height: 84px;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
 }
 
-.landing-mock-heading > div > span,
-.landing-mock-card-label,
-.landing-mock-lower > div > span,
-.landing-citation-stack > span {
+.landing-mock-heading > div > span {
   color: #9ac38a;
   font-size: 7px;
   font-weight: 820;
@@ -539,177 +571,214 @@ html[data-theme="dark"] .landing-button-primary:hover {
   white-space: nowrap;
 }
 
-.landing-mock-grid {
+/* ── Per-view hero bodies ──────────────────────────────────────────────
+   Every workspace view renders its own layout. Shared primitives first,
+   then the pieces unique to each view. */
+
+.hv {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(190px, .8fr);
-  gap: 10px;
-}
-
-.landing-mock-primary-card,
-.landing-mock-context-card {
-  min-width: 0;
-  padding: 16px;
-  background: #111713;
-  border: 1px solid #2a372e;
-  border-radius: 11px;
-}
-
-.landing-mock-action-title {
-  margin: 19px 0 9px;
-  color: #f1f4f1;
-  font-size: 17px;
-  font-weight: 620;
-  line-height: 1.2;
-  letter-spacing: -.025em;
-}
-
-.landing-mock-primary-card p {
-  min-height: 46px;
-  margin: 0;
-  color: #8d998f;
-  font-size: 9px;
-  line-height: 1.55;
-}
-
-.landing-mock-primary-card button {
-  min-height: 29px;
-  margin-top: 13px;
-  padding: 0 11px;
-  display: inline-flex;
-  align-items: center;
-  gap: 18px;
-  color: #101811;
-  background: #d9ff2f;
-  border: 0;
-  border-radius: 6px;
-  font-size: 8px;
-  font-weight: 800;
-}
-
-.landing-mock-context-card {
-  display: grid;
+  gap: 9px;
   align-content: start;
-  gap: 7px;
 }
 
-.landing-context-row {
-  min-width: 0;
-  min-height: 37px;
-  padding: 0 9px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: #9ca79f;
-  background: #19221c;
-  border: 1px solid #2c3a31;
-  border-radius: 6px;
-  font-size: 8px;
-}
-
-.landing-context-row:first-of-type {
-  margin-top: 5px;
-}
-
-.landing-context-row span {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.landing-context-row b {
-  color: #d1d8d2;
+.hv-tag {
+  color: #9ac38a;
   font-size: 7px;
+  font-weight: 820;
+  letter-spacing: .12em;
+  text-transform: uppercase;
 }
 
-.landing-mock-context-card > p {
-  margin: 3px 0 0;
+.hv-note {
+  margin: 0;
   display: flex;
   align-items: center;
-  gap: 5px;
-  color: #a8bcab;
-  font-size: 8px;
+  gap: 6px;
+  color: #87938b;
+  font-size: 8.5px;
 }
 
-.landing-mock-lower {
-  margin-top: 10px;
+.hv-note svg { color: #9ac38a; flex: none; }
+
+/* Today — next action + a real day */
+.hv-today { grid-template-columns: minmax(0, 1fr); }
+
+.hv-next {
+  padding: 12px 13px;
   display: grid;
-  grid-template-columns: 1.2fr .8fr;
-  gap: 10px;
-}
-
-.landing-mock-lower > div {
-  min-height: 105px;
-  padding: 13px;
-  background: #19221c;
-  border: 1px solid #2a372e;
+  gap: 5px;
+  background: linear-gradient(140deg, #1b2a17, #141d13);
+  border: 1px solid #33442d;
   border-radius: 9px;
 }
 
-.landing-mini-graph {
-  height: 65px;
-  position: relative;
-}
+.hv-next strong { color: #f1f4f1; font-size: 12px; letter-spacing: -.02em; }
+.hv-next p { margin: 0; color: #94a09a; font-size: 8.5px; line-height: 1.5; }
 
-.landing-mini-graph .node {
-  width: 11px;
-  height: 11px;
-  position: absolute;
-  z-index: 2;
-  display: block;
-  background: #91b286;
-  border: 3px solid #28382e;
-  border-radius: 50%;
-  animation: landing-node-pulse 3.2s ease-in-out infinite;
-}
-
-.landing-mini-graph .node-a { top: 25px; left: 47%; width: 15px; height: 15px; background: #d9ff2f; }
-.landing-mini-graph .node-b { top: 8px; left: 19%; animation-delay: -.7s; }
-.landing-mini-graph .node-c { top: 41px; right: 18%; animation-delay: -1.3s; }
-.landing-mini-graph .node-d { top: 7px; right: 9%; animation-delay: -1.9s; }
-
-.landing-mini-graph .edge {
-  height: 1px;
-  position: absolute;
-  display: block;
-  background: #445449;
-  transform-origin: left center;
-}
-
-.landing-mini-graph .edge-a { width: 31%; top: 27px; left: 21%; transform: rotate(9deg); }
-.landing-mini-graph .edge-b { width: 30%; top: 34px; left: 52%; transform: rotate(13deg); }
-.landing-mini-graph .edge-c { width: 38%; top: 30px; left: 52%; transform: rotate(-18deg); }
-
-.landing-citation-stack {
-  display: grid;
-  align-content: start;
-  gap: 7px;
-}
-
-.landing-citation-stack p {
-  min-height: 31px;
-  margin: 0;
-  padding: 0 8px;
-  display: flex;
+.hv-cta {
+  margin-top: 3px;
+  display: inline-flex;
   align-items: center;
-  gap: 7px;
-  color: #87938b;
+  gap: 5px;
+  color: #d9ff2f;
+  font-size: 8.5px;
+  font-weight: 750;
+}
+
+.hv-schedule { margin: 0; padding: 0; display: grid; gap: 2px; list-style: none; }
+
+.hv-schedule li {
+  min-height: 32px;
+  padding: 0 9px;
+  display: grid;
+  grid-template-columns: 30px 9px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+}
+
+.hv-schedule li.now { background: #18231a; }
+.hv-schedule li > span { color: #79857d; font-size: 8px; font-variant-numeric: tabular-nums; }
+
+.hv-schedule li > i {
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid #3d5343;
+  border-radius: 50%;
+}
+
+.hv-schedule li.now > i { background: #d9ff2f; border-color: #d9ff2f; }
+.hv-schedule li > i.done { background: #4d6b57; border-color: #4d6b57; }
+.hv-schedule li div { min-width: 0; display: grid; }
+.hv-schedule li strong { color: #dfe6e0; font-size: 9px; font-weight: 640; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hv-schedule li small { color: #79857d; font-size: 7.5px; }
+.hv-schedule li.now strong { color: #f1f4f1; }
+
+/* Assistant — an actual exchange */
+.hv-msg { padding: 9px 11px; display: grid; gap: 4px; border-radius: 9px; }
+.hv-msg > span { display: flex; align-items: center; gap: 4px; color: #8b978f; font-size: 7px; font-weight: 820; letter-spacing: .1em; text-transform: uppercase; }
+.hv-msg p { margin: 0; font-size: 9.5px; line-height: 1.6; }
+.hv-msg-user { background: #18211b; border: 1px solid #2a372e; justify-self: end; max-width: 74%; }
+.hv-msg-user p { color: #cfd8d1; }
+.hv-msg-ai { background: #131b16; border: 1px solid #2a372e; }
+.hv-msg-ai p { color: #e4eae5; }
+.hv-msg-ai em { color: #d9ff2f; font-style: normal; font-weight: 700; }
+.hv-msg-ai > span svg { color: #d9ff2f; }
+
+.hv-cites { margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.hv-cites b { color: #9ac38a; font-size: 7px; font-weight: 820; letter-spacing: .08em; text-transform: uppercase; }
+.hv-cites i { padding: 2px 6px; color: #8b978f; background: #101610; border: 1px solid #2a372e; border-radius: 99px; font-size: 7.5px; font-style: normal; }
+
+.hv-scopes { display: flex; flex-wrap: wrap; gap: 5px; }
+.hv-scopes span { padding: 3px 7px; display: inline-flex; align-items: center; gap: 4px; color: #79857d; background: #111713; border: 1px solid #2a372e; border-radius: 99px; font-size: 7.5px; }
+.hv-scopes span.on { color: #cfe0d3; border-color: #3d5343; }
+.hv-scopes span.on svg { color: #d9ff2f; }
+
+/* Learn — mastery, not a course list */
+.hv-mastery { display: grid; gap: 6px; }
+
+.hv-step {
+  display: grid;
+  grid-template-columns: 106px minmax(0, 1fr) 26px;
+  align-items: center;
+  gap: 9px;
+}
+
+.hv-step > div:first-child { display: grid; }
+.hv-step strong { color: #dfe6e0; font-size: 9px; font-weight: 640; }
+.hv-step small { color: #79857d; font-size: 7px; }
+.hv-step > b { color: #9ac38a; font-size: 8px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.hv-bar { height: 5px; overflow: hidden; background: #1b241d; border-radius: 99px; }
+.hv-bar i { height: 100%; display: block; background: #6f9c7e; border-radius: 99px; }
+.hv-bar i[data-full="true"] { background: #d9ff2f; }
+
+/* Research — sources with weight, and the claim they support */
+.hv-papers { display: grid; gap: 3px; }
+
+.hv-paper {
+  padding: 7px 9px;
+  display: grid;
+  grid-template-columns: 13px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
   background: #111713;
   border: 1px solid #2a372e;
-  border-radius: 6px;
-  font-size: 8px;
+  border-radius: 7px;
 }
 
-.landing-citation-stack p b {
-  color: #d9ff2f;
-  font-size: 7px;
+.hv-paper svg { color: #6f9c7e; }
+.hv-paper div { min-width: 0; display: grid; }
+.hv-paper strong { color: #dfe6e0; font-size: 8.5px; font-weight: 640; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hv-paper small { color: #79857d; font-size: 7px; }
+.hv-paper > b { color: #9ac38a; font-size: 7.5px; font-variant-numeric: tabular-nums; }
+
+.hv-claim { padding: 10px 11px; display: grid; gap: 5px; background: #131b16; border: 1px solid #33442d; border-radius: 9px; }
+.hv-claim p { margin: 0; display: flex; align-items: flex-start; gap: 5px; color: #e4eae5; font-size: 9.5px; line-height: 1.5; }
+.hv-claim p svg { flex: none; margin-top: 2px; color: #6f9c7e; }
+.hv-claim-meta { display: flex; gap: 6px; }
+.hv-claim-meta span { display: inline-flex; align-items: center; gap: 3px; font-size: 7.5px; }
+.hv-claim-meta .ok { color: #9ac38a; }
+.hv-claim-meta .warn { color: #c9a86a; }
+
+/* Code — editor plus real console output */
+.hv-code { grid-template-rows: minmax(0, 1fr) auto; }
+
+.hv-editor { overflow: hidden; background: #0d120f; border: 1px solid #2a372e; border-radius: 8px; }
+.hv-editor-head { padding: 6px 9px; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #222d25; }
+.hv-editor-head i { width: 5px; height: 5px; background: #33442d; border-radius: 50%; }
+.hv-editor-head span { margin-left: 5px; color: #79857d; font-size: 7.5px; }
+
+.hv-editor pre { margin: 0; padding: 8px 9px; overflow: hidden; }
+.hv-editor code { display: grid; grid-template-columns: 14px minmax(0, 1fr); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 8px; line-height: 1.75; white-space: pre; }
+.hv-editor .ln { color: #47544b; }
+.hv-editor code > span:not(.ln) { color: #cfd8d1; }
+.hv-editor .kw { color: #c58fd8; }
+.hv-editor .fn { color: #7fc7f0; }
+.hv-editor .str { color: #d9ff2f; }
+.hv-editor .num { color: #e0a878; }
+
+.hv-console { overflow: hidden; background: #0d120f; border: 1px solid #2a372e; border-radius: 8px; }
+.hv-console-head { padding: 6px 9px; display: flex; align-items: center; gap: 5px; color: #79857d; border-bottom: 1px solid #222d25; font-size: 7.5px; }
+.hv-console-head svg { color: #6f9c7e; }
+.hv-console-head b { margin-left: auto; color: #9ac38a; font-weight: 700; }
+.hv-console p { margin: 0; padding: 8px 9px; color: #d9ff2f; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 8.5px; }
+
+/* Memory — typed, dated records */
+.hv-records { display: grid; gap: 3px; }
+
+.hv-record {
+  padding: 8px 9px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  background: #111713;
+  border: 1px solid #2a372e;
+  border-radius: 7px;
 }
 
+.hv-record .k { padding: 2px 6px; border-radius: 99px; font-size: 6.5px; font-weight: 820; letter-spacing: .08em; text-transform: uppercase; }
+.hv-record .k-dec { color: #d9ff2f; background: #23301f; }
+.hv-record .k-fact { color: #8fd8b0; background: #16291f; }
+.hv-record .k-mis { color: #e0a878; background: #2a2118; }
+.hv-record p { margin: 0; color: #cfd8d1; font-size: 8.5px; line-height: 1.45; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hv-record code { color: #d9ff2f; font-family: ui-monospace, Menlo, monospace; font-size: 8px; }
+.hv-record small { color: #79857d; font-size: 7px; white-space: nowrap; }
+
+.hv-mem-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hv-mem-foot span { display: inline-flex; align-items: center; gap: 4px; color: #79857d; font-size: 8px; }
+.hv-sync { color: #9ac38a !important; }
+.hv-sync svg { color: #d9ff2f; }
+
+/* Reads as a drawer sliding out from under the product window: it tucks behind
+   the window's rounded bottom edge (negative margin + matching padding) instead
+   of floating as a detached strip. */
 .landing-product-tabs {
-  width: calc(100% - 58px);
-  min-height: 52px;
-  margin: -1px auto 0;
+  width: calc(100% - 64px);
+  min-height: 68px;
+  margin: -16px auto 0;
+  padding-top: 16px;
   position: relative;
   z-index: 1;
   display: grid;
@@ -717,7 +786,9 @@ html[data-theme="dark"] .landing-button-primary:hover {
   overflow: hidden;
   background: var(--landing-surface);
   border: 1px solid var(--landing-border);
-  border-radius: 0 0 12px 12px;
+  border-top: 0;
+  border-radius: 0 0 14px 14px;
+  box-shadow: 0 18px 34px rgba(15, 30, 21, .09);
 }
 
 .landing-product-tabs button {
@@ -752,13 +823,14 @@ html[data-theme="dark"] .landing-button-primary:hover {
   border-radius: 2px;
 }
 
-.landing-product-tabs button.active i::after {
+/* Filled by GSAP so the bar matches the real rotation timer and pauses on hover. */
+.landing-tab-progress {
   width: 100%;
   height: 100%;
   display: block;
-  content: "";
   background: var(--landing-emerald);
-  animation: landing-tab-progress 3.6s linear;
+  border-radius: 2px;
+  transform: scaleX(0);
   transform-origin: left;
 }
 
@@ -797,14 +869,9 @@ html[data-theme="dark"] .landing-button-primary:hover {
 }
 
 .landing-section {
-  width: min(1280px, calc(100% - 56px));
+  width: var(--landing-gutter-width);
   margin: 0 auto;
   padding: 142px 0;
-}
-
-.landing-section:not(.landing-fragmentation) {
-  content-visibility: auto;
-  contain-intrinsic-size: 900px;
 }
 
 .landing-section-heading {
@@ -854,8 +921,7 @@ html[data-theme="dark"] .landing-button-primary:hover {
 }
 
 .landing-fragmentation {
-  width: min(1380px, calc(100% - 56px));
-  padding-bottom: 158px;
+  padding-bottom: 142px;
 }
 
 .fragmentation-visual {
@@ -913,14 +979,16 @@ html[data-theme="dark"] .landing-button-primary:hover {
   background: var(--landing-emerald);
 }
 
-.fragment-a { top: 12px; left: 10%; transform: rotate(-3deg); }
-.fragment-b { top: 83px; right: 8%; transform: rotate(2deg); }
-.fragment-c { top: 164px; left: 3%; width: 177px; transform: rotate(1deg); }
-.fragment-d { top: 244px; right: 6%; transform: rotate(-2deg); }
-.fragment-e { bottom: 12px; left: 16%; transform: rotate(3deg); }
-.fragment-f { top: 16px; right: 2%; transform: rotate(2deg); }
-.fragment-g { top: 111px; left: 28%; transform: rotate(-1deg); }
-.fragment-h { bottom: 41px; right: 29%; width: 110px; transform: rotate(2deg); }
+/* Resting positions: kept deliberately clear of one another so the "scattered"
+   state still reads as legible cards rather than a pile of collisions. */
+.fragment-a { top: 4px; left: 6%; transform: rotate(-3deg); }
+.fragment-b { top: 86px; right: 6%; transform: rotate(2deg); }
+.fragment-c { top: 168px; left: 1%; width: 177px; transform: rotate(1deg); }
+.fragment-d { top: 250px; right: 4%; transform: rotate(-2deg); }
+.fragment-e { bottom: 4px; left: 14%; transform: rotate(3deg); }
+.fragment-f { top: 8px; right: 4%; transform: rotate(2deg); }
+.fragment-g { top: 90px; left: 30%; transform: rotate(-1deg); }
+.fragment-h { bottom: 84px; right: 30%; width: 110px; transform: rotate(2deg); }
 
 .fragmentation-path {
   height: 100px;
@@ -1174,13 +1242,17 @@ html[data-theme="dark"] .landing-button-primary:hover {
   border-radius: 50%;
 }
 
+/* Full-bleed band. Uses 100% (not 100vw) so the inner edges land on the same
+   grid as .landing-section — 100vw includes the scrollbar and drifts by ~8px. */
 .landing-journey {
   width: 100%;
   max-width: none;
-  padding-right: max(28px, calc((100vw - 1280px) / 2));
-  padding-left: max(28px, calc((100vw - 1280px) / 2));
+  padding-right: max(28px, calc((100% - var(--landing-max-width)) / 2));
+  padding-left: max(28px, calc((100% - var(--landing-max-width)) / 2));
   color: #eef3ef;
-  background: #173d2e;
+  background: var(--landing-band);
+  border-top: 1px solid var(--landing-band-border);
+  border-bottom: 1px solid var(--landing-band-border);
 }
 
 .landing-section-heading-centered {
@@ -1204,21 +1276,32 @@ html[data-theme="dark"] .landing-button-primary:hover {
 }
 
 .landing-timeline {
-  margin: 85px 0 0;
+  margin: 68px 0 0;
   padding: 0;
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   list-style: none;
 }
 
+/* Each step is a two-row cell: the rail number sits under its dot, the label
+   sits directly below with the connecting arrow on the SAME row, so the arrow
+   is centred against the label text instead of floating below it. */
 .landing-timeline li {
   min-width: 0;
-  min-height: 170px;
-  padding: 22px 22px 22px 0;
+  padding: 18px 18px 0 0;
   position: relative;
   display: grid;
-  align-content: space-between;
+  grid-template-columns: minmax(0, max-content) auto;
+  align-items: center;
+  justify-content: start;
+  column-gap: 14px;
+  row-gap: 26px;
   border-top: 1px solid #577565;
+}
+
+/* The rail must stop at the final dot rather than trailing off to the right. */
+.landing-timeline li:last-child {
+  border-top-color: transparent;
 }
 
 .landing-timeline li::before {
@@ -1233,22 +1316,27 @@ html[data-theme="dark"] .landing-button-primary:hover {
 }
 
 .landing-timeline li span {
+  grid-column: 1 / -1;
   color: #9bb2a3;
   font-size: 10px;
   font-weight: 800;
+  letter-spacing: .08em;
 }
 
 .landing-timeline li strong {
-  font-size: clamp(15px, 1.45vw, 20px);
+  grid-column: 1;
+  font-size: clamp(15px, 1.35vw, 19px);
   font-weight: 620;
+  letter-spacing: -.02em;
 }
 
 .landing-timeline li > i {
-  position: absolute;
-  right: 14px;
-  bottom: 19px;
-  color: #829b8b;
+  grid-column: 2;
+  display: block;
+  color: #7f9a89;
+  font-size: 17px;
   font-style: normal;
+  line-height: 1;
 }
 
 .landing-workflow {
@@ -1562,7 +1650,9 @@ html[data-theme="dark"] .workflow-step-list button.active i {
 .landing-quote {
   padding: 150px 28px;
   color: #f4f7f4;
-  background: #173d2e;
+  background: var(--landing-band);
+  border-top: 1px solid var(--landing-band-border);
+  border-bottom: 1px solid var(--landing-band-border);
   text-align: center;
 }
 
@@ -1571,10 +1661,13 @@ html[data-theme="dark"] .workflow-step-list button.active i {
   margin: 0 auto;
 }
 
+/* The mark is a block-level svg, so text-align alone left it stranded on the
+   left edge of a centred block. */
 .landing-quote svg {
   width: 52px;
   height: 52px;
-  margin-bottom: 38px;
+  margin: 0 auto 38px;
+  display: block;
 }
 
 .landing-quote blockquote {
@@ -1751,7 +1844,8 @@ html[data-theme="dark"] .workflow-step-list button.active i {
   display: grid;
   place-items: center;
   color: #f4f7f4;
-  background: #173d2e;
+  background: var(--landing-band);
+  border-top: 1px solid var(--landing-band-border);
   text-align: center;
 }
 
@@ -1851,11 +1945,6 @@ html[data-theme="dark"] .workflow-step-list button.active i {
 @keyframes landing-node-pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.22); }
-}
-
-@keyframes landing-tab-progress {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
 }
 
 @keyframes landing-working {
@@ -1984,7 +2073,18 @@ html[data-theme="dark"] .workflow-step-list button.active i {
 
   .landing-timeline {
     grid-template-columns: repeat(3, 1fr);
-    row-gap: 38px;
+    row-gap: 44px;
+  }
+
+  /* The arrow points at the next step; at the end of a wrapped row there
+     isn't one, so drop it (and the rail that would trail past it). */
+  .landing-timeline li:nth-child(3n) > i,
+  .landing-timeline li:last-child > i {
+    display: none;
+  }
+
+  .landing-timeline li:nth-child(3n) {
+    border-top-color: transparent;
   }
 
   .landing-security {
@@ -2005,14 +2105,11 @@ html[data-theme="dark"] .workflow-step-list button.active i {
     height: 68px;
   }
 
-  .landing-hero,
-  .landing-section,
-  .landing-fragmentation {
-    width: min(100% - 32px, 1280px);
+  .landing-shell {
+    --landing-gutter-width: min(var(--landing-max-width), calc(100% - 32px));
   }
 
   .landing-hero {
-    min-height: 0;
     padding: 72px 0 76px;
     gap: 56px;
   }
@@ -2038,14 +2135,22 @@ html[data-theme="dark"] .workflow-step-list button.active i {
     border-bottom: 1px solid #2b382f;
   }
 
+  /* The sidebar becomes a top rail: drop the group chrome and the
+     non-previewable rows, and lay the six previews out in one row. */
   .landing-mock-brand,
-  .landing-mock-recent {
+  .landing-mock-nav-label,
+  .landing-mock-nav-static {
     display: none;
   }
 
   .landing-mock-sidebar nav {
     grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 2px;
+  }
+
+  /* Dissolve the groups so the buttons become direct items of the nav grid. */
+  .landing-mock-nav-group {
+    display: contents;
   }
 
   .landing-mock-sidebar nav button {
@@ -2074,24 +2179,18 @@ html[data-theme="dark"] .workflow-step-list button.active i {
     display: none;
   }
 
-  .landing-mock-grid {
-    grid-template-columns: 1fr;
+  /* Narrow screens: drop the widest secondary columns in the view bodies. */
+  .hv-step {
+    grid-template-columns: 84px minmax(0, 1fr) 24px;
   }
 
-  .landing-mock-context-card {
-    display: none;
-  }
-
-  .landing-mock-lower {
-    grid-template-columns: 1fr;
-  }
-
-  .landing-citation-stack {
-    display: none !important;
+  .hv-msg-user {
+    max-width: 88%;
   }
 
   .landing-product-tabs {
-    width: calc(100% - 30px);
+    width: calc(100% - 32px);
+    min-height: 58px;
   }
 
   .landing-product-tabs button span {
@@ -2168,6 +2267,14 @@ html[data-theme="dark"] .workflow-step-list button.active i {
 
   .landing-timeline {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .landing-timeline li:nth-child(2n) > i {
+    display: none;
+  }
+
+  .landing-timeline li:nth-child(2n) {
+    border-top-color: transparent;
   }
 
   .workflow-showcase {
@@ -2331,7 +2438,7 @@ html[data-theme="dark"] .workflow-step-list button.active i {
   }
 
   .landing-timeline li {
-    min-height: 140px;
+    row-gap: 18px;
   }
 
   .workflow-window > header > span {

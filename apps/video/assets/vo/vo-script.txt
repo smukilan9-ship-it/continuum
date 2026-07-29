@@ -1,0 +1,56 @@
+CONTINUUM — 120s LAUNCH FILM · VOICEOVER SCRIPT
+
+Recording spec (PLAN §3.5): quiet room, 48kHz/24-bit, mouth ~20cm off-axis,
+3 full takes + per-line pickups, peaks <= -6 dBFS, deliver dry (no EQ or
+compression — Fairlight does it). Slate each line with its number.
+
+Deliver takes to: assets/vo/final/lineNN.wav
+
+Roughly a third of this film carries no narration. The gaps are deliberate:
+the approval click at 1:34 and the Claude Desktop proof at 1:37-1:47 play
+almost dry. Do not fill them.
+
+------------------------------------------------------------------------
+
+[01]  00:00:01:00 → 00:00:12:00   (11.0s)   S0 Hook
+
+      Every tool you use sees a sliver of your work. So you spend your best attention re-explaining context that already exists.
+
+[02]  00:00:14:15 → 00:00:20:00   (5.5s)   S1 Today
+
+      One workspace, one memory. Continuum already knows where you are — and decides your next step.
+
+[03]  00:00:21:00 → 00:00:33:00   (12.0s)   S2a Learn
+
+      It finds the best resource and shows you why. It maps what you know — and when you get something wrong, the path adapts.
+
+[04]  00:00:39:00 → 00:00:54:00   (15.0s)   S2c Library
+
+      This is the live scholarly graph. Follow the citations, keep the paper — it lands beside your Zotero library, PDFs indexed and searchable.
+
+[05]  00:00:59:00 → 00:01:06:00   (7.0s)   S2e Obsidian
+
+      Your notes don't have to move in. Continuum meets them in Obsidian — plain markdown, synced.
+
+[06]  00:01:07:00 → 00:01:12:00   (5.0s)   S2f Memory
+
+      Everything becomes memory, retrieved by relevance — not by scrolling back.
+
+[07]  00:01:20:00 → 00:01:24:00   (4.0s)   S2h Connections
+
+      It connects to the tools you already use —
+
+[08]  00:01:25:00 → 00:01:33:00   (8.0s)   S3a Assistant
+
+      — so the assistant is already briefed: your mastery, your weak spots, your deadline. It proposes. You approve.
+
+[09]  00:01:37:00 → 00:01:46:00   (9.0s)   S3c Claude MCP
+
+      And because Continuum speaks MCP, that memory follows you into Claude itself. Nothing explained twice.
+
+[10]  00:01:49:00 → 00:01:58:00   (9.0s)   S4 Close
+
+      Information is abundant. Learning is fragmented. Continuum is one workspace — where knowledge compounds.
+
+------------------------------------------------------------------------
+Total narration slots: 85.5s of 120s

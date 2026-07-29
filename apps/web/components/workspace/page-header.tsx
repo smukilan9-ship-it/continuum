@@ -4,7 +4,22 @@ import * as Popover from "@radix-ui/react-popover";
 import { HelpCircle, MoreHorizontal } from "lucide-react";
 import { useId, type ReactNode } from "react";
 
-export type PageStat = { label: string; value: ReactNode };
+export type PageStat = { label: string; value: ReactNode; singular?: string };
+
+/**
+ * Stat labels are written plural because that is the common case, which
+ * rendered "1 papers" / "1 goals" / "1 blocks". Depluralise when the value is
+ * exactly one. `singular` overrides it for irregular words.
+ */
+function statLabel(stat: PageStat) {
+  if (stat.value !== 1 && stat.value !== "1") return stat.label;
+  if (stat.singular) return stat.singular;
+  const label = stat.label;
+  if (/\bies$/.test(label)) return label.replace(/ies$/, "y");
+  if (/(ch|sh|ss|x|z)es$/.test(label)) return label.replace(/es$/, "");
+  if (/[^s]s$/.test(label)) return label.replace(/s$/, "");
+  return label;
+}
 
 /**
  * The compact page header that replaced the per-screen marketing hero.
@@ -67,7 +82,7 @@ export function PageHeader({
       </div>
       {stats?.length ? (
         <dl className="page-header-stats">
-          {stats.map((stat) => <div key={stat.label}><dt>{stat.label}</dt><dd>{stat.value}</dd></div>)}
+          {stats.map((stat) => <div key={stat.label}><dt>{statLabel(stat)}</dt><dd>{stat.value}</dd></div>)}
         </dl>
       ) : null}
       {children}

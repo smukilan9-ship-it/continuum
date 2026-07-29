@@ -494,7 +494,9 @@ export type RecordSyncStatus = {
   acknowledgedAt?: string;
 };
 
-export async function assistantMemorySyncStatuses(userId: string) {
+// `recordId` narrows the lateral join to a single conversation. Opening one
+// conversation does not need the sync state of every other one.
+export async function assistantMemorySyncStatuses(userId: string, recordId?: string) {
   const result = await getDatabase().execute(sql`
     select r.record_id, r.sync_id, r.blocked_at,
       o.id as operation_id, o.status as operation_status, o.latest_error,
@@ -508,6 +510,7 @@ export async function assistantMemorySyncStatuses(userId: string) {
       limit 1
     ) o on true
     where r.user_id = ${userId} and r.record_type = 'assistant_memory'
+    ${recordId ? sql`and r.record_id = ${recordId}` : sql``}
   `);
   return Object.fromEntries(result.rows.map((value) => {
     const row = value as Record<string, unknown>;

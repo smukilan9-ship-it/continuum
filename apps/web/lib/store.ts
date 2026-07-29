@@ -216,7 +216,7 @@ class MemoryStore implements Store {
       code: ["goals", "tasks", "projects", "learningState", "receipts"],
       assistant: ["goals", "tasks", "projects", "learningState", "sources", "papers", "receipts", "assistantSessions"],
       integrations: [],
-      library: [],
+      library: ["goals", "projects"],
     };
     return Object.fromEntries((selected[view] ?? []).map((key) => [
       key,

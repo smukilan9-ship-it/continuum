@@ -2,7 +2,6 @@
 
 import {
   ArrowUpRight,
-  Beaker,
   BookOpen,
   CheckCircle2,
   CircleAlert,
@@ -43,8 +42,8 @@ type DiscoveryResponse = { results: NormalizedScholarlyWork[]; providers: Provid
  *
  * Papers and Notes are two views of one project library and share a tab.
  * Experiments and Drafts had no backing feature at all — two of eight tabs were
- * dead ends. They are not deleted: they move to a clearly-labelled "Coming next"
- * area at the bottom of Overview.
+ * dead ends. They are gone entirely rather than advertised as an unbuilt
+ * "Coming next" block inside the product.
  */
 const tabs: Array<{ id: ResearchTab; label: string }> = [
   { id: "overview", label: "Overview" },
@@ -362,15 +361,6 @@ export function ResearchScreen({ state, showToast, onRefresh }: { state: Workspa
               <Card className="research-unresolved-card"><div className="research-card-kicker"><CircleAlert size={16} />UNRESOLVED QUESTIONS</div>{unresolvedQuestions.length ? <ul>{unresolvedQuestions.slice(0, 4).map((question) => <li key={question}>{question}</li>)}</ul> : <p>No open question is recorded for this project. Continuum lists them here as receipts capture them.</p>}</Card>
               <Card className="research-activity-card"><div className="research-card-kicker"><Clock3 size={16} />RECENT ACTIVITY</div>{recentProjectEvents.length ? <ul>{recentProjectEvents.slice(0, 5).map((event) => <li key={text(event, "id")}><strong>{text(event, "summary")}</strong><small>{formatDate(event.occurredAt)}</small></li>)}</ul> : <p>Saved papers, indexed sources, and accepted decisions will appear here.</p>}</Card>
 
-              {/* Planned, not shipped — and labelled as such rather than sitting in
-                  the tab bar as two dead ends. */}
-              <Card className="research-coming-next">
-                <div className="research-card-kicker"><Beaker size={16} />COMING NEXT</div>
-                <div>
-                  <article><Beaker size={18} aria-hidden="true" /><div><strong>Experiments</strong><p>Experiment artifacts and bounded computational runs, attached to the project that justifies them.</p></div><Badge tone="neutral">Planned</Badge></article>
-                  <article><FileText size={18} aria-hidden="true" /><div><strong>Drafts</strong><p>Generated text kept separate from accepted findings until you review it.</p></div><Badge tone="neutral">Planned</Badge></article>
-                </div>
-              </Card>
             </div> : null}
 
             {activeTab === "discovery" ? <div className="research-discovery">

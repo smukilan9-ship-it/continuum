@@ -8,6 +8,7 @@ import { getStore } from "@/lib/store";
 import { assistantMemoryMarkdown, assistantMemoryVaultPath } from "@/lib/assistant-memory-note";
 import { assistantMemorySyncStatuses, enqueueContinuumRecord, type RecordSyncStatus } from "@/lib/obsidian-sync-engine";
 import { publicErrorMessage } from "@/lib/api-errors";
+import { createReasoningFilter, isConversationalFiller } from "@/lib/reasoning-filter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -108,10 +109,12 @@ export async function GET(request: Request) {
   const rate = await enforceRateLimit(request, "assistant-read", 120, 60_000, user.id);
   if (!rate.allowed) return NextResponse.json({ error: "Assistant refresh limit reached" }, { status: 429 });
   const store = getStore(user.id);
-  const syncStatuses: Record<string, RecordSyncStatus> = await assistantMemorySyncStatuses(user.id).catch(() => ({}));
   const sessionId = new URL(request.url).searchParams.get("sessionId");
   if (!sessionId) {
-    const sessions = await store.listAssistantSessions();
+    const [sessions, syncStatuses] = await Promise.all([
+      store.listAssistantSessions(),
+      assistantMemorySyncStatuses(user.id).catch(() => ({} as Record<string, RecordSyncStatus>)),
+    ]);
     return NextResponse.json({ sessions: sessions.map((session) => {
       const value = session as Record<string, unknown>;
       return publicSession(value, syncStatuses[String(value.id)]);
@@ -119,7 +122,10 @@ export async function GET(request: Request) {
   }
   const parsedId = sessionIdSchema.safeParse(sessionId);
   if (!parsedId.success) return NextResponse.json({ error: "Invalid assistant session" }, { status: 400 });
-  const session = await store.getAssistantSession(parsedId.data);
+  const [session, syncStatuses] = await Promise.all([
+    store.getAssistantSession(parsedId.data),
+    assistantMemorySyncStatuses(user.id, parsedId.data).catch(() => ({} as Record<string, RecordSyncStatus>)),
+  ]);
   if (!session) return NextResponse.json({ error: "Assistant session not found" }, { status: 404 });
   return NextResponse.json({ session: publicSession(session, syncStatuses[parsedId.data]) }, { headers: { "cache-control": "private, no-store" } });
 }
@@ -288,7 +294,20 @@ export async function POST(request: Request) {
     coding: "code_reasoning",
     document: "document_understanding",
   } as const)[assistantMode];
-  const sourceRows = attachmentIds.length ? await store.listSources() as Array<Record<string, unknown>> : [];
+  const conversational = isConversationalFiller(userMessage);
+
+  const useWorkspace = !conversational && requestedScopes.some((scope) => ["current_project", "current_learning", "research_library", "zotero", "obsidian", "code_workspace", "workspace"].includes(scope));
+  const useMemory = !conversational && (requestedScopes.includes("approved_memory") || requestedScopes.includes("workspace"));
+
+  // Everything needed before the model call is independent, so it runs
+  // concurrently. Serialising these was up to five DB round-trips of dead time
+  // in front of the first streamed token.
+  const [sourceRows, context, relevantMemory] = await Promise.all([
+    attachmentIds.length ? store.listSources() as Promise<Array<Record<string, unknown>>> : Promise.resolve([]),
+    useWorkspace ? store.read("load_context", { focus: userMessage.slice(0, 500), maxTokens: 1_400 }, "continuum-assistant") : undefined,
+    useMemory ? store.searchMemory({ query: userMessage.slice(0, 500), limit: 6 }) : [],
+  ]);
+
   const selectedSources = sourceRows.filter((source) => attachmentIds.includes(String(source.id)));
   if (selectedSources.length !== attachmentIds.length) {
     return NextResponse.json({ error: "One or more attachments are unavailable or belong to another account" }, { status: 404 });
@@ -312,21 +331,17 @@ export async function POST(request: Request) {
       label: scope.replaceAll("_", " "),
     })),
   ];
-  await store.appendAssistantMessage({
-    id: id("assistant_message"),
-    sessionId: messageSessionId,
-    role: "user",
-    content: userMessage,
-    metadata: { attachmentIds, contextScopes: requestedScopes, mode: assistantMode },
-  });
-  await store.updateAssistantSession(messageSessionId, {
-    contextSettings: { contextScopes: requestedScopes, mode: assistantMode },
-  });
-  const useWorkspace = requestedScopes.some((scope) => ["current_project", "current_learning", "research_library", "zotero", "obsidian", "code_workspace", "workspace"].includes(scope));
-  const useMemory = requestedScopes.includes("approved_memory") || requestedScopes.includes("workspace");
-  const [context, relevantMemory] = await Promise.all([
-    useWorkspace ? store.read("load_context", { focus: userMessage.slice(0, 500), maxTokens: 1_400 }, "continuum-assistant") : undefined,
-    useMemory ? store.searchMemory({ query: userMessage.slice(0, 500), limit: 6 }) : [],
+  await Promise.all([
+    store.appendAssistantMessage({
+      id: id("assistant_message"),
+      sessionId: messageSessionId,
+      role: "user",
+      content: userMessage,
+      metadata: { attachmentIds, contextScopes: requestedScopes, mode: assistantMode },
+    }),
+    store.updateAssistantSession(messageSessionId, {
+      contextSettings: { contextScopes: requestedScopes, mode: assistantMode },
+    }),
   ]);
   const history = messages.slice(-12).map((message) => ({
     role: message.role === "assistant" ? "assistant" : "user",
@@ -357,9 +372,18 @@ export async function POST(request: Request) {
     const responseStream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
+          const filter = createReasoningFilter();
           for await (const part of streamed.result.textStream) {
-            answer += part;
-            controller.enqueue(encoder.encode(part));
+            const visible = filter.push(part);
+            if (visible) {
+              answer += visible;
+              controller.enqueue(encoder.encode(visible));
+            }
+          }
+          const tail = filter.flush();
+          if (tail) {
+            answer += tail;
+            controller.enqueue(encoder.encode(tail));
           }
           if (answer.trim()) {
             await store.appendAssistantMessage({

@@ -1,0 +1,36 @@
+{
+  "name": "@continuum/video",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render",
+    "still": "remotion still",
+    "build": "remotion bundle",
+    "render:all": "node scripts/render-all.mjs",
+    "render:labels": "node scripts/render-all.mjs --labels",
+    "manifest:check": "node scripts/render-all.mjs --check",
+    "cutlist": "node scripts/build-cutlist.mjs",
+    "conform": "node scripts/make-fcpxml.mjs",
+    "vo:scratch": "node scripts/make-scratch-vo.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/google-fonts": "4.0.500",
+    "@remotion/media-utils": "4.0.500",
+    "@remotion/noise": "4.0.500",
+    "@remotion/paths": "4.0.500",
+    "@remotion/shapes": "4.0.500",
+    "@remotion/transitions": "4.0.500",
+    "react": "19.1.8",
+    "react-dom": "19.1.8",
+    "remotion": "4.0.500"
+  },
+  "devDependencies": {
+    "@remotion/cli": "4.0.500",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.9.3"
+  }
+}

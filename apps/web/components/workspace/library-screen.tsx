@@ -1,10 +1,11 @@
 "use client";
 
 import { BookmarkCheck, ExternalLink, Network, Search, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge, Button, Card, DataRegion, EmptyState, ErrorState, LoadingState, type RegionStatus } from "@/components/ui";
 import type { WorkspaceView } from "@/lib/workspace-routes";
 import { PageHeader } from "./page-header";
+import { text, type WorkspaceState } from "./types";
 import { ScholarlySearch, type SavedEntity, type ScholarlyKind } from "./scholarly-search";
 import { ZoteroBrowser } from "./zotero-screen";
 
@@ -29,12 +30,41 @@ export function LibraryScreen({
   initialTab = "discover",
   showToast,
   onNavigate,
+  state,
 }: {
   initialTab?: LibraryTab;
   showToast: (message: string | null) => void;
+  state?: WorkspaceState;
   onNavigate: (view: WorkspaceView) => void;
 }) {
   const [tab, setTab] = useState<LibraryTab>(initialTab);
+
+  /**
+   * Discover opened as two empty panels with nothing to act on. These are real
+   * starting points taken from the user's own research projects, so the first
+   * search is one click rather than a blank field.
+   *
+   * Projects only — goal titles are outcome statements ("Raise SAT score from
+   * 1520 to 1570+"), which make nonsense scholarly queries.
+   */
+  const suggestions = useMemo(() => {
+    if (!state) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const row of state.projects) {
+      const title = text(row, "title").trim();
+      if (!title) continue;
+      // Project titles are often "OASIS — cross-marker spatial association";
+      // the descriptive half is the searchable part.
+      const phrase = (title.split(/\s[—–-]\s/).pop() ?? title).trim();
+      const key = phrase.toLowerCase();
+      if (phrase.length < 4 || seen.has(key)) continue;
+      seen.add(key);
+      out.push(phrase.length > 64 ? `${phrase.slice(0, 61)}…` : phrase);
+      if (out.length >= 5) break;
+    }
+    return out;
+  }, [state]);
   const [saved, setSaved] = useState<SavedEntity[]>([]);
   const [savedStatus, setSavedStatus] = useState<RegionStatus>("idle");
   const [savedError, setSavedError] = useState<string>();
@@ -96,7 +126,7 @@ export function LibraryScreen({
       </PageHeader>
 
       {tab === "discover" ? (
-        <ScholarlySearch mode="explore" showToast={showToast} savedEntities={saved} onSavedChange={() => void loadSaved()} deepLinkBase="/library" />
+        <ScholarlySearch mode="explore" showToast={showToast} savedEntities={saved} onSavedChange={() => void loadSaved()} deepLinkBase="/library" suggestions={suggestions} />
       ) : null}
 
       {tab === "saved" ? (

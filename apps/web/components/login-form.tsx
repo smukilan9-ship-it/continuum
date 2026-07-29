@@ -114,7 +114,7 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailab
               </span>
             </label>
             <label className="auth-terms"><input name="termsAccepted" type="checkbox" required />I agree to the Privacy and account-retention terms.</label>
-          </> : <small className="field-hint">Password recovery is planned after the hackathon. Keep your password safe.</small>}
+          </> : <small className="field-hint">Self-service password recovery is not available yet. Keep your password somewhere safe.</small>}
           {error && <p className="auth-error" role="alert">{error}</p>}
           <button className="button button-primary button-large" disabled={busy !== null}>{busy === "form" ? "Please wait…" : mode === "login" ? "Sign in" : "Create private workspace"}<ArrowRight size={17} /></button>
         </form>

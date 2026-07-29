@@ -1,0 +1,19 @@
+[
+  { "id": "L01", "title": "Today", "sub": "your next action, decided", "recIn": 435, "durationInFrames": 165 },
+  { "id": "L02", "title": "Best Resource", "sub": "ranked, with reasons", "recIn": 630, "durationInFrames": 150 },
+  { "id": "L03", "title": "Concept Map", "sub": "mastery per branch", "recIn": 780, "durationInFrames": 120 },
+  { "id": "L04", "title": "Practice", "sub": "weaknesses caught, path adapts", "recIn": 900, "durationInFrames": 120 },
+  { "id": "L05", "title": "Plan", "sub": "outcomes, deadlines, proof", "recIn": 1020, "durationInFrames": 150 },
+  { "id": "L06", "title": "Library", "sub": "the live scholarly graph", "recIn": 1170, "durationInFrames": 150 },
+  { "id": "L07", "title": "Citation Graph", "sub": "follow the evidence", "recIn": 1320, "durationInFrames": 105 },
+  { "id": "L08", "title": "Zotero", "sub": "the same paper, your library", "recIn": 1425, "durationInFrames": 105 },
+  { "id": "L09", "title": "PDF Ingest", "sub": "readable → retrievable", "recIn": 1530, "durationInFrames": 120 },
+  { "id": "L10", "title": "Research", "sub": "claims tied to sources", "recIn": 1650, "durationInFrames": 120 },
+  { "id": "L11", "title": "Obsidian Sync", "sub": "your notes, where they live", "recIn": 1770, "durationInFrames": 240 },
+  { "id": "L12", "title": "Memory", "sub": "retrieved by relevance, not replay", "recIn": 2010, "durationInFrames": 180 },
+  { "id": "L13", "title": "Code", "sub": "run, break, fix — with sources", "recIn": 2190, "durationInFrames": 210 },
+  { "id": "L14", "title": "Connections", "sub": "scoped MCP · NotebookLM · Ollama · YouTube", "recIn": 2400, "durationInFrames": 150 },
+  { "id": "L15", "title": "Assistant", "sub": "already briefed", "recIn": 2550, "durationInFrames": 270 },
+  { "id": "L16", "title": "Review", "sub": "you approve every change", "recIn": 2820, "durationInFrames": 90 },
+  { "id": "L17", "title": "Claude Desktop", "sub": "same memory, everywhere", "recIn": 2910, "durationInFrames": 300 }
+]

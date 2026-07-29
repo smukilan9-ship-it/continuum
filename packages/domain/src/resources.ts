@@ -362,7 +362,7 @@ function normalizedTerms(value: string) {
   return new Set(value.toLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length > 2));
 }
 
-function overlapScore(query: string, resource: ResourceRegistryEntry) {
+function overlapTerms(query: string, resource: ResourceRegistryEntry) {
   const wanted = normalizedTerms(query);
   const available = normalizedTerms([
     resource.title,
@@ -372,8 +372,26 @@ function overlapScore(query: string, resource: ResourceRegistryEntry) {
     ...resource.bestFor,
     ...resource.officialFor,
   ].join(" "));
-  if (!wanted.size) return 0;
-  return [...wanted].filter((term) => available.has(term)).length / wanted.size;
+  const matched = [...wanted].filter((term) => available.has(term));
+  return { matched: matched.length, wanted: wanted.size };
+}
+
+function overlapScore(query: string, resource: ResourceRegistryEntry) {
+  const { matched, wanted } = overlapTerms(query, resource);
+  return wanted ? matched / wanted : 0;
+}
+
+/**
+ * A single incidental word must not qualify a resource. "energy gaps in
+ * adiabatic quantum computation" matched an NCERT electrostatics chapter purely
+ * on the word "energy" (1 of 5 terms), then won on authority — and the
+ * recommendation asserted it addressed the requested topic. Require either a
+ * substantial share of the query or at least two distinct matching terms.
+ */
+function meetsTopicalFloor(query: string, resource: ResourceRegistryEntry) {
+  const { matched, wanted } = overlapTerms(query, resource);
+  if (!wanted || !matched) return false;
+  return matched >= 2 || matched / wanted >= 0.5;
 }
 
 function needScore(need: ResourceNeed, resource: ResourceRegistryEntry) {
@@ -398,8 +416,9 @@ function scoreResource(request: ResourceRequest, resource: ResourceRegistryEntry
   if (request.excludeResourceIds?.includes(resource.id)) return Number.NEGATIVE_INFINITY;
   if (request.costPreference === "free_only" && resource.cost !== "free") return Number.NEGATIVE_INFINITY;
   if (request.region && !resource.regions.includes("global") && !resource.regions.includes(request.region)) return Number.NEGATIVE_INFINITY;
-  const topicalFit = overlapScore(`${request.topic} ${request.level ?? ""}`, resource);
-  if (topicalFit === 0) return Number.NEGATIVE_INFINITY;
+  const topicQuery = `${request.topic} ${request.level ?? ""}`;
+  if (!meetsTopicalFloor(topicQuery, resource)) return Number.NEGATIVE_INFINITY;
+  const topicalFit = overlapScore(topicQuery, resource);
   const timeFit = request.minutesAvailable
     ? resource.estimatedMinutes <= request.minutesAvailable ? 1 : Math.max(0, request.minutesAvailable / resource.estimatedMinutes - 0.35)
     : 0.7;
@@ -419,10 +438,10 @@ function scoreResource(request: ResourceRequest, resource: ResourceRegistryEntry
       ? resource.level.some((level) => /school|introductory|class 12/i.test(level)) ? 0.12 : -0.08
       : 0;
   return Number((
-    topicalFit * 0.24
+    topicalFit * 0.34
     + needScore(request.need, resource) * 0.25
-    + authorityScore(resource.authority) * 0.17
-    + resource.qualityScore * 0.13
+    + authorityScore(resource.authority) * 0.13
+    + resource.qualityScore * 0.10
     + timeFit * 0.09
     + costFit * 0.05
     + formatFit * 0.04
@@ -448,7 +467,9 @@ export function recommendBestResource(request: ResourceRequest, registry = curat
     .filter((item) => Number.isFinite(item.score))
     .sort((left, right) => right.score - left.score || right.resource.qualityScore - left.resource.qualityScore || left.resource.id.localeCompare(right.resource.id));
   const winner = ranked[0];
-  if (!winner) throw new Error("No eligible resource matches the user's access and cost constraints");
+  if (!winner) {
+    throw new Error(`No curated resource covers "${request.topic}" within the current access, cost, and region constraints. Recommending an unrelated resource would misrepresent it as relevant.`);
+  }
   const native = ranked.find((item) => item.resource.native);
   const externalWins = !winner.resource.native;
   const whyBetterThanNative = externalWins

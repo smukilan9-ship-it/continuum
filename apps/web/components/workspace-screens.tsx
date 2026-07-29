@@ -30,9 +30,9 @@ export function WorkspaceScreens({ view, state, user, userName, serverNow, onNav
   if (view === "research") return <ResearchScreen state={state} showToast={showToast} onRefresh={onRefresh} />;
   // `/openalex` and `/zotero` predate the merged Library destination and stay
   // reachable; they open the same screen with the matching tab preselected.
-  if (view === "library") return <LibraryScreen showToast={showToast} onNavigate={onNavigate} />;
-  if (view === "openalex") return <LibraryScreen initialTab="discover" showToast={showToast} onNavigate={onNavigate} />;
-  if (view === "zotero") return <LibraryScreen initialTab="zotero" showToast={showToast} onNavigate={onNavigate} />;
+  if (view === "library") return <LibraryScreen showToast={showToast} onNavigate={onNavigate} state={state} />;
+  if (view === "openalex") return <LibraryScreen initialTab="discover" showToast={showToast} onNavigate={onNavigate} state={state} />;
+  if (view === "zotero") return <LibraryScreen initialTab="zotero" showToast={showToast} onNavigate={onNavigate} state={state} />;
   if (view === "memory") return <MemoryScreen state={state} showToast={showToast} />;
   if (view === "activity") return <ActivityScreen state={state} timeZone={user.timezone} showToast={showToast} onRefresh={onRefresh} />;
   if (view === "account") return <AccountScreen user={user} showToast={showToast} />;

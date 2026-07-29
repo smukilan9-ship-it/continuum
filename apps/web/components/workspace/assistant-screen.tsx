@@ -35,7 +35,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge, Button, ConfirmationDialog, LoadingButton, Modal } from "@/components/ui";
-import { formatLabel } from "@/lib/labels";
+import { conceptLabel, formatLabel } from "@/lib/labels";
 import { text, type WorkspaceState } from "./types";
 
 type Toast = (message: string | null) => void;
@@ -139,7 +139,7 @@ function starterActions(state: WorkspaceState) {
   const activeTask = state.tasks.find((item) => text(item, "status") !== "done");
   const project = state.projects[0];
   return [
-    weak ? { icon: BrainCircuit, label: "Review my weak concepts", prompt: `Help me review ${text(weak, "conceptId", "my weakest concept")}. Start by checking what I remember.` } : { icon: BookOpen, label: "Start a learning session", prompt: "Help me choose one concept to learn next and check what I already know." },
+    weak ? { icon: BrainCircuit, label: "Review my weak concepts", prompt: `Help me review ${conceptLabel(text(weak, "conceptId"), "my weakest concept")}. Start by checking what I remember.` } : { icon: BookOpen, label: "Start a learning session", prompt: "Help me choose one concept to learn next and check what I already know." },
     project ? { icon: FileSearch, label: "Summarize my latest research", prompt: `Summarize the current state of ${text(project, "title")}, separating evidence, decisions, and unresolved questions.` } : { icon: FileSearch, label: "Explore my research", prompt: "Help me decide what research question to work on next." },
     { icon: Code2, label: "Help debug my code", prompt: "Help me debug a coding problem. Ask for the language, exact code, and actual error before suggesting a fix." },
     activeTask ? { icon: FolderKanban, label: "Organize today’s work", prompt: `Help me make a realistic plan starting with “${text(activeTask, "title")}”. Use my current tasks and schedule.` } : { icon: FolderKanban, label: "Organize today’s work", prompt: "Help me identify one useful next action from my goals." },
@@ -233,11 +233,15 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
     setSessions(payload.sessions ?? []);
   }, []);
 
-  const loadSession = useCallback(async (sessionId: string) => {
+  // `silent` reconciles the session in the background without flashing the
+  // loading state — used after a streamed reply is already on screen.
+  const loadSession = useCallback(async (sessionId: string, silent = false) => {
     const sequence = ++loadSequenceRef.current;
     if (!sessionId) { setActive(undefined); setLoadingSession(false); return; }
-    setLoadingSession(true);
-    setError("");
+    if (!silent) {
+      setLoadingSession(true);
+      setError("");
+    }
     try {
       const response = await fetch(`/api/assistant?sessionId=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
       const payload = await response.json() as { session?: AssistantSession; error?: string };
@@ -245,10 +249,10 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
       if (sequence !== loadSequenceRef.current) return;
       setActive(payload.session);
     } catch (cause) {
-      if (sequence !== loadSequenceRef.current) return;
+      if (sequence !== loadSequenceRef.current || silent) return;
       setError(cause instanceof Error ? cause.message : "Conversation could not be opened");
     } finally {
-      if (sequence === loadSequenceRef.current) setLoadingSession(false);
+      if (sequence === loadSequenceRef.current && !silent) setLoadingSession(false);
     }
   }, []);
 
@@ -397,10 +401,29 @@ export function AssistantScreen({ state, userId, serverNow, showToast, onRefresh
         }
         if (done) break;
       }
-      await loadSession(targetSession.id);
-      await refreshSessions();
-      await onRefresh();
+      // The turn is finished the moment the stream ends. Commit the streamed
+      // text locally and release the composer immediately; re-reading the
+      // session, the session list and the workspace are reconciliation steps,
+      // and awaiting them in series used to blank the reply behind a spinner
+      // for the length of three round-trips.
+      if (answer.trim()) {
+        const settled: AssistantMessage = {
+          id: `streamed_${crypto.randomUUID()}`,
+          role: "assistant",
+          content: answer,
+          createdAt: new Date().toISOString(),
+          metadata: { mode: assistantMode },
+        };
+        setActive((current) => (current?.id === targetSession.id
+          ? { ...current, messages: [...(current.messages ?? []), settled] }
+          : current));
+      }
       setAttachments([]);
+      abortRef.current = undefined;
+      setBusy(false);
+      setLive("");
+      void Promise.allSettled([loadSession(targetSession.id, true), refreshSessions(), onRefresh()]);
+      return;
     } catch (cause) {
       if ((cause as { name?: string }).name !== "AbortError") setError(cause instanceof Error ? cause.message : "The Assistant stopped unexpectedly");
     } finally {

@@ -36,7 +36,7 @@ describe("outcome-first resource broker", () => {
   });
 
   it("refuses an irrelevant link when the reviewed registry has no topical match", () => {
-    expect(() => recommendBestResource({ id: "recommendation_none", topic: "medieval Icelandic paleography", need: "canonical_explanation", costPreference: "free_only", now: "2026-07-19T00:00:00.000Z" })).toThrow(/no eligible/i);
+    expect(() => recommendBestResource({ id: "recommendation_none", topic: "medieval Icelandic paleography", need: "canonical_explanation", costPreference: "free_only", now: "2026-07-19T00:00:00.000Z" })).toThrow(/no curated resource covers/i);
   });
 
   it("respects free-only access preferences", () => {
@@ -96,5 +96,38 @@ describe("outcome-first resource broker", () => {
   it("accepts one numeric answer with units and rejects answer fishing", () => {
     expect(checkpointScore("24 V", "24")).toBe(1);
     expect(checkpointScore("I tried 12 V, then 24 V", "24")).toBe(0);
+  });
+});
+
+describe("topical relevance floor", () => {
+  it("refuses an unrelated resource that matches on one incidental word", () => {
+    // "energy" alone used to match an NCERT electrostatics chapter, which then
+    // won on authority and was described as addressing quantum annealing.
+    expect(() => recommendBestResource({
+      id: "req_unrelated",
+      topic: "energy gaps in adiabatic quantum computation",
+      need: "conceptual_intuition",
+      costPreference: "free_only",
+    })).toThrow(/No curated resource covers/);
+  });
+
+  it("still matches a genuinely relevant topic", () => {
+    const result = recommendBestResource({
+      id: "req_relevant",
+      topic: "electric potential and potential energy",
+      need: "conceptual_intuition",
+      costPreference: "free_only",
+    });
+    expect(result.selected.topicTags.join(" ")).toMatch(/potential/);
+  });
+
+  it("matches a single-word topic that fully overlaps", () => {
+    const result = recommendBestResource({
+      id: "req_sat",
+      topic: "SAT",
+      need: "official_exam_simulation",
+      costPreference: "free_only",
+    });
+    expect(result.selected.topicTags).toContain("SAT");
   });
 });

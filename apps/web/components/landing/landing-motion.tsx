@@ -1,178 +1,172 @@
 "use client";
 
 import {
-  AnimatePresence,
-  motion,
-  useInView,
-  useReducedMotion,
-  useScroll,
-  useTransform,
-} from "framer-motion";
-import {
   BookOpen,
-  BrainCircuit,
+  CalendarDays,
   Check,
   Code2,
-  FileText,
-  FolderKanban,
+  Database,
   FlaskConical,
-  MessageSquareText,
-  Network,
+  Goal,
+  Library,
+  MessageCircle,
   Search,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BrandMark } from "@/components/brand-mark";
+import { heroViews } from "@/components/landing/hero-views";
+import { gsap, prefersReducedMotion, useGsap } from "@/components/landing/use-gsap";
 
-const productViews = [
+/** The real sidebar grouping — mirrors navGroups in continuum-app.tsx. */
+const navGroups = [
+  { label: "", items: [{ id: "today", label: "Today", icon: CalendarDays }] },
   {
-    id: "assistant",
-    label: "Assistant",
-    icon: MessageSquareText,
-    eyebrow: "Context-aware assistant",
-    title: "Ready to continue your quantum computing path.",
-    detail: "Continuum retrieved your goal, the three papers you kept, and the concept you struggled with yesterday.",
-    metric: "12 relevant memories",
-    primary: "Explain tunneling without repeating the basics",
-    secondary: "Grounded in your learning path",
+    label: "Work",
+    items: [
+      { id: "assistant", label: "Assistant", icon: MessageCircle },
+      { id: "goals", label: "Plan", icon: Goal },
+      { id: "learn", label: "Learn", icon: BookOpen },
+      { id: "code", label: "Code", icon: Code2 },
+      { id: "research", label: "Research", icon: FlaskConical },
+    ],
   },
   {
-    id: "research",
-    label: "Research",
-    icon: FlaskConical,
-    eyebrow: "Research graph",
-    title: "Six foundational papers, connected by evidence.",
-    detail: "OpenAlex relationships, Zotero sources, and your project claims stay linked instead of disappearing into browser tabs.",
-    metric: "24 cited sources",
-    primary: "Quantum annealing for optimization",
-    secondary: "4 related works found",
-  },
-  {
-    id: "learn",
-    label: "Learn",
-    icon: BookOpen,
-    eyebrow: "Adaptive learning",
-    title: "Your next lesson targets the gap that matters.",
-    detail: "Mastery evidence updates the path after every explanation, practice set, and verified checkpoint.",
-    metric: "68% mastery",
-    primary: "Adiabatic theorem → energy gaps",
-    secondary: "Next review in 2 days",
-  },
-  {
-    id: "projects",
-    label: "Projects",
-    icon: FolderKanban,
-    eyebrow: "Project intelligence",
-    title: "Every decision still knows why it was made.",
-    detail: "Conversations, documents, tasks, research, and code remain attached to the outcome they are meant to change.",
-    metric: "8 linked decisions",
-    primary: "Quantum optimization literature review",
-    secondary: "3 milestones on track",
-  },
-  {
-    id: "code",
-    label: "Code",
-    icon: Code2,
-    eyebrow: "Integrated code workspace",
-    title: "Run the experiment with the research beside it.",
-    detail: "Generate, execute, and debug Python while Continuum keeps the source paper and project hypothesis in view.",
-    metric: "14 checks passed",
-    primary: "annealing_schedule.py",
-    secondary: "Local Ollama route active",
-  },
-  {
-    id: "memory",
-    label: "Memory",
-    icon: BrainCircuit,
-    eyebrow: "Durable memory",
-    title: "The useful context survives every conversation.",
-    detail: "Continuum remembers verified goals, evidence, decisions, and progress—not an endless replay of raw transcripts.",
-    metric: "342 verified records",
-    primary: "One academic memory",
-    secondary: "Available across every tool",
+    label: "Sources",
+    items: [
+      { id: "library", label: "Library", icon: Library },
+      { id: "memory", label: "Memory", icon: Database },
+    ],
   },
 ] as const;
 
-type ProductViewId = (typeof productViews)[number]["id"];
+const previewableIds = new Set(heroViews.map((view) => view.id));
+const ROTATE_MS = 4200;
 
-export function Reveal({
-  children,
-  className,
-  delay = 0,
-}: {
-  children: ReactNode;
-  className?: string;
-  delay?: number;
-}) {
-  const reduceMotion = useReducedMotion();
-  return (
-    <motion.div
-      className={className}
-      initial={reduceMotion ? false : { opacity: 0, y: 26 }}
-      whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-80px" }}
-      transition={{ duration: 0.6, delay, ease: [0.22, 1, 0.36, 1] }}
-    >
-      {children}
-    </motion.div>
-  );
+export function Reveal({ children, className, delay = 0 }: { children: ReactNode; className?: string; delay?: number }) {
+  const scope = useGsap(({ gsap: g, reduced }) => {
+    if (reduced) return;
+    g.from(scope.current, {
+      opacity: 0,
+      y: 26,
+      duration: 0.7,
+      delay,
+      ease: "power3.out",
+      scrollTrigger: { trigger: scope.current, start: "top 88%", once: true },
+    });
+  }, [delay]);
+
+  return <div className={className} ref={scope}>{children}</div>;
 }
 
 export function HeroProductMockup() {
-  const [activeId, setActiveId] = useState<ProductViewId>("assistant");
-  const reduceMotion = useReducedMotion();
-  const shellRef = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({ target: shellRef, offset: ["start end", "end start"] });
-  const backgroundY = useTransform(scrollYProgress, [0, 1], reduceMotion ? [0, 0] : [-18, 22]);
+  const [activeId, setActiveId] = useState(heroViews[0]!.id);
+  const [paused, setPaused] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const progressRef = useRef<HTMLSpanElement>(null);
 
+  // Auto-advance is the whole point of the hero — it must never need a click.
+  // It keeps running under reduced motion (only the transition is dropped, not
+  // the rotation) and does NOT pause on hover: the pointer resting anywhere
+  // over the hero used to freeze it, which read as a broken, static mockup.
+  // Only an explicit interaction (clicking a tab) pauses it, and only briefly.
   useEffect(() => {
-    if (reduceMotion) return;
+    if (paused) return;
     const timer = window.setInterval(() => {
       setActiveId((current) => {
-        const index = productViews.findIndex((view) => view.id === current);
-        return productViews[(index + 1) % productViews.length]!.id;
+        const index = heroViews.findIndex((view) => view.id === current);
+        return heroViews[(index + 1) % heroViews.length]!.id;
       });
-    }, 3600);
+    }, ROTATE_MS);
     return () => window.clearInterval(timer);
-  }, [reduceMotion]);
+  }, [paused]);
 
-  const activeView = productViews.find((view) => view.id === activeId)!;
+  // A manual pick holds that panel for one extra beat, then rotation resumes.
+  function pick(id: string) {
+    setActiveId(id);
+    setPaused(true);
+    window.setTimeout(() => setPaused(false), ROTATE_MS * 1.6);
+  }
+
+  // Animate the panel body in whenever the view changes, and stagger its rows.
+  useEffect(() => {
+    const node = bodyRef.current;
+    if (!node || prefersReducedMotion()) return;
+    const context = gsap.context(() => {
+      gsap.fromTo(node, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.42, ease: "power3.out" });
+      const rows = node.querySelectorAll<HTMLElement>(":scope > * > *");
+      if (rows.length) {
+        gsap.fromTo(rows, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.36, stagger: 0.035, ease: "power2.out", delay: 0.06 });
+      }
+      const bars = node.querySelectorAll<HTMLElement>(".hv-bar i");
+      bars.forEach((bar) => {
+        const target = bar.style.width;
+        gsap.fromTo(bar, { width: 0 }, { width: target, duration: 0.7, ease: "power2.out", delay: 0.18 });
+      });
+    }, node);
+    return () => context.revert();
+  }, [activeId]);
+
+  // Tab progress bar, restarted on each view.
+  useEffect(() => {
+    const node = progressRef.current;
+    if (!node || paused) return;
+    const tween = gsap.fromTo(node, { scaleX: 0 }, { scaleX: 1, duration: ROTATE_MS / 1000, ease: "none" });
+    return () => { tween.kill(); };
+  }, [activeId, paused]);
+
+  const stage = useGsap(({ gsap: g, reduced }) => {
+    if (reduced) return;
+    g.from(".landing-product-window", { opacity: 0, y: 28, scale: 0.985, duration: 0.9, ease: "power3.out" });
+    g.to(".landing-stage-orbit-one", {
+      yPercent: 14, ease: "none",
+      scrollTrigger: { trigger: stage.current, start: "top bottom", end: "bottom top", scrub: 0.6 },
+    });
+    g.to(".landing-stage-orbit-two", {
+      yPercent: -18, ease: "none",
+      scrollTrigger: { trigger: stage.current, start: "top bottom", end: "bottom top", scrub: 0.6 },
+    });
+  }, []);
+
+  const activeView = heroViews.find((view) => view.id === activeId)!;
 
   return (
-    <div className="landing-product-stage" ref={shellRef}>
-      <motion.div className="landing-stage-orbit landing-stage-orbit-one" style={{ y: backgroundY }} aria-hidden="true" />
-      <motion.div className="landing-stage-orbit landing-stage-orbit-two" style={{ y: backgroundY }} aria-hidden="true" />
-      <motion.div
-        className="landing-product-window"
-        animate={reduceMotion ? undefined : { y: [0, -5, 0] }}
-        transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
-      >
+    <div
+      className="landing-product-stage"
+      ref={stage}
+    >
+      <div className="landing-stage-orbit landing-stage-orbit-one" aria-hidden="true" />
+      <div className="landing-stage-orbit landing-stage-orbit-two" aria-hidden="true" />
+
+      <div className="landing-product-window">
         <aside className="landing-mock-sidebar">
           <div className="landing-mock-brand"><BrandMark title="Continuum" /><span>continuum</span></div>
           <nav aria-label="Product preview">
-            {productViews.map((view) => {
-              const Icon = view.icon;
-              const active = activeId === view.id;
-              return (
-                <button
-                  type="button"
-                  key={view.id}
-                  className={active ? "active" : ""}
-                  aria-label={`Preview ${view.label}`}
-                  aria-pressed={active}
-                  onClick={() => setActiveId(view.id)}
-                >
-                  <Icon size={15} aria-hidden="true" />
-                  <span>{view.label}</span>
-                </button>
-              );
-            })}
+            {navGroups.map((group) => (
+              <div className="landing-mock-nav-group" key={group.label || "primary"}>
+                {group.label ? <span className="landing-mock-nav-label">{group.label}</span> : null}
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = activeId === item.id;
+                  return previewableIds.has(item.id) ? (
+                    <button
+                      type="button"
+                      key={item.id}
+                      className={active ? "active" : ""}
+                      aria-label={`Preview ${item.label}`}
+                      aria-pressed={active}
+                      onClick={() => pick(item.id)}
+                    >
+                      <Icon size={15} aria-hidden="true" /><span>{item.label}</span>
+                    </button>
+                  ) : (
+                    <span className="landing-mock-nav-static" key={item.id}>
+                      <Icon size={15} aria-hidden="true" /><span>{item.label}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            ))}
           </nav>
-          <div className="landing-mock-recent">
-            <span>Recent</span>
-            <p>Quantum annealing</p>
-            <p>Research synthesis</p>
-            <p>Python experiment</p>
-          </div>
         </aside>
 
         <section className="landing-mock-main" aria-live="polite">
@@ -181,70 +175,31 @@ export function HeroProductMockup() {
             <span className="landing-mock-saved"><i /> Saved</span>
           </header>
 
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={activeView.id}
-              className="landing-mock-content"
-              initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={reduceMotion ? undefined : { opacity: 0, y: -7 }}
-              transition={{ duration: 0.28 }}
-            >
-              <div className="landing-mock-heading">
-                <div>
-                  <span>{activeView.eyebrow}</span>
-                  <p className="landing-mock-title">{activeView.title}</p>
-                </div>
-                <strong>{activeView.metric}</strong>
+          <div className="landing-mock-content" ref={bodyRef} key={activeView.id}>
+            <div className="landing-mock-heading">
+              <div>
+                <span>{activeView.eyebrow}</span>
+                <p className="landing-mock-title">{activeView.title}</p>
               </div>
-
-              <div className="landing-mock-grid">
-                <article className="landing-mock-primary-card">
-                  <span className="landing-mock-card-label">Next best action</span>
-                  <p className="landing-mock-action-title">{activeView.primary}</p>
-                  <p>{activeView.detail}</p>
-                  <button type="button"><span>Continue</span><span aria-hidden="true">→</span></button>
-                </article>
-
-                <article className="landing-mock-context-card">
-                  <span className="landing-mock-card-label">Connected context</span>
-                  <div className="landing-context-row"><FileText size={14} /><span>Adiabatic quantum computation</span><b>PDF</b></div>
-                  <div className="landing-context-row"><Network size={14} /><span>Concept graph</span><b>18</b></div>
-                  <div className="landing-context-row"><MessageSquareText size={14} /><span>Last checkpoint</span><b>Now</b></div>
-                  <p><Check size={13} /> {activeView.secondary}</p>
-                </article>
-              </div>
-
-              <div className="landing-mock-lower">
-                <div>
-                  <span>Knowledge graph</span>
-                  <div className="landing-mini-graph" role="img" aria-label="Animated knowledge graph">
-                    <i className="node node-a" /><i className="node node-b" /><i className="node node-c" /><i className="node node-d" />
-                    <span className="edge edge-a" /><span className="edge edge-b" /><span className="edge edge-c" />
-                  </div>
-                </div>
-                <div className="landing-citation-stack">
-                  <span>Citations</span>
-                  <p><b>01</b> Kadowaki &amp; Nishimori</p>
-                  <p><b>02</b> Albash &amp; Lidar</p>
-                </div>
-              </div>
-            </motion.div>
-          </AnimatePresence>
+              <strong>{activeView.metric}</strong>
+            </div>
+            {activeView.body}
+          </div>
         </section>
-      </motion.div>
+      </div>
 
       <div className="landing-product-tabs" aria-label="Previewed Continuum areas">
-        {productViews.map((view) => (
+        {heroViews.map((view) => (
           <button
             type="button"
             key={view.id}
             aria-label={`Preview ${view.label}`}
             aria-pressed={activeId === view.id}
             className={activeId === view.id ? "active" : ""}
-            onClick={() => setActiveId(view.id)}
+            onClick={() => pick(view.id)}
           >
-            <span>{view.label}</span><i />
+            <span>{view.label}</span>
+            <i>{activeId === view.id ? <span className="landing-tab-progress" ref={progressRef} /> : null}</i>
           </button>
         ))}
       </div>
@@ -253,55 +208,65 @@ export function HeroProductMockup() {
 }
 
 const fragments = [
-  { label: "ChatGPT", className: "fragment-a", x: 154, y: 106 },
-  { label: "Claude", className: "fragment-b", x: 92, y: 74 },
-  { label: "Research paper", className: "fragment-c", x: 122, y: 6 },
-  { label: "Google Docs", className: "fragment-d", x: 94, y: -70 },
-  { label: "Notes", className: "fragment-e", x: 154, y: -112 },
-  { label: "Zotero", className: "fragment-f", x: -5, y: -128 },
-  { label: "Browser", className: "fragment-g", x: -64, y: -54 },
-  { label: "PDF", className: "fragment-h", x: -58, y: 48 },
+  { label: "ChatGPT", className: "fragment-a" },
+  { label: "Claude", className: "fragment-b" },
+  { label: "Research paper", className: "fragment-c" },
+  { label: "Google Docs", className: "fragment-d" },
+  { label: "Notes", className: "fragment-e" },
+  { label: "Zotero", className: "fragment-f" },
+  { label: "Browser", className: "fragment-g" },
+  { label: "PDF", className: "fragment-h" },
 ] as const;
 
 export function FragmentationMerge() {
-  const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: false, margin: "-25% 0px -25% 0px" });
-  const reduceMotion = useReducedMotion();
+  const scope = useGsap(({ gsap: g, reduced }) => {
+    if (reduced) return;
+
+    // Scattered cards drift toward the connected workspace, fade, and reset —
+    // driven by one scrubbed-in timeline rather than eight independent loops.
+    const timeline = g.timeline({
+      repeat: -1,
+      repeatDelay: 1.1,
+      scrollTrigger: { trigger: scope.current, start: "top 82%", end: "bottom 20%", toggleActions: "play pause resume pause" },
+    });
+
+    timeline
+      .to(".fragment-card", {
+        x: (index: number) => [150, 96, 128, 100, 158, -6, -62, -56][index] ?? 0,
+        y: (index: number) => [104, 76, 8, -68, -110, -126, -52, 46][index] ?? 0,
+        scale: 0.62,
+        opacity: 0,
+        duration: 1.5,
+        stagger: 0.05,
+        ease: "power2.in",
+      })
+      .to(".fragmentation-result", { scale: 1.02, duration: 0.35, ease: "power2.out" }, "-=0.5")
+      .to(".fragmentation-result", { scale: 1, duration: 0.5, ease: "power2.inOut" })
+      .to(".fragment-card", { x: 0, y: 0, scale: 1, opacity: 1, duration: 0.75, stagger: 0.03, ease: "power2.out" }, "-=0.2");
+
+    // Pulse travelling along the connector, fading in and out at the ends.
+    g.timeline({ repeat: -1, repeatDelay: 1.1 })
+      .fromTo(".fragmentation-path > i", { x: 0, opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power1.out" })
+      .to(".fragmentation-path > i", { x: 108, duration: 1.4, ease: "power1.inOut" }, 0)
+      .to(".fragmentation-path > i", { opacity: 0, duration: 0.3, ease: "power1.in" }, 1.1);
+  }, []);
 
   return (
-    <div className="fragmentation-visual" ref={ref}>
+    <div className="fragmentation-visual" ref={scope}>
       <div className="fragmentation-scatter" aria-label="Scattered learning tools">
-        {fragments.map((fragment, index) => (
-          <motion.div
-            key={fragment.label}
-            className={`fragment-card ${fragment.className}`}
-            animate={reduceMotion || !inView ? { x: 0, y: 0, opacity: 1, scale: 1 } : {
-              x: [0, fragment.x, fragment.x, 0],
-              y: [0, fragment.y, fragment.y, 0],
-              opacity: [1, 1, 0, 1],
-              scale: [1, 0.82, 0.55, 1],
-            }}
-            transition={{ duration: 4.8, delay: index * 0.07, repeat: Infinity, repeatDelay: 1.6, ease: "easeInOut" }}
-          >
-            <i />
-            <span>{fragment.label}</span>
-          </motion.div>
+        {fragments.map((fragment) => (
+          <div className={`fragment-card ${fragment.className}`} key={fragment.label}>
+            <i /><span>{fragment.label}</span>
+          </div>
         ))}
       </div>
 
       <div className="fragmentation-path" aria-hidden="true">
         <span />
-        <motion.i
-          animate={reduceMotion ? undefined : { x: [0, 115], opacity: [0, 1, 0] }}
-          transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 1.2 }}
-        />
+        <i />
       </div>
 
-      <motion.div
-        className="fragmentation-result"
-        animate={reduceMotion || !inView ? undefined : { scale: [1, 1.025, 1] }}
-        transition={{ duration: 4, repeat: Infinity }}
-      >
+      <div className="fragmentation-result">
         <div className="fragmentation-result-head"><BrandMark title="Continuum" /><div><span>CONTINUUM</span><strong>One connected workspace</strong></div></div>
         <div className="fragmentation-result-map">
           <i className="result-node result-node-main" />
@@ -313,7 +278,7 @@ export function FragmentationMerge() {
           <i className="result-line result-line-three" />
         </div>
         <p>Goals, sources, conversations, notes, code, and progress stay attached to one another.</p>
-      </motion.div>
+      </div>
     </div>
   );
 }
@@ -330,20 +295,36 @@ const workflowSteps = [
 
 export function WorkflowShowcase() {
   const [activeStep, setActiveStep] = useState(0);
-  const reduceMotion = useReducedMotion();
+  const [paused, setPaused] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (reduceMotion) return;
-    const timer = window.setInterval(() => {
-      setActiveStep((current) => (current + 1) % workflowSteps.length);
-    }, 2800);
+    if (prefersReducedMotion() || paused) return;
+    const timer = window.setInterval(() => setActiveStep((current) => (current + 1) % workflowSteps.length), 3000);
     return () => window.clearInterval(timer);
-  }, [reduceMotion]);
+  }, [paused]);
+
+  useEffect(() => {
+    const node = contentRef.current;
+    if (!node || prefersReducedMotion()) return;
+    const context = gsap.context(() => {
+      gsap.fromTo(node, { opacity: 0, x: 16 }, { opacity: 1, x: 0, duration: 0.4, ease: "power3.out" });
+      gsap.fromTo(node.querySelectorAll(".workflow-records > div"),
+        { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.3, stagger: 0.03, ease: "power2.out" });
+    }, node);
+    return () => context.revert();
+  }, [activeStep]);
 
   const active = workflowSteps[activeStep]!;
 
   return (
-    <div className="workflow-showcase">
+    <div
+      className="workflow-showcase"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => setPaused(true)}
+      onBlurCapture={() => setPaused(false)}
+    >
       <div className="workflow-step-list" role="tablist" aria-label="Quantum annealing workflow">
         {workflowSteps.map((step, index) => (
           <button
@@ -363,31 +344,22 @@ export function WorkflowShowcase() {
 
       <div className="workflow-window">
         <header><div><i /><i /><i /></div><span>Quantum Annealing · Learning project</span><b>Linked</b></header>
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={active.id}
-            className="workflow-window-content"
-            initial={reduceMotion ? false : { x: 16 }}
-            animate={{ x: 0 }}
-            exit={reduceMotion ? undefined : { x: -12 }}
-            transition={{ duration: 0.3 }}
-          >
-            <div className="workflow-window-label"><span>{String(activeStep + 1).padStart(2, "0")}</span>{active.label}</div>
-            <h3>{active.title}</h3>
-            <p>{active.meta}</p>
-            <div className="workflow-activity">
-              <span><i className="working-dot" />Continuum is connecting your context</span>
-              <strong><Check size={14} />{active.status}</strong>
-            </div>
-            <div className="workflow-records">
-              {workflowSteps.slice(0, activeStep + 1).map((step, index) => (
-                <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: index * 0.035 }}>
-                  <Check size={12} /><span>{step.label}</span><b>{index === activeStep ? "Now" : "Linked"}</b>
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        </AnimatePresence>
+        <div className="workflow-window-content" ref={contentRef} key={active.id}>
+          <div className="workflow-window-label"><span>{String(activeStep + 1).padStart(2, "0")}</span>{active.label}</div>
+          <h3>{active.title}</h3>
+          <p>{active.meta}</p>
+          <div className="workflow-activity">
+            <span><i className="working-dot" />Continuum is connecting your context</span>
+            <strong><Check size={14} />{active.status}</strong>
+          </div>
+          <div className="workflow-records">
+            {workflowSteps.slice(0, activeStep + 1).map((step, index) => (
+              <div key={step.id}>
+                <Check size={12} /><span>{step.label}</span><b>{index === activeStep ? "Now" : "Linked"}</b>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

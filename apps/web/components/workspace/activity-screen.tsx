@@ -85,6 +85,43 @@ export function ActivityScreen({ state, timeZone, showToast, onRefresh }: { stat
     }
   }
 
+  /**
+   * The ledger rendered one row per routing decision, which produced 18
+   * consecutive rows of the identical sentence. Rows are grouped by
+   * task class + rationale and counted, so the screen shows the distinct
+   * reasons rather than a wall of repeats.
+   */
+  const groupedRoutes = useMemo(() => {
+    const groups = new Map<string, { key: string; taskClass: string; reason: string; count: number; first: number; last: number }>();
+    for (const route of state.modelRoutes) {
+      const taskClass = text(route, "taskClass", "assistance");
+      const reason = text(route, "reason", "Selected by task capability, reliability, context, and cost policy.");
+      const key = `${taskClass}::${reason}`;
+      const at = Date.parse(String(route.createdAt ?? ""));
+      const existing = groups.get(key);
+      if (existing) {
+        existing.count += 1;
+        if (Number.isFinite(at)) {
+          existing.first = Math.min(existing.first, at);
+          existing.last = Math.max(existing.last, at);
+        }
+      } else {
+        groups.set(key, { key, taskClass, reason, count: 1, first: at, last: at });
+      }
+    }
+    return [...groups.values()]
+      .sort((left, right) => right.last - left.last)
+      .slice(0, 12)
+      .map((group) => ({
+        ...group,
+        range: !Number.isFinite(group.last)
+          ? "Recorded"
+          : group.count === 1 || group.first === group.last
+            ? formatDate(new Date(group.last).toISOString(), undefined, timeZone)
+            : `${formatDate(new Date(group.first).toISOString(), { dateStyle: "medium" }, timeZone)} – ${formatDate(new Date(group.last).toISOString(), { dateStyle: "medium" }, timeZone)}`,
+      }));
+  }, [state.modelRoutes, timeZone]);
+
   return (
     <div className="screen">
       <PageHeader title="Review" description="Nothing consequential changes behind your back. Assistant writes are auditable, high-impact changes begin as proposals, and schedule changes require a separate confirmation and commit." stats={[{ label: "awaiting you", value: groups.length }, { label: "AI assists audited", value: state.modelRoutes.length }, { label: "audit events", value: state.events.length }]} />
@@ -120,7 +157,7 @@ export function ActivityScreen({ state, timeZone, showToast, onRefresh }: { stat
       </section>
 
       <div className="activity-ledger-layout">
-        {state.modelRoutes.length ? <section className="activity-section activity-ai-ledger"><div className="section-heading"><div><h2>Why a cloud route was used</h2></div><GitBranch size={16} aria-hidden="true" /></div><div>{state.modelRoutes.slice(0, 20).map((route) => <article key={text(route, "id")}><div><Badge tone="blue">{formatLabel(text(route, "taskClass", "assistance"))}</Badge><time>{formatDate(route.createdAt, undefined, timeZone)}</time></div><h3>{text(route, "reason", "Selected by task capability, reliability, context, and cost policy.")}</h3><p>Provider choice and fallback use are retained in the audit record.</p></article>)}</div></section> : null}
+        {groupedRoutes.length ? <section className="activity-section activity-ai-ledger"><div className="section-heading"><div><h2>Why a cloud route was used</h2><p className="section-description">Identical rationales are grouped. Every individual routing decision is still retained in the audit record.</p></div><GitBranch size={16} aria-hidden="true" /></div><div>{groupedRoutes.map((group) => <article key={group.key}><div><Badge tone="blue">{formatLabel(group.taskClass)}</Badge>{group.count > 1 ? <span className="route-count">{group.count}×</span> : null}<time>{group.range}</time></div><h3>{group.reason}</h3><p>Provider choice and fallback use are retained in the audit record.</p></article>)}</div></section> : null}
 
         <section className="activity-section activity-event-ledger">
           <div className="section-heading">

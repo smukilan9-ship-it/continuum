@@ -201,13 +201,13 @@ kbd { padding: 2px 5px; color: inherit; border: 1px solid currentColor; border-r
 /* Today */
 .today-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .85fr); gap: 16px; }
 .today-grid > .card { padding: 22px; }
-.next-action-card { min-height: 310px; display: flex; flex-direction: column; align-items: flex-start; background: var(--navy); border-color: var(--navy); color: #fff; }
+.next-action-card { display: flex; flex-direction: column; align-items: flex-start; background: var(--navy); border-color: var(--navy); color: #fff; }
 .card-kicker { display: flex; align-items: center; gap: 8px; color: #a9cce7; font-size: 13px; font-weight: 700; }
-.next-action-card h2 { max-width: 700px; margin: 38px 0 10px; font-size: clamp(27px, 3vw, 38px); line-height: 1.12; letter-spacing: -.03em; }
+.next-action-card h2 { max-width: 700px; margin: 26px 0 10px; font-size: clamp(27px, 3vw, 38px); line-height: 1.12; letter-spacing: -.03em; }
 .next-action-card > p { max-width: 650px; margin: 0; color: #c5d8e9; line-height: 1.6; }
-.next-action-card .button { margin-top: auto; color: var(--navy); background: #fff; border-color: #fff; }
+.next-action-card .button { color: var(--navy); background: #fff; border-color: #fff; }
 .action-evidence { margin: 16px 0 22px; display: flex; align-items: center; gap: 8px; color: #b9d2e6; font-size: 13px; }
-.summary-card { min-height: 310px; }
+.summary-card { min-height: 0; }
 .workspace-metrics { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .workspace-metrics div { min-height: 84px; padding: 15px 16px; display: grid; align-content: center; gap: 3px; background: var(--panel-soft); border-radius: 11px; }
 .workspace-metrics strong { color: var(--navy); font-size: 27px; letter-spacing: -.02em; }
@@ -216,7 +216,9 @@ kbd { padding: 2px 5px; color: inherit; border: 1px solid currentColor; border-r
 .summary-card .workspace-metrics div { min-height: 48px; padding: 8px 2px; display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 8px; background: transparent; border-bottom: 1px solid var(--line); border-radius: 0; }
 .summary-card .workspace-metrics strong { font-size: 19px; }
 .summary-card .workspace-metrics span { font-size: 11px; }
-.schedule-card, .resume-card { min-height: 270px; }
+/* Same reasoning as .next-action-card — these sit in a column beside it and a
+   fixed minimum left the right rail stranded with empty space below its content. */
+.schedule-card, .resume-card { min-height: 0; }
 .schedule-card > p, .resume-card > p { color: var(--muted); line-height: 1.6; }
 .schedule-card > .button, .resume-card > .button { margin-top: 20px; }
 .next-block { margin-top: 20px; padding: 16px; display: grid; gap: 7px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 9px; }
@@ -870,8 +872,8 @@ textarea { min-height: 90px; resize: vertical; }
   .code-submit-row .button { width: 100%; }
   .coach-output > footer { align-items: stretch; flex-direction: column; }
   .coach-output > footer .button { width: 100%; }
-  .today-grid > .card, .resource-search-card, .resource-result-card, .goal-card, .inline-form-card { padding: 19px; }
-  .next-action-card { min-height: 290px; }
+  .today-grid > .card, .screen > .next-action-card, .screen > .resume-card, .resource-search-card, .resource-result-card, .goal-card, .inline-form-card { padding: 19px; }
+  .next-action-card { min-height: 0; }
   .form-grid, .resource-form-grid, .onboarding-card { grid-template-columns: 1fr; }
   .resource-topic, .full-field, .form-actions { grid-column: auto; }
   .onboarding-card { padding: 20px; gap: 22px; }
@@ -1400,7 +1402,9 @@ textarea { min-height: 90px; resize: vertical; }
 .learn-landing-actions strong { align-self: end; font-size: 14px; }
 .learn-landing-actions small { align-self: start; color: var(--muted); font-size: 11px; line-height: 1.35; }
 .learn-landing-actions > button > svg { grid-column: 3; grid-row: 1 / 3; color: var(--muted); }
-.learn-home-hero { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 14px; }
+/* Single child — a second track just left the primary card at 2/3 width
+   while every band below ran full width. */
+.learn-home-hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .continue-learning-card, .learning-signal-card { min-height: 255px; padding: 22px; box-shadow: none; }
 .continue-learning-card { display: flex; flex-direction: column; justify-content: space-between; background: linear-gradient(130deg, var(--surface) 0%, color-mix(in srgb, var(--surface) 82%, var(--primary-soft)) 100%); }
 .learn-card-label { display: flex; align-items: center; gap: 7px; color: var(--blue); font-size: 10px; font-weight: 850; letter-spacing: .09em; }
@@ -1852,14 +1856,91 @@ body {
 .section-heading h2 { color: var(--ink); font-size: clamp(22px, 2.4vw, 30px); letter-spacing: -.035em; }
 .section-heading > p { max-width: 520px; }
 
-.today-grid { grid-template-columns: minmax(0, 1.55fr) minmax(260px, .62fr); gap: 22px; }
-.today-grid > .card { padding: 28px; }
-.next-action-card { min-height: 390px; color: #f6f3e9; background: #181912; border: 0; border-radius: 24px; }
+/* Content-sized: stretching left a ~380px hole under a short day plan,
+   which reads worse than two columns of honest, different heights. */
+.today-grid { grid-template-columns: minmax(0, 1.55fr) minmax(260px, .62fr); gap: 22px; align-items: start; }
+.screen > .next-action-card, .screen > .resume-card { margin-bottom: 22px; }
+.screen > .resume-card { margin-bottom: 0; }
+
+/* ── Today: the day's actual shape ────────────────────────────────────────
+   The screen renders every block scheduled for the current calendar day, so
+   these rules carry real list weight rather than a single summary row. */
+.day-summary { margin: 0 0 4px; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.day-summary svg { flex: none; color: var(--olive); }
+
+.day-timeline { margin: 14px 0 0; padding: 0; display: grid; gap: 2px; list-style: none; }
+
+.day-block {
+  min-height: 54px;
+  padding: 9px 12px;
+  display: grid;
+  grid-template-columns: 44px 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-radius: 11px;
+}
+
+.day-block + .day-block { position: relative; }
+/* Hairline rail between consecutive blocks, aligned to the status dot. */
+.day-block + .day-block::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 61px;
+  width: 1px;
+  height: 5px;
+  background: var(--line-strong);
+}
+
+.day-time { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.day-mark {
+  width: 11px;
+  height: 11px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.day-body { min-width: 0; display: grid; gap: 2px; }
+.day-body strong { color: var(--ink); font-size: 14px; font-weight: 700; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.day-body small { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.day-state { padding: 3px 9px; border-radius: 99px; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+.day-state-done { color: var(--muted); background: var(--panel-soft); }
+.day-state-now { color: #171812; background: var(--lime); }
+.day-state-upcoming { color: var(--muted); background: var(--panel-soft); }
+.day-state-missed { color: var(--danger, #a4443a); background: color-mix(in srgb, var(--danger, #a4443a) 12%, transparent); }
+
+.day-block.is-now { background: color-mix(in srgb, var(--lime) 13%, transparent); }
+.day-block.is-now .day-mark { background: var(--lime); border-color: var(--lime); }
+.day-block.is-done .day-mark { color: #fff; background: var(--olive); border-color: var(--olive); }
+.day-block.is-done .day-body strong { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-strong); }
+.day-block.is-missed .day-mark { border-color: var(--danger, #a4443a); }
+
+/* ── Today: goal standing ───────────────────────────────────────────────── */
+.goal-progress-list { margin: 14px 0 18px; padding: 0; display: grid; gap: 16px; list-style: none; }
+.goal-progress-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.goal-progress-head strong { min-width: 0; color: var(--ink); font-size: 13px; font-weight: 700; line-height: 1.35; }
+.goal-progress-head b { color: var(--olive); font-size: 12px; font-variant-numeric: tabular-nums; }
+.goal-progress-bar { height: 6px; margin: 7px 0 5px; overflow: hidden; background: var(--panel-soft); border-radius: 99px; }
+.goal-progress-bar i { height: 100%; display: block; background: var(--olive); border-radius: 99px; }
+.goal-progress-list small { color: var(--muted); font-size: 11px; }
+.goal-progress-list small.is-soon { color: var(--danger, #a4443a); font-weight: 700; }
+
+.today-grid > .card, .screen > .next-action-card, .screen > .resume-card { padding: 28px; }
+/* Height follows content. A fixed 390px minimum with the CTA pinned to the
+   bottom left a ~100px hole in the middle of the card whenever the action
+   description was short, which is the common case. */
+.next-action-card { min-height: 0; color: #f6f3e9; background: #181912; border: 0; border-radius: 24px; }
 .card-kicker { color: var(--lime); }
-.next-action-card h2 { margin-top: 52px; font-size: clamp(33px, 4vw, 50px); }
+.next-action-card h2 { margin-top: 26px; font-size: clamp(33px, 4vw, 50px); }
+.next-action-card .button { margin-top: 28px; }
 .next-action-card > p, .action-evidence { color: #c6c7ba; }
 .next-action-card .button { color: #171812; background: var(--lime); border-color: var(--lime); }
-.summary-card { min-height: 390px; background: color-mix(in srgb, var(--surface) 72%, transparent); border: 0; }
+.summary-card { min-height: 0; background: color-mix(in srgb, var(--surface) 72%, transparent); border: 0; }
 .summary-card .workspace-metrics { border-top-color: var(--line); }
 .summary-card .workspace-metrics strong { color: var(--ink); }
 .schedule-card, .resume-card { background: color-mix(in srgb, var(--surface) 88%, transparent); }
@@ -1992,7 +2073,7 @@ html[data-theme="dark"] .next-action-card .button { color: #171812; }
   .section-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
   .section-heading > p { text-align: left; }
   .today-grid { grid-template-columns: 1fr; }
-  .next-action-card { min-height: 350px; }
+  .next-action-card { min-height: 0; }
   .settings-row { grid-template-columns: 1fr; }
   .settings-row-actions, .settings-row-static > .button { justify-self: start; }
   .credential-editor { grid-template-columns: 1fr; }
@@ -2241,7 +2322,7 @@ html[data-theme="dark"] .next-action-card .button { color: #171812; }
 .concept-map-heading-actions > div button { display: inline-flex; gap: 5px; align-items: center; padding: 7px 9px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; font-size: 10px; }
 .concept-map-heading-actions > div button.active { color: var(--ink); background: var(--surface-soft); }
 .concept-map-shell { display: grid; grid-template-columns: minmax(0, 1fr) 300px; overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); }
-.concept-map-canvas { position: relative; min-width: 0; min-height: 420px; overflow: hidden; background-color: #f6fbfc; background-image: radial-gradient(#bbd5df 1px, transparent 1px); background-size: 20px 20px; }
+.concept-map-canvas { position: relative; min-width: 0; min-height: 420px; height: clamp(480px, 58vh, 680px); overflow: hidden; background-color: #f6fbfc; background-image: radial-gradient(#bbd5df 1px, transparent 1px); background-size: 20px 20px; }
 .concept-map-tools { position: absolute; z-index: 3; top: 12px; left: 12px; display: flex; align-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); box-shadow: 0 4px 14px rgb(30 79 98 / 8%); }
 .concept-map-tools button { display: grid; width: 32px; height: 32px; place-items: center; border: 0; border-right: 1px solid var(--line); color: var(--ink); background: transparent; }
 .concept-map-tools span { display: inline-flex; gap: 5px; align-items: center; padding: 0 9px; color: var(--muted); font-size: 9px; }
@@ -3446,6 +3527,9 @@ html[data-theme="dark"] .code-editor-shell .cm-activeLineGutter { color: var(--l
 .scholarly-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: var(--space-4); align-items: start; }
 .scholarly-results,
 .scholarly-detail { display: grid; gap: var(--space-2); align-content: start; }
+/* Results run for thousands of pixels; the inspector stayed pinned to the top
+   of the page and scrolled out of reach after the first few results. */
+.scholarly-detail { position: sticky; top: 88px; max-height: calc(100vh - 108px); overflow-y: auto; }
 .scholarly-results > header { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .scholarly-results > header strong { font-size: var(--type-small); }
 .scholarly-results > header .button { margin-inline-start: auto; }
@@ -3797,3 +3881,19 @@ html[data-theme="dark"] .code-editor-shell .cm-editor .ͼf { color: #ff9a6b; }
    page's muted token — that combination measured 2.71:1. */
 .next-action-card .today-technical summary { color: #c9cdbe; }
 .next-action-card .today-technical p { color: #d8dccd; }
+
+/* Repeat count for grouped routing rationales in Review. */
+.activity-ai-ledger .route-count { padding: 2px 7px; color: var(--muted); background: var(--panel-soft); border-radius: 99px; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* Library — starting points drawn from the user's own workspace. */
+.scholarly-idle { display: grid; gap: var(--space-4); }
+.scholarly-suggestions { padding: 0 18px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.scholarly-suggestions > span { width: 100%; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.scholarly-suggestions button { padding: 7px 12px; display: inline-flex; align-items: center; gap: 6px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 99px; cursor: pointer; font-size: 12px; font-weight: 650; text-align: left; }
+.scholarly-suggestions button:hover { border-color: var(--olive); background: var(--panel-soft); }
+.scholarly-suggestions button svg { flex: none; color: var(--muted); }
+
+@media (max-width: 1024px) {
+  /* Stacked layout — sticky would trap the inspector above the results. */
+  .scholarly-detail { position: static; max-height: none; overflow-y: visible; }
+}

@@ -112,6 +112,7 @@ export function ScholarlySearch({
   onSavedChange,
   showToast,
   deepLinkBase,
+  suggestions,
 }: {
   mode: "explore" | "collect";
   projectId?: string;
@@ -121,6 +122,8 @@ export function ScholarlySearch({
   onSavedChange?: () => void;
   showToast: (message: string | null) => void;
   deepLinkBase?: string;
+  /** Starting points drawn from the user's own goals and projects. */
+  suggestions?: string[];
 }) {
   const [kind, setKind] = useState<ScholarlyKind>("works");
   const [query, setQuery] = useState("");
@@ -207,9 +210,9 @@ export function ScholarlySearch({
     return () => window.removeEventListener("popstate", resolve);
   }, [deepLinkBase, loadDetail]);
 
-  const runSearch = useCallback(async (event?: FormEvent, cursor?: string) => {
+  const runSearch = useCallback(async (event?: FormEvent, cursor?: string, override?: string) => {
     event?.preventDefault();
-    const trimmed = query.trim();
+    const trimmed = (override ?? query).trim();
     if (trimmed.length < 2) {
       setListStatus("error");
       setListError({ message: "Enter at least two search characters." });
@@ -350,13 +353,23 @@ export function ScholarlySearch({
       <div className="scholarly-layout">
         <Card className="scholarly-results">
           <header>
-            <strong>{listStatus === "ready" && total ? `${total.toLocaleString()} results` : "Search results"}</strong>
+            <strong>{listStatus === "ready" && total ? `${total.toLocaleString()} results` : listStatus === "idle" ? "Start a search" : "Search results"}</strong>
             {listStatus === "ready" && listCache.cache && listCache.cache !== "miss" && cacheAge ? <span className="cache-chip" title="Served from Continuum's scholarly cache">cached · updated {cacheAge}</span> : null}
             {nextCursor && listStatus === "ready" ? <Button className="button-secondary compact-button" disabled={Boolean(busy)} onClick={() => void runSearch(undefined, nextCursor)}>{busy === "more" ? <LoaderCircle className="spin" size={14} aria-hidden="true" /> : null}Load more</Button> : null}
           </header>
           <DataRegion
             status={listStatus}
-            idle={<EmptyState icon={<Search size={20} />} title="Search the public scholarly graph" body={mode === "collect" ? "Find work to file into this project — by topic, author, institution, source, or field." : "Find works, authors, institutions, sources, and topics, then follow citations between them."} />}
+            idle={<div className="scholarly-idle">
+              <EmptyState icon={<Search size={20} />} title="Search the public scholarly graph" body={mode === "collect" ? "Find work to file into this project — by topic, author, institution, source, or field." : "Find works, authors, institutions, sources, and topics, then follow citations between them."} />
+              {suggestions?.length ? <div className="scholarly-suggestions">
+                <span>From your workspace</span>
+                {suggestions.slice(0, 5).map((suggestion) => (
+                  <button type="button" key={suggestion} onClick={() => { setQuery(suggestion); void runSearch(undefined, undefined, suggestion); }}>
+                    <Search size={12} aria-hidden="true" />{suggestion}
+                  </button>
+                ))}
+              </div> : null}
+            </div>}
             loading={<LoadingState rows={4} label="Searching OpenAlex" />}
             error={<ErrorState title="We couldn't complete that search" body={listError?.message} detail={listError?.detail} action={<Button className="button-secondary compact-button" onClick={() => void runSearch()}>Try again</Button>} />}
             empty={<EmptyState title={`No ${kind} match “${lastSearch.current?.query ?? query}”`} body="Try a broader phrase, a different entity type, or clear the filters." action={fromYear || toYear || openAccess ? <Button className="button-secondary compact-button" onClick={() => { setFromYear(""); setToYear(""); setOpenAccess(false); }}>Clear filters</Button> : undefined} />}

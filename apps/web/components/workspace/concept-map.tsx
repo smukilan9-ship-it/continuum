@@ -1,7 +1,7 @@
 "use client";
 
 import { BookOpen, BrainCircuit, CheckCircle2, ChevronRight, GitBranch, HelpCircle, List, Minus, Move, Plus, RotateCcw, Route, TriangleAlert } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button, Card } from "@/components/ui";
 import { formatDate, list, number, text, type Row, type WorkspaceState } from "./types";
 
@@ -98,14 +98,44 @@ export function ConceptMap({ state, onOpenLesson, onAskQuestion }: { state: Work
   const [offset, setOffset] = useState({ x: 24, y: 48 });
   const drag = useRef<{ pointerId: number; x: number; y: number; originX: number; originY: number } | null>(null);
   const viewport = useRef<HTMLDivElement | null>(null);
+  const track = useRef<HTMLDivElement | null>(null);
   const nodes = useMemo(() => nodesForPath(state, goalId), [goalId, state]);
   const branches = useMemo(() => branchOrder.map((name) => ({ name, nodes: nodes.filter((node) => node.branch === name) })).filter((branch) => branch.nodes.length), [nodes]);
   const selected = nodes.find((node) => node.id === selectedId) ?? nodes[0];
   const goal = state.goals.find((item) => text(item, "id") === goalId);
 
+  /**
+   * Fit the graph to the canvas instead of parking it at a fixed 0.68 scale in
+   * the top-left corner, which left most of the canvas as empty dotted grid.
+   */
+  const fitView = useCallback(() => {
+    const box = viewport.current?.getBoundingClientRect();
+    const content = track.current;
+    if (!box || !content || !box.width || !box.height) return;
+    // Measure at scale 1 so the fit is independent of the current zoom.
+    const width = content.scrollWidth;
+    const height = content.scrollHeight;
+    if (!width || !height) return;
+    const padding = 32;
+    const next = Math.max(.45, Math.min(1.1, Math.min((box.width - padding * 2) / width, (box.height - padding * 2) / height)));
+    setScale(next);
+    setOffset({ x: Math.max(padding, (box.width - width * next) / 2), y: Math.max(padding, (box.height - height * next) / 2) });
+  }, []);
+
+  // Re-fit when the graph changes or the canvas resizes.
+  useEffect(() => {
+    if (view !== "map" || !nodes.length) return;
+    const frame = requestAnimationFrame(fitView);
+    // Observe the track as well: measuring only the viewport re-fitted before
+    // the graph had finished laying out, which clipped the lowest branch.
+    const observer = new ResizeObserver(() => fitView());
+    if (viewport.current) observer.observe(viewport.current);
+    if (track.current) observer.observe(track.current);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
+  }, [fitView, goalId, nodes.length, view]);
+
   function resetView() {
-    setScale(.68);
-    setOffset({ x: 24, y: 48 });
+    fitView();
   }
 
   return <section className="concept-map-section">
@@ -131,7 +161,7 @@ export function ConceptMap({ state, onOpenLesson, onAskQuestion }: { state: Work
             drag.current = null;
           }}
         >
-          <div className="concept-map-track" style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}>
+          <div ref={track} className="concept-map-track" style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}>
             <div className="concept-path-root"><Route size={17} /><span><small>Path</small><strong>{text(goal, "title", "Learning path")}</strong></span></div>
             <div className="concept-branches">{branches.map((branch) => <section className="concept-branch" key={branch.name}>
               <div className="concept-branch-hub"><GitBranch size={14} /><span><small>Branch</small><strong>{branch.name}</strong><em>{branch.nodes.length} step{branch.nodes.length === 1 ? "" : "s"}</em></span></div>
