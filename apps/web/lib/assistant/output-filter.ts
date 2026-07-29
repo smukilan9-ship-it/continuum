@@ -63,17 +63,47 @@ export interface OutputFilterOptions {
   labels?: Map<string, string>;
 }
 
-/** Replaces internal identifiers with their title, or removes them. */
+/** Swaps an identifier for its label, or removes it. No prose cleanup. */
+function swapIdentifiers(text: string, labels?: Map<string, string>): string {
+  return text.replace(INTERNAL_ID, (match) => labels?.get(match) ?? labels?.get(match.toLowerCase()) ?? "");
+}
+
+/**
+ * Replaces internal identifiers in **prose**, then tidies the punctuation an
+ * removed id leaves behind.
+ *
+ * Only safe on text the user will read. It must never run over serialized JSON:
+ * the empty-bracket cleanup turns `"uncertainFields":[]` into
+ * `"uncertainFields":`, which is not parseable. Use `redactContextValue` for
+ * structured data.
+ */
 export function redactIdentifiers(text: string, labels?: Map<string, string>): string {
   if (!text) return text;
-  return text
-    .replace(INTERNAL_ID, (match) => labels?.get(match) ?? labels?.get(match.toLowerCase()) ?? "")
+  return swapIdentifiers(text, labels)
     // An id sitting in parentheses or after a colon leaves debris behind.
     .replace(/\(\s*\)/g, "")
     .replace(/\[\s*\]/g, "")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/[ \t]+([.,;:!?])/g, "$1")
     .replace(/:\s*$/gm, ":");
+}
+
+/**
+ * Recursively redacts identifiers inside a context object, preserving its
+ * shape. Keys are left alone — they are field names the model needs — and only
+ * string values are rewritten, so the structure stays valid.
+ */
+export function redactContextValue<T>(value: T, labels?: Map<string, string>): T {
+  if (typeof value === "string") return swapIdentifiers(value, labels) as unknown as T;
+  if (Array.isArray(value)) return value.map((item) => redactContextValue(item, labels)) as unknown as T;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = redactContextValue(item, labels);
+    }
+    return out as unknown as T;
+  }
+  return value;
 }
 
 /**

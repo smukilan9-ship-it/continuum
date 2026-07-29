@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createOutputFilter,
   isConversationalFiller,
+  redactContextValue,
   redactIdentifiers,
 } from "../apps/web/lib/assistant/output-filter";
 
@@ -214,6 +215,48 @@ describe("identifier redaction", () => {
   it("leaves ordinary underscored words alone", () => {
     const text = "Use snake_case and call read_source when you need it.";
     expect(redactIdentifiers(text)).toBe(text);
+  });
+});
+
+describe("context redaction preserves structure", () => {
+  /**
+   * The prose redactor strips empty brackets to tidy up after a removed id.
+   * Run over serialized context it turned `"uncertainFields":[]` into
+   * `"uncertainFields":` and the route threw
+   * `SyntaxError: Unexpected token ','` before any model call. Structured
+   * context goes through redactContextValue, which never touches shape.
+   */
+  it("keeps empty arrays intact", () => {
+    const context = { goals: [{ id: "goal_demo_sat", uncertainFields: [], tags: [] }] };
+    const out = redactContextValue(context);
+    expect(out.goals[0]!.uncertainFields).toEqual([]);
+    expect(JSON.stringify(out)).toContain('"uncertainFields":[]');
+  });
+
+  it("survives a JSON round trip", () => {
+    const context = {
+      workspace: { activeGoals: [{ id: "goal_demo_sat", title: "Raise SAT", uncertainFields: [] }] },
+      relevantMemory: [{ id: "mchunk_demo_misc_sat", content: "Formulas swapped." }],
+      selectedFiles: [],
+      nested: { deep: { empty: {}, list: [] } },
+    };
+    expect(() => JSON.parse(JSON.stringify(redactContextValue(context)))).not.toThrow();
+  });
+
+  it("redacts identifiers inside string values", () => {
+    const labels = new Map([["goal_demo_sat", "Raise SAT score"]]);
+    const out = redactContextValue({ note: "Linked to goal_demo_sat today." }, labels);
+    expect(out.note).toBe("Linked to Raise SAT score today.");
+  });
+
+  it("leaves object keys untouched", () => {
+    const out = redactContextValue({ source_id: "kept", task_status: "open" });
+    expect(Object.keys(out)).toEqual(["source_id", "task_status"]);
+  });
+
+  it("preserves non-string primitives", () => {
+    const out = redactContextValue({ progress: 0.42, active: true, missing: null });
+    expect(out).toEqual({ progress: 0.42, active: true, missing: null });
   });
 });
 

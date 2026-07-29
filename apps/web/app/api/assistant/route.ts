@@ -8,7 +8,7 @@ import { getStore } from "@/lib/store";
 import { assistantMemoryMarkdown, assistantMemoryVaultPath } from "@/lib/assistant-memory-note";
 import { assistantMemorySyncStatuses, enqueueContinuumRecord, type RecordSyncStatus } from "@/lib/obsidian-sync-engine";
 import { publicErrorMessage } from "@/lib/api-errors";
-import { createOutputFilter, isConversationalFiller, redactIdentifiers } from "@/lib/assistant/output-filter";
+import { createOutputFilter, isConversationalFiller, redactContextValue } from "@/lib/assistant/output-filter";
 import { fromAttachments, fromMemoryChunks, fromWorkspaceContext, labelMap, mergeProvenance } from "@/lib/assistant/provenance";
 
 export const runtime = "nodejs";
@@ -353,9 +353,10 @@ export async function POST(request: Request) {
   // Identifiers are stripped from the context before the model ever sees them.
   // Filtering only the output is not enough: a model that never receives
   // `goal_demo_sat` cannot echo it, and the labels remain readable.
-  const safeContext = JSON.parse(
-    redactIdentifiers(JSON.stringify({ workspace: context, relevantMemory, selectedFiles: attachmentContext }), contextLabels),
-  ) as unknown;
+  const safeContext = redactContextValue(
+    { workspace: context, relevantMemory, selectedFiles: attachmentContext },
+    contextLabels,
+  );
 
   const prompt = buildAcademicPrompt({
     surface: "assistant",
