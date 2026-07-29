@@ -16,6 +16,14 @@ describe("workspace routing", () => {
     expect(viewFromPath("/assistant/session_9")).toBe("assistant");
   });
 
+  it("resolves a goal deep link to the goal view", () => {
+    // The sidebar lists the user's goals, so `/g/:id` has to survive a refresh
+    // and a Back press rather than falling back to Today.
+    expect(viewFromPath("/g/goal_demo_sat")).toBe("goal");
+    expect(viewFromPath("/g/goal_demo_oasis")).toBe("goal");
+    expect(canonicalView("goal")).toBe("goal");
+  });
+
   it("keeps trailing slashes and unknown paths on the safe default", () => {
     expect(viewFromPath("/")).toBe("today");
     expect(viewFromPath("/nothing-here")).toBe("today");

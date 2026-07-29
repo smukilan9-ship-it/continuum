@@ -1849,6 +1849,44 @@ body {
 .nav-item:hover { color: var(--ink); background: var(--surface-soft); }
 .nav-item.active { color: #171812; background: var(--lime); box-shadow: none; }
 .nav-item small { color: #171812; background: color-mix(in srgb, white 55%, transparent); }
+
+/* The user's own goals. A goal row is quieter than a destination — it carries a
+   title, a percentage, and a hairline of progress — so the fixed navigation
+   still reads as the primary structure. */
+.nav-group-goals { gap: 2px; }
+.nav-goal {
+  min-height: 38px;
+  padding: 7px 10px 9px;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.nav-goal:hover { color: var(--ink); background: var(--surface-soft); }
+.nav-goal.active { color: var(--ink); background: var(--surface-soft); }
+.nav-goal.active::before {
+  content: "";
+  position: absolute;
+  inset: 7px auto 7px 0;
+  width: 2px;
+  background: var(--lime);
+  border-radius: 2px;
+}
+.nav-goal-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-goal small { color: var(--muted); background: transparent; font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.nav-goal-progress {
+  position: absolute;
+  inset: auto auto 3px 10px;
+  height: 2px;
+  max-width: calc(100% - 20px);
+  background: color-mix(in srgb, var(--lime) 55%, transparent);
+  border-radius: 2px;
+}
 .command-hint { min-height: 43px; background: transparent; border-color: var(--line); border-radius: 11px; }
 .avatar { color: #171812; background: var(--lime); border-radius: 50%; }
 .main-area { margin-left: 248px; }
@@ -3974,4 +4012,76 @@ html[data-theme="dark"] .code-editor-shell .cm-editor .ͼf { color: #ff9a6b; }
 @media (max-width: 1024px) {
   /* Stacked layout — sticky would trap the inspector above the results. */
   .scholarly-detail { position: static; max-height: none; overflow-y: visible; }
+}
+
+/* ---------------------------------------------------------------------------
+   Goal page — the primary object. Everything for one goal in one destination,
+   so a goal's plan, study, and material stop living in four unconnected tabs.
+   --------------------------------------------------------------------------- */
+.goal-progress-strip { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-2); }
+.goal-progress-track { flex: 1; height: 4px; max-width: 320px; background: var(--surface-strong); border-radius: 999px; overflow: hidden; }
+.goal-progress-track > i { display: block; height: 100%; background: var(--lime); border-radius: 999px; }
+.goal-progress-strip > span { color: var(--muted); font-size: var(--type-small); }
+.goal-progress-strip strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.goal-overview { display: grid; gap: var(--space-4); }
+.goal-next-card { padding: var(--space-5); display: grid; gap: var(--space-2); justify-items: start; }
+.goal-next-card h2 { margin: 0; font-size: 21px; line-height: 1.25; letter-spacing: -.02em; }
+.goal-next-card p { margin: 0; color: var(--muted); }
+
+.goal-milestones { padding: var(--space-4); }
+.goal-milestone-list { margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-2); list-style: none; }
+.goal-milestone-list li { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: var(--space-2); }
+.goal-milestone-list strong { display: block; font-size: 14px; font-weight: 600; }
+.goal-milestone-list small { color: var(--muted); font-size: var(--type-caption); }
+.milestone-mark { width: 15px; height: 15px; margin-top: 2px; display: grid; place-items: center; color: var(--canvas); background: var(--surface-strong); border-radius: 50%; }
+.goal-milestone-list li.is-completed .milestone-mark { background: var(--green); }
+.goal-milestone-list li.is-in_progress .milestone-mark { background: var(--lime); }
+.goal-milestone-list li.is-completed strong { color: var(--muted); text-decoration: line-through; }
+
+.goal-overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--space-3); }
+.goal-overview-grid .card { padding: var(--space-4); display: grid; align-content: start; gap: var(--space-2); }
+.goal-overview-grid h3 { margin: 0; font-size: 19px; letter-spacing: -.02em; }
+.goal-overview-grid p { margin: 0; color: var(--muted); font-size: var(--type-small); }
+.goal-project-list { margin: 0; padding: 0; display: grid; gap: var(--space-2); list-style: none; }
+.goal-project-list strong { display: block; font-size: 13px; }
+.goal-project-list small { color: var(--muted); font-size: var(--type-caption); }
+.goal-inline-link { padding: 0; display: inline-flex; align-items: center; gap: 5px; color: var(--blue); background: transparent; border: 0; cursor: pointer; font-size: var(--type-small); font-weight: 650; }
+.goal-inline-link:hover { text-decoration: underline; }
+
+.goal-plan { display: grid; gap: var(--space-4); }
+.goal-task-group { display: grid; gap: var(--space-2); }
+.goal-task-group h2 { margin: 0 0 var(--space-1); color: var(--muted); font-size: var(--type-caption); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.goal-task-row { padding: var(--space-3); display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.goal-task-row strong { display: block; font-size: 14px; font-weight: 600; }
+.goal-task-row small { color: var(--muted); font-size: var(--type-caption); }
+.goal-task-mark { width: 15px; height: 15px; display: grid; place-items: center; color: var(--canvas); border: 1.5px solid var(--line-strong); border-radius: 50%; }
+.goal-task-row.is-done { opacity: .6; }
+.goal-task-row.is-done .goal-task-mark { background: var(--green); border-color: var(--green); }
+.goal-task-row.is-done strong { text-decoration: line-through; }
+.goal-done-group > summary { padding: var(--space-2) 0; color: var(--muted); cursor: pointer; font-size: var(--type-small); }
+.goal-done-group > .goal-task-row { margin-top: var(--space-2); }
+
+.goal-study { display: grid; gap: var(--space-5); }
+.goal-study-section { display: grid; gap: var(--space-2); }
+.goal-study-section h2 { margin: 0 0 var(--space-1); font-size: 16px; }
+.goal-concept-row { padding: var(--space-3); display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-3); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.goal-concept-row strong { display: block; font-size: 14px; font-weight: 600; }
+.goal-concept-row small { color: var(--muted); font-size: var(--type-caption); }
+.goal-quiet-line { margin: 0; color: var(--muted); font-size: var(--type-small); }
+
+.goal-sources { display: grid; gap: var(--space-2); }
+.goal-source-row { padding: var(--space-3); display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.goal-source-row > span:first-child { width: 34px; height: 34px; display: grid; place-items: center; color: var(--muted); background: var(--surface-soft); border-radius: 9px; }
+.goal-source-row strong { display: block; font-size: 14px; font-weight: 600; }
+.goal-source-row small { color: var(--muted); font-size: var(--type-caption); }
+
+.goal-footer-meta { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--type-caption); }
+.goal-footer-meta span { display: inline-flex; align-items: center; gap: 5px; }
+
+@media (max-width: 720px) {
+  .goal-task-row, .goal-concept-row { grid-template-columns: 18px minmax(0, 1fr); row-gap: var(--space-2); }
+  .goal-concept-row { grid-template-columns: minmax(0, 1fr); }
+  .goal-source-row { grid-template-columns: 34px minmax(0, 1fr); }
+  .goal-progress-strip { flex-wrap: wrap; }
 }

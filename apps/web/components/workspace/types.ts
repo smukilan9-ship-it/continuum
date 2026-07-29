@@ -4,6 +4,8 @@ export type WorkspaceState = {
   goals: Row[];
   tasks: Row[];
   taskDependencies: Row[];
+  /** Fetched by the today/goals/goal views; previously dropped on the floor here. */
+  milestones: Row[];
   projects: Row[];
   decisions: Row[];
   claims: Row[];
@@ -27,6 +29,7 @@ const keys: Array<keyof WorkspaceState> = [
   "goals",
   "tasks",
   "taskDependencies",
+  "milestones",
   "projects",
   "decisions",
   "claims",

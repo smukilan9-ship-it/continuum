@@ -1,4 +1,4 @@
-export const workspaceViews = ["today", "assistant", "goals", "learn", "code", "research", "library", "openalex", "zotero", "memory", "integrations", "account", "activity"] as const;
+export const workspaceViews = ["today", "assistant", "goals", "goal", "learn", "code", "research", "library", "openalex", "zotero", "memory", "integrations", "account", "activity"] as const;
 
 export type WorkspaceView = (typeof workspaceViews)[number];
 
@@ -6,6 +6,9 @@ export const workspacePath: Record<WorkspaceView, Route> = {
   today: "/today" as Route,
   assistant: "/assistant" as Route,
   goals: "/goals",
+  // A goal page is always opened for a specific goal, so this base path is only
+  // the registry entry that lets `/g/:id` resolve to the goal view by prefix.
+  goal: "/g" as Route,
   learn: "/learn",
   code: "/code" as Route,
   research: "/research",
@@ -22,6 +25,7 @@ export const workspaceMeta: Record<WorkspaceView, { title: string; description: 
   today: { title: "Today", description: "Your next action, current schedule, and last verified checkpoint." },
   assistant: { title: "Assistant", description: "Work with the smallest relevant slice of your Continuum context." },
   goals: { title: "Plan", description: "Outcomes, deadlines, tasks, calendar constraints, and proof of completion." },
+  goal: { title: "Goal", description: "Everything for one goal: its plan, what you are learning, and the material behind it." },
   learn: { title: "Learn", description: "Choose the best resource for your goal and verify progress afterward." },
   code: { title: "Code", description: "Understand the task, write code, run it, check the tests, and ask for help when needed." },
   research: { title: "Research", description: "Projects, source-backed claims, decisions, and unresolved questions." },

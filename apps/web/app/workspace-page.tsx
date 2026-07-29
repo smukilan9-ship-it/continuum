@@ -6,9 +6,9 @@ import { redirect } from "next/navigation";
 
 export const workspacePageMetadata = { robots: { index: false, follow: false } };
 
-export async function WorkspacePage({ view }: { view: WorkspaceView }) {
+export async function WorkspacePage({ view, goalId }: { view: WorkspaceView; goalId?: string }) {
   const user = await getServerUser();
-  if (!user) redirect(`/login?returnTo=${encodeURIComponent(workspacePath[view])}`);
+  if (!user) redirect(`/login?returnTo=${encodeURIComponent(goalId ? `/g/${goalId}` : workspacePath[view])}`);
   const snapshot = await getStore(user.id).workspace(view);
   const initialState = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
   // A user with no plan yet is pointed at onboarding from any workspace route,
@@ -20,7 +20,7 @@ export async function WorkspacePage({ view }: { view: WorkspaceView }) {
   // unexpected shape, leaves the user where they asked to be rather than
   // bouncing them out of a deep link.
   const needsOnboarding = view !== "today" && await hasNoGoals(user.id, view, initialState);
-  return <ContinuumApp user={user} initialState={initialState} view={view} serverNow={new Date().toISOString()} needsOnboarding={needsOnboarding} />;
+  return <ContinuumApp user={user} initialState={initialState} view={view} goalId={goalId} serverNow={new Date().toISOString()} needsOnboarding={needsOnboarding} />;
 }
 
 /**
@@ -29,7 +29,7 @@ export async function WorkspacePage({ view }: { view: WorkspaceView }) {
  * none" — reading it as the latter bounced every Library deep link to onboarding
  * and from there to Today.
  */
-const VIEWS_WITH_GOALS = new Set<WorkspaceView>(["today", "goals", "learn", "research", "memory", "code", "assistant"]);
+const VIEWS_WITH_GOALS = new Set<WorkspaceView>(["today", "goals", "goal", "learn", "research", "memory", "code", "assistant"]);
 
 async function hasNoGoals(userId: string, view: WorkspaceView, snapshot: Record<string, unknown>) {
   if (VIEWS_WITH_GOALS.has(view) && Array.isArray(snapshot.goals)) return snapshot.goals.length === 0;

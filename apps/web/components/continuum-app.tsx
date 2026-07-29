@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import type { Route } from "next";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -34,28 +35,32 @@ type NavItem = { id: WorkspaceView; label: string; icon: typeof CalendarDays };
 type NavGroup = { label: string; items: NavItem[]; variant?: "primary" | "utility" };
 
 /**
- * Grouped by intent ("what am I doing?") rather than by storage. Today is
- * ungrouped and visually primary because it is the intended daily entry point;
- * Zotero and OpenAlex are two halves of one job and share the Library
- * destination; the occasional destinations sit below a divider.
+ * The sidebar lists the user's own goals, not Continuum's feature list.
+ *
+ * It used to be thirteen destinations grouped by storage ("Work", "Sources"),
+ * so a goal's plan, material, study, and research lived in four unconnected
+ * tabs and nothing on screen said which goal you were working on. The fixed
+ * entries are now only the things that genuinely span goals; everything else
+ * hangs off the goal itself.
  */
 const navGroups: NavGroup[] = [
-  { label: "", variant: "primary", items: [{ id: "today", label: "Today", icon: CalendarDays }] },
   {
-    label: "Work",
+    label: "",
+    variant: "primary",
     items: [
-      { id: "assistant", label: "Assistant", icon: MessageCircle },
+      { id: "today", label: "Today", icon: CalendarDays },
+      { id: "assistant", label: "Ask Continuum", icon: MessageCircle },
       { id: "goals", label: "Plan", icon: Goal },
-      { id: "learn", label: "Learn", icon: BookOpen },
-      { id: "code", label: "Code", icon: Code2 },
-      { id: "research", label: "Research", icon: FlaskConical },
     ],
   },
   {
-    label: "Sources",
+    label: "Across your work",
     items: [
+      { id: "learn", label: "Learn", icon: BookOpen },
+      { id: "code", label: "Code", icon: Code2 },
+      { id: "research", label: "Research", icon: FlaskConical },
       { id: "library", label: "Library", icon: Library },
-      { id: "memory", label: "Memory", icon: Database },
+      { id: "memory", label: "Context", icon: Database },
     ],
   },
   {
@@ -96,7 +101,8 @@ const TOUR_STEPS = [
   { title: "⌘K jumps anywhere", body: "Search sections, goals, tasks, projects, and receipts from any screen." },
 ] as const;
 
-export function ContinuumApp({ user, initialState, view, serverNow, needsOnboarding = false }: { user: AuthUser; initialState: Record<string, unknown>; view: WorkspaceView; serverNow: string; needsOnboarding?: boolean }) {
+export function ContinuumApp({ user, initialState, view, goalId, serverNow, needsOnboarding = false }: { user: AuthUser; initialState: Record<string, unknown>; view: WorkspaceView; goalId?: string; serverNow: string; needsOnboarding?: boolean }) {
+  const [activeGoalId, setActiveGoalId] = useState(goalId);
   const [mobileNav, setMobileNav] = useState(false);
   const [compactNavigation, setCompactNavigation] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -119,6 +125,24 @@ export function ContinuumApp({ user, initialState, view, serverNow, needsOnboard
   const meta = workspaceMeta[currentView];
   const state = cacheRef.current.get(currentView);
   const pendingProposals = state?.proposals.filter((proposal) => proposal.status === "pending").length ?? 0;
+
+  /**
+   * Nearest deadline first, completed last, capped so a long list never pushes
+   * the rest of the sidebar out of reach. Views whose snapshot carries no goals
+   * fall back to the last set we held rather than blanking the section.
+   */
+  const goalsRef = useRef<Array<Record<string, unknown>>>([]);
+  if (state?.goals.length) goalsRef.current = state.goals;
+  const sidebarGoals = useMemo(() => {
+    const rows = state?.goals.length ? state.goals : goalsRef.current;
+    return [...rows]
+      .sort((left, right) => {
+        const done = Number(left.status === "completed") - Number(right.status === "completed");
+        if (done !== 0) return done;
+        return String(left.targetDate ?? "").localeCompare(String(right.targetDate ?? ""));
+      })
+      .slice(0, 8);
+  }, [state?.goals]);
   const moreActive = !mobileItems.some((item) => canonicalView(currentView) === item.id);
 
   const refreshView = useCallback(async (target: WorkspaceView) => {
@@ -137,11 +161,23 @@ export function ContinuumApp({ user, initialState, view, serverNow, needsOnboard
     setMobileNav(false);
     setCommandOpen(false);
     setCurrentView(next);
+    setActiveGoalId(undefined);
     if (typeof window !== "undefined" && window.location.pathname !== (workspacePath[next] as string)) {
       window.history.pushState({ view: next }, "", workspacePath[next]);
     }
     void refreshView(next);
   }, [refreshView]);
+
+  /**
+   * Opening a goal is a full navigation rather than a view switch: the goal view
+   * has its own snapshot, and the id lives in the path so the page is
+   * linkable and survives a refresh.
+   */
+  const openGoal = useCallback((id: string) => {
+    setMobileNav(false);
+    setCommandOpen(false);
+    window.location.assign(`/g/${encodeURIComponent(id)}`);
+  }, []);
 
   const refreshCurrent = useCallback(() => refreshView(currentView), [refreshView, currentView]);
 
@@ -280,6 +316,39 @@ export function ContinuumApp({ user, initialState, view, serverNow, needsOnboard
               })}
             </div>
           ))}
+
+          {/* The user's own goals, between the daily entry points and the
+              cross-cutting tools, so the sidebar reads as their work rather than
+              as a menu of Continuum's features. */}
+          {sidebarGoals.length ? (
+            <div className="nav-group nav-group-goals">
+              <p>Your goals</p>
+              {sidebarGoals.map((goal) => {
+                const id = String(goal.id ?? "");
+                const progress = Math.round(Number(goal.progress ?? 0) * 100);
+                const active = currentView === "goal" && activeGoalId === id;
+                return (
+                  <Link
+                    key={id}
+                    href={`/g/${encodeURIComponent(id)}` as Route}
+                    prefetch={false}
+                    className={active ? "nav-goal active" : "nav-goal"}
+                    aria-current={active ? "page" : undefined}
+                    title={String(goal.title ?? "")}
+                    onClick={(event) => {
+                      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                      event.preventDefault();
+                      openGoal(id);
+                    }}
+                  >
+                    <span className="nav-goal-title">{String(goal.title ?? "Untitled goal")}</span>
+                    <small aria-label={`${progress}% complete`}>{progress}%</small>
+                    <i className="nav-goal-progress" style={{ width: `${Math.max(3, progress)}%` }} aria-hidden="true" />
+                  </Link>
+                );
+              })}
+            </div>
+          ) : null}
         </nav>
 
         <div className="sidebar-spacer" />
@@ -305,7 +374,7 @@ export function ContinuumApp({ user, initialState, view, serverNow, needsOnboard
           {currentView === "integrations"
             ? <IntegrationsScreen showToast={setToast} />
             : state
-              ? <WorkspaceScreens view={currentView} state={state} user={user} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} serverNow={serverNow} onNavigate={navigate} onRefresh={refreshCurrent} showToast={setToast} />
+              ? <WorkspaceScreens view={currentView} state={state} user={user} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} serverNow={serverNow} goalId={activeGoalId} onNavigate={navigate} onRefresh={refreshCurrent} showToast={setToast} />
               : <ScreenLoading />}
         </div>
       </main>

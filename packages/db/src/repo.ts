@@ -465,6 +465,36 @@ export class NeonRepository {
       ]);
       return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), milestones: milestoneRows.map(({ milestone }) => milestone), schedule: scheduleRows, calendarConstraints: constraintRows };
     }
+    // One goal's whole working set. The goal page is the product's primary
+    // object, so it needs the plan, the concepts, the material, and the
+    // projects hanging off it in a single read rather than four screens' worth
+    // of separate snapshots.
+    if (view === "goal") {
+      const [goalRows, taskRows, dependencyRows, milestoneRows, projectRows, masteryRows, sourceRows, paperRows, scheduleRows, receiptRows, eventRows, questionBankRows] = await Promise.all([
+        userGoals(), userTasks(), this.listTaskDependencies(userId), userMilestones(), userProjects(),
+        this.db.select().from(learningStates).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false))),
+        this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).orderBy(desc(sources.createdAt)).limit(100),
+        this.db.select({ paper: papers }).from(papers).innerJoin(projects, eq(papers.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(papers.deleted, false))).orderBy(desc(papers.updatedAt)),
+        this.listSchedule(userId),
+        userReceipts(10), userEvents(30),
+        this.db.select().from(questionBanks).where(and(eq(questionBanks.userId, userId), eq(questionBanks.deleted, false))).orderBy(desc(questionBanks.updatedAt)).limit(20),
+      ]);
+      return {
+        ...empty,
+        goals: goalRows,
+        tasks: taskRows.map(({ task }) => task),
+        taskDependencies: dependencyRows,
+        milestones: milestoneRows.map(({ milestone }) => milestone),
+        projects: projectRows,
+        learningStates: masteryRows,
+        sources: sourceRows.map(publicSourceMetadata),
+        papers: paperRows.map(({ paper }) => paper),
+        schedule: scheduleRows,
+        receipts: receiptRows,
+        events: eventView(eventRows),
+        questionBanks: questionBankRows.map(publicQuestionBankSummary),
+      };
+    }
     if (view === "learn") {
       const [goalRows, taskRows, dependencyRows, masteryRows, activityRows, questionBankRows, receiptRows] = await Promise.all([
         userGoals(), userTasks(),
