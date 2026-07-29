@@ -8,7 +8,8 @@ import { getStore } from "@/lib/store";
 import { assistantMemoryMarkdown, assistantMemoryVaultPath } from "@/lib/assistant-memory-note";
 import { assistantMemorySyncStatuses, enqueueContinuumRecord, type RecordSyncStatus } from "@/lib/obsidian-sync-engine";
 import { publicErrorMessage } from "@/lib/api-errors";
-import { createOutputFilter, isConversationalFiller, redactContextValue } from "@/lib/assistant/output-filter";
+import { createOutputFilter, redactContextValue } from "@/lib/assistant/output-filter";
+import { classifyHeuristic, retrievalPlan } from "@/lib/assistant/classify";
 import { fromAttachments, fromMemoryChunks, fromWorkspaceContext, labelMap, mergeProvenance } from "@/lib/assistant/provenance";
 
 export const runtime = "nodejs";
@@ -295,18 +296,32 @@ export async function POST(request: Request) {
     coding: "code_reasoning",
     document: "document_understanding",
   } as const)[assistantMode];
-  const conversational = isConversationalFiller(userMessage);
+  // What the message needs is inferred from the message, not configured by the
+  // user. The scope checkboxes remain accepted for backwards compatibility, but
+  // they now only *narrow* an inferred plan — they can never widen it, so a
+  // stale default can no longer starve a workspace question of its context.
+  const classification = classifyHeuristic({
+    message: userMessage,
+    hasAttachments: attachmentIds.length > 0,
+    hasPageContext: false,
+    conversationEntities: messages.slice(-6).flatMap((message) => {
+      const used = (message.metadata as { usedContext?: Array<{ label?: string }> } | undefined)?.usedContext ?? [];
+      return used.map((entry) => String(entry.label ?? ""));
+    }).filter(Boolean),
+  });
+  const plan = retrievalPlan(classification);
+  const scopeOptedOut = requestedScopes.length === 1 && requestedScopes[0] === "conversation";
 
-  const useWorkspace = !conversational && requestedScopes.some((scope) => ["current_project", "current_learning", "research_library", "zotero", "obsidian", "code_workspace", "workspace"].includes(scope));
-  const useMemory = !conversational && (requestedScopes.includes("approved_memory") || requestedScopes.includes("workspace"));
+  const useWorkspace = plan.useWorkspace && !scopeOptedOut;
+  const useMemory = plan.useMemory && !scopeOptedOut;
 
   // Everything needed before the model call is independent, so it runs
   // concurrently. Serialising these was up to five DB round-trips of dead time
   // in front of the first streamed token.
   const [sourceRows, context, relevantMemory] = await Promise.all([
     attachmentIds.length ? store.listSources() as Promise<Array<Record<string, unknown>>> : Promise.resolve([]),
-    useWorkspace ? store.read("load_context", { focus: userMessage.slice(0, 500), maxTokens: 1_400 }, "continuum-assistant") : undefined,
-    useMemory ? store.searchMemory({ query: userMessage.slice(0, 500), limit: 6 }) : [],
+    useWorkspace ? store.read("load_context", { focus: userMessage.slice(0, 500), maxTokens: plan.maxTokens }, "continuum-assistant") : undefined,
+    useMemory ? store.searchMemory({ query: userMessage.slice(0, 500), limit: Math.min(8, plan.maxRecords) }) : [],
   ]);
 
   const selectedSources = sourceRows.filter((source) => attachmentIds.includes(String(source.id)));

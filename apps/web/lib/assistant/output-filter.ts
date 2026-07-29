@@ -314,6 +314,6 @@ export function isConversationalFiller(message: string): boolean {
   // at the start classified "hi, can you explain electric potential" as a
   // greeting and skipped retrieval for a real question.
   const FILLER_WORD =
-    /(?:hi|hey|hello|yo|sup|hiya|howdy|good (?:morning|afternoon|evening)|thanks?|thank you|ty|ok|okay|got it|cool|nice|great|awesome|perfect|bye|goodbye|see ya|test|ping)/;
+    /(?:hi|hey|hello|yo|sup|hiya|howdy|good (?:morning|afternoon|evening)|morning|afternoon|evening|thanks?|thank you|ty|cheers|ok|okay|kk|got it|understood|cool|nice|great|awesome|perfect|sure|yes|yep|yeah|no|nope|bye|goodbye|see ya|later|test|ping|there|again|everyone|all|mate|friend)/;
   return new RegExp(`^(?:${FILLER_WORD.source})(?:[\\s,.!-]+(?:${FILLER_WORD.source}))*[\\s,.!-]*$`, "i").test(trimmed);
 }
