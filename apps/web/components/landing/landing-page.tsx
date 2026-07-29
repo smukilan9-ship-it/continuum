@@ -25,7 +25,7 @@ const features = [
     title: "Research",
     eyebrow: "Move from search results to defensible claims",
     description: "Discover, compare, cite, and preserve the evidence behind every decision.",
-    points: ["OpenAlex integration", "Citation graphs", "Paper discovery", "Related work", "Automatic references"],
+    points: ["OpenAlex integration", "Citation graphs", "Paper discovery", "Related work", "One-click citations"],
   },
   {
     id: "learn",
@@ -40,8 +40,8 @@ const features = [
     number: "04",
     title: "Projects",
     eyebrow: "The outcome holds the context together",
-    description: "Every conversation. Every document. Every decision. Every idea. Still connected when you return.",
-    points: ["Linked milestones", "Decision history", "Research context", "Durable checkpoints", "Project memory"],
+    description: "Sources, claims, and the decisions behind them — still connected when you return.",
+    points: ["Decision history", "Evidence-linked claims", "Research context", "Session summaries", "Project memory"],
   },
   {
     id: "code",
@@ -49,15 +49,15 @@ const features = [
     title: "Code",
     eyebrow: "Build beside the evidence",
     description: "Move from a paper or explanation to a working experiment without changing mental workspaces.",
-    points: ["Run Python", "Generate and debug", "Multiple model routing", "Integrated workspace", "Source-aware help"],
+    points: ["Run Python", "JavaScript and SQL", "Debug with real output", "Integrated workspace", "Source-aware help"],
   },
   {
-    id: "knowledge",
+    id: "memory",
     number: "06",
-    title: "Knowledge Graph",
-    eyebrow: "Your work becomes a connected network",
-    description: "Every note, chat, source, concept, and project becomes part of one navigable academic memory.",
-    points: ["Typed relationships", "Source provenance", "Concept branches", "Cross-project recall", "Relevant retrieval"],
+    title: "Shared memory",
+    eyebrow: "One workspace your tools can read",
+    description: "Ask a question and the answer comes from your own material — with the records it used shown alongside it.",
+    points: ["Relevant recall", "Source provenance", "Cross-project search", "Scoped context packs", "Approved writes only"],
   },
 ] as const;
 
@@ -78,7 +78,7 @@ const footerColumns = [
   },
   {
     title: "Company",
-    links: [["Pricing", "#final-cta"], ["Privacy", "/privacy"], ["Terms", "/terms"], ["Contact", "https://github.com/smukilan9-ship-it/continuum/issues/new"]],
+    links: [["Privacy", "/privacy"], ["Terms", "/terms"], ["Contact", "https://github.com/smukilan9-ship-it/continuum/issues/new"]],
   },
   {
     title: "Build",
@@ -143,12 +143,12 @@ export function LandingPage() {
               Instead of juggling AI chats, notes, research papers, code, and projects across dozens of apps, Continuum brings them together into one intelligent workspace that remembers everything and helps you move from curiosity to mastery.
             </p>
             <div className="landing-hero-actions">
-              <Link className="landing-button landing-button-primary" href="/login?mode=register&returnTo=%2Ftoday">Start Free <ArrowRight size={17} /></Link>
-              <a className="landing-button landing-button-secondary" href="#workflow"><Play size={15} fill="currentColor" /> Watch Demo</a>
+              <Link className="landing-button landing-button-primary" href="/login?demo=1&returnTo=%2Ftoday">Try the demo workspace <ArrowRight size={17} /></Link>
+              <Link className="landing-button landing-button-secondary" href="/login?mode=register&returnTo=%2Ftoday"><Play size={15} fill="currentColor" /> Create your workspace</Link>
             </div>
             <div className="landing-hero-proof">
               <span><Check size={14} /> No credit card required</span>
-              <span>Works with Claude, GPT, Gemini, Ollama, and more.</span>
+              <span>Works with Claude, Zotero, Obsidian, and OpenAlex.</span>
             </div>
           </div>
           <HeroProductMockup />
@@ -157,7 +157,7 @@ export function LandingPage() {
         <section className="landing-trust" aria-label="Supported tools">
           <p>Works with the tools you already use.</p>
           <div className="landing-logo-cloud">
-            {["OpenAlex", "Zotero", "Obsidian", "Claude", "OpenAI", "Gemini", "Groq", "Featherless", "Ollama"].map((tool) => (
+            {["OpenAlex", "Crossref", "Zotero", "Obsidian", "Claude", "Ollama"].map((tool) => (
               <span key={tool}>{tool}</span>
             ))}
           </div>

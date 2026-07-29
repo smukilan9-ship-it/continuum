@@ -19,9 +19,9 @@ const structuredData = {
   featureList: [
     "Persistent academic memory",
     "OpenAlex research discovery",
-    "Adaptive learning paths",
+    "Evidence-based learning progress",
     "Connected projects and code",
-    "Knowledge graphs",
+    "Browser-sandboxed code execution",
     "Local model support",
   ],
 };

@@ -28,6 +28,31 @@ describe("demo data content", () => {
     expect(data.goalRows.every((goal) => goal.status === "active")).toBe(true);
   });
 
+  it("seeds two realistic conversations whose citations resolve to real records", () => {
+    expect(data.assistantSessionRows).toHaveLength(2);
+    expect(data.assistantSessionRows.every((row) => !/probe/i.test(row.title))).toBe(true);
+
+    // Every cited record id must exist in the seeded fixture, so the citation
+    // chips in the UI open something real rather than dangling.
+    const known = new Set<string>([
+      ...ids(data.goalRows), ...ids(data.projectRows), ...ids(data.decisionRows),
+      ...ids(data.sourceRows), ...ids(data.memoryChunkRows), ...ids(data.taskRows),
+    ]);
+    const cited = data.assistantMessageRows.flatMap((message) => {
+      const used = (message.metadata as { usedContext?: Array<{ id: string }> }).usedContext ?? [];
+      return used.map((entry) => entry.id);
+    });
+    expect(cited.length).toBeGreaterThanOrEqual(4);
+    for (const id of cited) expect(known.has(id)).toBe(true);
+  });
+
+  it("never writes a raw internal identifier into assistant message text", () => {
+    const leak = /\b(goal|task|project|activity|receipt|block|concept|event|record|mchunk|source|chunk|decision)_[a-z0-9]{4,}\b/i;
+    for (const message of data.assistantMessageRows) {
+      expect(message.content).not.toMatch(leak);
+    }
+  });
+
   it("records the mandatory OASIS co-expression decision", () => {
     const decision = data.decisionRows.find((row) => row.id === "decision_demo_oasis_coexpr");
     expect(decision?.text).toMatch(/never be presented as same-cell co-expression/i);

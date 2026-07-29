@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   description: "Continuum connects AI conversations, research, notes, code, projects, and mastery in one continuous learning workspace.",
   metadataBase: new URL(process.env.APP_BASE_URL ?? "http://localhost:3000"),
   applicationName: "Continuum",
-  keywords: ["AI learning workspace", "academic research", "persistent memory", "OpenAlex", "Zotero", "knowledge graph", "adaptive learning"],
+  keywords: ["AI learning workspace", "academic research", "persistent memory", "OpenAlex", "Zotero", "Obsidian", "study planner"],
   authors: [{ name: "Continuum" }],
   creator: "Continuum",
   category: "education",

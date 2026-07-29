@@ -19,6 +19,8 @@ import { closeDatabase, getDatabase } from "./client";
 import {
   assessmentAttempts,
   assessments,
+  assistantMessages,
+  assistantSessions,
   calendarConstraints,
   claimEvidence,
   concepts,
@@ -73,6 +75,8 @@ async function createPasswordCredential(password: string) {
 // Reset targets: each table plus the id prefix that marks a demo-owned row.
 // Ordered children-before-parents so foreign keys never block a delete.
 export const RESET_TARGETS: Array<[table: { id: unknown }, prefix: string]> = [
+  [assistantMessages, "amsg_demo_"],
+  [assistantSessions, "asession_demo_"],
   [claimEvidence, "ev_demo_"],
   [researchClaims, "claim_demo_"],
   [researchNotes, "note_demo_"],
@@ -408,11 +412,109 @@ export function buildDemoData(now: Date) {
     { id: "route_demo_3", userId: DEMO_ACCOUNT_USER_ID, taskClass: "retrieval_grounded", provider: "gemini", model: "gemini-embedding-001", reason: "Grounded Q&A over OASIS sources — embeddings for citation-locked retrieval.", verificationStatus: "verified", fallbackUsed: false },
   ];
 
+  // Two lived-in conversations so a reset demo opens on a real thread rather
+  // than an empty Ask screen. Each assistant turn carries `usedContext` naming
+  // the exact seeded records the answer came from, so the citation chips in the
+  // UI resolve to rows that genuinely exist.
+  const assistantSessionRows = [
+    {
+      id: "asession_demo_oasis",
+      userId: DEMO_ACCOUNT_USER_ID,
+      title: "What did I decide about cross-marker association?",
+      status: "active",
+      summary: "Confirmed that cross-marker spatial association is population-level, never same-cell co-expression, and that registration stays similarity-only.",
+      decisions: ["Never present cross-marker association as same-cell co-expression", "Registration stays similarity-only before any cross-K test"],
+      unresolvedQuestions: ["Does the dense-null candidate hold on the LL477 H-DAB bundles?"],
+      createdTasks: [],
+      importantFacts: ["Serial sections are different physical slices, so two markers can never be the same cell."],
+      linkedEntityIds: ["project_demo_oasis", "decision_demo_oasis_coexpr", "decision_demo_oasis_warp"],
+      pinned: true,
+      lastMessageAt: hoursFromNow(-22),
+    },
+    {
+      id: "asession_demo_sat",
+      userId: DEMO_ACCOUNT_USER_ID,
+      title: "What should I work on next for the SAT?",
+      status: "active",
+      summary: "Advanced geometry is the weakest area; arc-length and sector-area formulas are still swapping under time pressure.",
+      decisions: [],
+      unresolvedQuestions: [],
+      createdTasks: ["Rework the 12 flagged advanced-geometry misses in the error log"],
+      importantFacts: ["Parabola-item pace improved from 95s to 68s per question."],
+      linkedEntityIds: ["goal_demo_sat"],
+      pinned: false,
+      lastMessageAt: hoursFromNow(-4),
+    },
+  ];
+
+  const assistantMessageRows = [
+    {
+      id: "amsg_demo_oasis_u",
+      sessionId: "asession_demo_oasis",
+      userId: DEMO_ACCOUNT_USER_ID,
+      role: "user",
+      content: "What did I decide about cross-marker association?",
+      metadata: { contextScopes: ["current_project"] },
+      createdAt: hoursFromNow(-22),
+    },
+    {
+      id: "amsg_demo_oasis_a",
+      sessionId: "asession_demo_oasis",
+      userId: DEMO_ACCOUNT_USER_ID,
+      role: "assistant",
+      content:
+        "You accepted two decisions on this, and they constrain each other.\n\n" +
+        "**Cross-marker spatial association is never same-cell co-expression.** Serial sections are different physical slices, so a CD8 cell and a TIM-3 cell cannot be the same cell. OASIS measures population-level association through cross-type Ripley's K. Claiming co-expression would need multiplex on a single section or a restaining protocol, and neither is in this pipeline.\n\n" +
+        "**Registration stays similarity-only.** A non-rigid warp fabricates the very inter-cell distances the statistic consumes, so it is forbidden before any cross-K test. The ANHIR comparison confirmed VALIS-nonrigid is more accurate overall but is exactly the operation you ruled out; VALIS-rigid is the safe fallback where LoFTR fails on cross-modal stains.\n\n" +
+        "Still open: whether the dense-null candidate holds on the two completed LL477 H-DAB bundles.",
+      provider: "seed",
+      model: "seed",
+      metadata: {
+        usedContext: [
+          { type: "decision", id: "decision_demo_oasis_coexpr", label: "Cross-marker association is not co-expression" },
+          { type: "decision", id: "decision_demo_oasis_warp", label: "Registration stays similarity-only" },
+          { type: "source", id: "source_demo_ihc", label: "OASIS — Technical Reference" },
+        ],
+      },
+      createdAt: hoursFromNow(-22),
+    },
+    {
+      id: "amsg_demo_sat_u",
+      sessionId: "asession_demo_sat",
+      userId: DEMO_ACCOUNT_USER_ID,
+      role: "user",
+      content: "Based on my plan, what should I work on next for the SAT?",
+      metadata: { contextScopes: ["approved_memory"] },
+      createdAt: hoursFromNow(-4),
+    },
+    {
+      id: "amsg_demo_sat_a",
+      sessionId: "asession_demo_sat",
+      userId: DEMO_ACCOUNT_USER_ID,
+      role: "assistant",
+      content:
+        "Advanced geometry, specifically the arc-length and sector-area pair.\n\n" +
+        "Your error log shows those two formulas swapping under time pressure, and accuracy drops in the last third of timed sets — so this is a recall-under-pressure problem, not a comprehension one. Reworking the 12 flagged misses will do more for your score than another full mock right now.\n\n" +
+        "Pace is not the constraint any more: parabola items went from 95s to 68s after the error-log rework, and Math practice is trending toward 800. Protect that and fix the formula confusion.",
+      provider: "seed",
+      model: "seed",
+      metadata: {
+        usedContext: [
+          { type: "goal", id: "goal_demo_sat", label: "Raise SAT score from 1520 to 1570+" },
+          { type: "misconception", id: "mchunk_demo_misc_sat", label: "Arc-length and sector-area swapped under time pressure" },
+          { type: "progress", id: "mchunk_demo_progress_sat", label: "Parabola pace 95s → 68s" },
+        ],
+      },
+      createdAt: hoursFromNow(-4),
+    },
+  ];
+
   return {
     goalRows, milestoneRows, taskRows, taskDeps, projectRows, sourceRows, chunkRows, paperRows,
     decisionRows, noteRows, claimRows, evidenceRows, curriculumRows, curriculumNodeRows, conceptRows,
     learningStateRows, assessmentRows, attemptRows, misconceptionRows, scheduleRows, calendarRows,
     receiptRows, eventRows, recordRows, memoryChunkRows, resourceRows, activityRows, routeRows,
+    assistantSessionRows, assistantMessageRows,
   };
 }
 
@@ -508,6 +610,8 @@ export async function seedDemoAccount(options: SeedDemoOptions): Promise<SeedDem
   await db.insert(sessionReceipts).values(data.receiptRows).onConflictDoNothing();
   await db.insert(resourceActivities).values(data.activityRows).onConflictDoNothing();
   await db.insert(modelRoutes).values(data.routeRows).onConflictDoNothing();
+  await db.insert(assistantSessions).values(data.assistantSessionRows).onConflictDoNothing();
+  await db.insert(assistantMessages).values(data.assistantMessageRows).onConflictDoNothing();
 
   return {
     username: DEMO_ACCOUNT_USERNAME,
