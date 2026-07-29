@@ -7,7 +7,7 @@ import { Button, EmptyState, Menu, ProgressBar, StatusChip } from "@/components/
 import { plainCopy as plain } from "@/lib/user-copy";
 import type { WorkspaceView } from "@/lib/workspace-routes";
 
-import { OnboardingFlow } from "../workspace/onboarding-flow";
+import { StartFlow } from "../start/start-flow";
 import { formatDate, list, number, text, type Row, type WorkspaceState } from "../workspace/types";
 import "./home.css";
 
@@ -146,7 +146,7 @@ export function HomePage({
     return items.slice(0, 3);
   }, [state.resourceActivities, state.assistantSessions, state.receipts, state.events, timeZone]);
 
-  if (!state.goals.length) return <OnboardingFlow userName={userName} onRefresh={onRefresh} onNavigate={onNavigate} />;
+  if (!state.goals.length) return <StartFlow userName={userName} onRefresh={onRefresh} onNavigate={onNavigate} />;
 
   /** Route by task type (§9.4) rather than always sending the user to Learn. */
   function startNext() {

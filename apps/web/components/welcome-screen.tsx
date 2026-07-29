@@ -2,21 +2,24 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
-import { OnboardingFlow } from "@/components/workspace/onboarding-flow";
-import { workspacePath } from "@/lib/workspace-routes";
+
+import { StartFlow } from "@/components/start/start-flow";
+import { workspacePath, type WorkspaceView } from "@/lib/workspace-routes";
 
 export const SKIP_ONBOARDING_KEY = "continuum.onboarding.skipped.v1";
 
 /**
- * The standalone onboarding route. "Skip for now" sets a flag so a power user can
- * explore the empty workspace, and the flag is cleared once a plan exists.
+ * The standalone first-run route. The separate "Skip for now" link below the
+ * panel is gone — StartFlow offers skipping inline as a secondary action on
+ * step 1, so the escape hatch is where the decision is made rather than
+ * duplicated underneath (§9.3 AC-S4).
  */
 export function WelcomeScreen({ userName }: { userName: string }) {
   const router = useRouter();
 
-  const finish = useCallback(async (view?: "goals" | "today" | "learn") => {
+  const finish = useCallback((view?: WorkspaceView) => {
+    // A fresh account is about to gain goals, so the whole snapshot is stale.
     window.localStorage.removeItem(SKIP_ONBOARDING_KEY);
-    // A fresh account is about to gain goals, so the whole workspace snapshot is stale.
     router.replace(workspacePath[view ?? "today"]);
     router.refresh();
   }, [router]);
@@ -25,22 +28,11 @@ export function WelcomeScreen({ userName }: { userName: string }) {
     <div className="app-shell welcome-shell">
       <main className="main-area">
         <div className="content-wrap">
-          <OnboardingFlow
+          <StartFlow
             userName={userName}
-            onRefresh={async () => { /* navigation happens on the completion CTA */ }}
-            onNavigate={(view) => void finish(view)}
+            onRefresh={async () => finish("today")}
+            onNavigate={(view) => finish(view)}
           />
-          <div className="welcome-skip">
-            <button
-              type="button"
-              onClick={() => {
-                window.localStorage.setItem(SKIP_ONBOARDING_KEY, "1");
-                router.replace(workspacePath.today);
-              }}
-            >
-              Skip for now and explore the workspace
-            </button>
-          </div>
         </div>
       </main>
     </div>

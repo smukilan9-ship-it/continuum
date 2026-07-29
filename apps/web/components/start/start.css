@@ -1,0 +1,44 @@
+/* /start first run (redesign.md §9.3). Tokens only. */
+
+.start { min-height: 70vh; display: grid; place-items: center; padding: var(--s-10) var(--s-4); }
+
+/* Single column, max 560, centred, at every size (§9.3). */
+.start-panel { width: min(560px, 100%); display: grid; gap: var(--s-4); }
+.start-panel h1 { margin: 0; font-size: 28px; line-height: 1.25; font-weight: 600; letter-spacing: -.01em; }
+.start-panel > p { margin: 0; color: var(--ink-2); font-size: var(--t-body); line-height: 1.6; }
+
+.start-examples { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.start-examples button {
+  padding: var(--s-1) var(--s-3); min-height: 32px;
+  color: var(--ink-2); background: var(--surface-raised);
+  border: 1px solid var(--line); border-radius: var(--r-full);
+  cursor: pointer; font-size: var(--t-small);
+}
+.start-examples button:hover { color: var(--ink); border-color: var(--line-strong); }
+
+.start-commitments { display: grid; gap: var(--s-2); }
+.start-commitments button {
+  padding: var(--s-4);
+  display: grid; gap: 2px; text-align: left;
+  color: inherit; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  cursor: pointer;
+}
+.start-commitments button:hover { background: var(--accent-quiet); border-color: var(--line-strong); }
+.start-commitments strong { color: var(--ink); font-size: var(--t-body); font-weight: 500; }
+.start-commitments small { color: var(--ink-3); font-size: var(--t-small); }
+
+.start-actions { margin-top: var(--s-2); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+
+.start-stages { margin: var(--s-2) 0 0; padding: 0; list-style: none; display: grid; gap: var(--s-2); }
+.start-stages li { display: flex; align-items: center; gap: var(--s-2); color: var(--ink-3); font-size: var(--t-body); }
+.start-stages li span { display: grid; place-items: center; width: 18px; height: 18px; }
+.start-stages li.is-active { color: var(--ink); }
+.start-stages li.is-done { color: var(--ink-2); }
+
+.start-result { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: var(--s-5); }
+.start-result li { color: var(--ink-2); font-size: var(--t-small); }
+.start-result strong { display: block; color: var(--ink); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.start-schedule { margin: 0; padding: var(--s-3); color: var(--ink); background: var(--accent-quiet); border-radius: var(--r-md); font-size: var(--t-small); }
+
+.start-error { margin: 0; padding: var(--s-3); color: var(--danger); background: var(--danger-surface); border-radius: var(--r-md); font-size: var(--t-small); }
