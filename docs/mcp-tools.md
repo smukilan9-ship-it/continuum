@@ -4,41 +4,64 @@ Continuum exposes the official MCP SDK over stateless Streamable HTTP at `/mcp`.
 
 The Integrations screen shows current client IDs, names, scopes, connection time, expiry, and revocation controls. Revocation is checked before every request.
 
-## Canonical tools
+## Tools
 
-| Tool | Class | Required scope | Behavior |
+Every tool is named for a question a user would ask, not for the operation
+behind it, and each is written so a model can pick the right one from the
+description alone. Fifteen are registered; every documented workflow completes
+in at most two calls.
+
+| Tool | Class | Required scope | Answers |
 |---|---|---|---|
-| `load_context` | Read | `memory:read` | Token-budgeted current state plus relevant memory; full history stays searchable |
-| `list_projects` | Read | `research:read` | Concise project selector for the host to display |
-| `load_project` | Read | `research:read` | One project with decisions, tasks, sources, receipts, and relevant memories |
-| `list_goals` | Read | `goals:read` | User-owned goal selector |
-| `load_goal` | Read | `goals:read` | One goal with tasks and linked projects |
-| `load_learning_state` | Read | `learning:read` | Evidence-backed multidimensional mastery |
-| `load_schedule` | Read | `schedule:read` | Committed user-owned Continuum blocks, optionally time-bounded |
-| `search_memory` | Read | `memory:read` | Hybrid semantic/lexical retrieval with optional goal/project/type filters |
-| `search_research` | Read | `research:read` | Real notes, decisions, claims, sources, and exact passages |
-| `get_claim_evidence` | Read | `research:read` | Claim, evidence status, passage, hashes, versions, and timestamps |
-| `get_source_passage` | Read | `research:read` | Exact stored passage by source/chunk ID |
-| `recommend_resource` | Read | `resources:read` | Reviewed native-versus-external decision and guided return contract |
-| `load_outcome_receipt` | Read | `memory:read` | Latest or selected compact session result |
-| `sync_session` | Write | `memory:write` | Saves durable session outcomes without copying a raw conversation |
-| `record_progress` | Write | `memory:write` | Updates an owned task and optional evidence |
-| `save_artifact` | Write | `research:write` | Links artifact metadata to an owned project |
-| `save_research_note` | Write | `research:write` | Saves a note linked to an optional accessible passage |
-| `save_research_claim` | Write | `research:write` | Saves an assistant claim as unverified with exact passage links |
-| `save_decision` | Standalone action | — | User records an accepted decision in Continuum; not registered remotely |
-| `record_learning_evidence` | Write | `learning:write` | Updates transfer only for correct unseen assessment evidence |
-| `propose_goal_change` | Propose | `goals:write` | Creates an expiring creation/change proposal |
-| `propose_project_change` | Propose | `research:write` | Creates an expiring creation/change proposal |
-| `propose_task_change` | Propose | `goals:write` | Creates an expiring creation/change proposal |
-| `propose_schedule_change` | Propose | `schedule:propose` | Records a plan/change without mutating schedule blocks |
-| `confirm_proposal` | Standalone action | — | User confirms in Continuum Activity; not registered remotely |
-| `commit_schedule_change` | Write | `schedule:commit` | Applies a separately confirmed internal schedule proposal; no calendar claim |
-| `start_resource_activity` | Write | `memory:write` | Saves a guided resource handoff before the user leaves |
-| `complete_resource_activity` | Write | `memory:write` | Records return/evidence without granting mastery |
-| `route_specialist_task` | Invoke | `routing:invoke` | Uses a server provider only for a justified specialist or verification task |
+| `find_in_continuum` | Read | `memory:read` | "What do I have about X?" Searches goals, projects, sources, papers, notes, decisions, conversations, and concepts in one call |
+| `get_my_current_work` | Read | `memory:read` | "What am I working on?" Active goals, today's blocks, current tasks, recent decisions, and the best next action |
+| `open_goal` | Read | `goals:read` | One goal in full: outcome, deadline, progress, milestones, tasks, blockers |
+| `open_project` | Read | `research:read` | One project in full: papers, sources, claims, decisions, open questions |
+| `read_source_passage` | Read | `research:read` | The exact passage behind a citation, with a stable reference |
+| `get_evidence_for_claim` | Read | `research:read` | Supporting and contradicting passages for one claim, with evidence status |
+| `whats_changed` | Read | `memory:read` | "Pick up where we left off." Resumes from the last saved session when no time is given |
+| `get_study_status` | Read | `learning:read` | What the user knows, which misconceptions are open, and what would move each forward |
+| `suggest_next_resource` | Read | `resources:read` | One specific next resource, ranked, with a way to check completion |
+| `start_study_session` | Write | `memory:write` | Records a resource handoff so the return can be checked against the task |
+| `record_practice_result` | Write | `learning:write` | Records a real attempt; closes its resource activity in the same call |
+| `save_to_continuum` | Write | `research:write` | Saves a note, an evidence-linked claim, or an artifact into a project |
+| `save_progress_note` | Write | `memory:write` | Appends a progress checkpoint. Cannot mark work complete |
+| `save_session_summary` | Write | `memory:write` | Saves what the session accomplished so the next one can resume |
+| `propose_change` | Propose | per target | Proposes a goal, task, project, or schedule change for the user to approve |
 
-There are 29 shared action definitions and 27 can be registered as remote MCP tools. `save_decision` and `confirm_proposal` are deliberately standalone-only so an assistant cannot assert that the user approved its own high-impact change. Tools outside the granted scopes are also omitted from that MCP session, reducing exposure and schema tokens. Successful calls return one concise text summary and structured content rather than duplicating a full JSON dump in text.
+`propose_change` is measured against the scope its target actually needs —
+`schedule:propose` for a schedule change, `research:write` for a project — so a
+grant cannot be widened by choosing a different target.
+
+Two tools degrade rather than fail when a grant is narrow: `find_in_continuum`
+searches only research if `research:read` was approved, and reports which
+sources it searched; `get_my_current_work` omits the schedule without
+`schedule:read`.
+
+### Not available to an assistant
+
+`save_decision`, `confirm_proposal`, and `commit_schedule_change` are
+standalone-only. Accepting a decision, confirming a proposal, and committing a
+schedule are the signed-in user's actions, and an assistant must not be able to
+assert that the user approved its own change. Nothing an assistant calls can
+mark work complete: `save_progress_note` has no `done` status, and completion
+goes through `propose_change`.
+
+### Superseded operations
+
+Thirty-three low-level operations preceded this set — `load_context`,
+`get_context_pack`, `list_projects`, `record_approved_update` and the rest —
+where six existed only to feed six others, so a real workflow cost three to five
+chained calls. They remain callable by name so an in-flight request does not
+fail, but are withdrawn from what a client discovers. `route_specialist_task`
+was removed outright: it asked the calling model to route its own reasoning back
+through Continuum, which spent budget, served no user outcome, and made tool
+selection harder.
+
+Tools outside the granted scopes are omitted from the session entirely, reducing
+exposure and schema tokens. Successful calls return one concise text summary
+plus structured content, and discovery tools carry a `suggestedNext` sentence so
+a workflow does not stall.
 
 ## Resources and prompts
 
