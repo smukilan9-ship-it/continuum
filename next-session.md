@@ -10,6 +10,37 @@ deliberately deviated from, and what will waste your time if you don't know it.
 
 ---
 
+## ⚠️ Two migrations are authored but NOT applied — apply them first
+
+`/memory` and `/research` currently return **500** locally. Nothing else does
+(11 of 13 routes return 200). The cause is exact and is not a code bug:
+
+```
+column "processing_state" does not exist    SQLSTATE 42703
+```
+
+Phase 6 added `packages/db/migrations/0009_source_lifecycle.sql`
+(`processing_state`, `processing_error`, `retention` on `sources`) and Phase 7
+added `0010_study_sessions.sql`. `packages/db/src/schema.ts` now selects those
+columns, so the two `getWorkspaceSnapshot` branches that read `sources` —
+`research` (repo.ts:518) and `memory` (repo.ts:529) — fail until the migration
+runs. Every other route is unaffected because no other branch selects `sources`.
+
+**Neither migration was run against any database, deliberately.** `.env.local`
+points at the **production** Neon instance, and running DDL against a live
+database unattended is not something to do on someone's behalf. Both migrations
+are purely additive (§16.8) and defaulted, so applying them will not disturb the
+currently-deployed build, which does not reference the new columns:
+
+```bash
+pnpm db:migrate
+```
+
+Run that, then re-check `/memory` and `/research`. The same drift is what breaks
+preview deployments (note 2 below) — preview is behind by migration 0008.
+
+---
+
 ## Read this before touching anything
 
 1. **The branch is pushed; production is old because nothing was merged.**
@@ -87,7 +118,70 @@ deliberately deviated from, and what will waste your time if you don't know it.
 
 ---
 
-## What has been executed, phase by phase
+## Session 2 — what changed since the above was written
+
+Seven commits. Phases 1, 4, 5, 6, 7, 9 and 10 all moved; four ran as parallel
+agents in isolated worktrees and were merged here.
+
+| Phase | Was | Now | Commit |
+|---|---|---|---|
+| 1 Design system | ~20% | **Done** | `9192e92` |
+| 4 Home / Goal / Review | Not started | **Home + Review done**; goal page still the Phase 2 version | `849c370` |
+| 5 Build | ~40% | **Done** — C7 verified end to end | merge `worktree-agent-a321…` |
+| 6 Library / sources / Zotero | Not started | **Done** (migration 0009 unapplied) | merge `worktree-agent-ab3e…` |
+| 7 Study / Plan | ~15% | **Done** (migration 0010 unapplied) | merge `worktree-agent-ab49…` |
+| 9 Settings / Connections | ~60% | **Done** | merge `worktree-agent-a816…` |
+| 10 Context + `/start` | Not started | **Done** except Forget | `7863c52`, `5806d11` |
+
+**Still not started: Phase 8 (marketing rebuild) and Phase 2's route-group
+migration + the 15 redirects (§16.7).** The redirects cannot land until the new
+paths exist, which is why they were left.
+
+Verified green after every merge: **412 tests / 45 files**, `turbo typecheck`,
+`turbo build`.
+
+### Corrections and findings from this session
+
+1. **The identifier regex in the plan is wrong.** §9.4 AC-H3 and §11.5 both
+   specify `_[a-z0-9]{6,}`, which never matches this product's ids —
+   `goal_demo_sat` contains an underscore, so the run after the prefix is not
+   six unbroken alphanumerics. Phase 3's output filter already used the correct
+   class; `apps/web/lib/user-copy.ts` now shares it and `tests/user-copy.test.ts`
+   pins the real shapes.
+2. **Agent worktrees are cut from `main`, not from this branch.** All four
+   agents started on `25355b6` (pre-redesign) and each had to reset to the
+   branch tip before working. If you delegate again, say so explicitly in the
+   brief.
+3. **Phases 6 and 7 both authored a migration numbered `0009`.** Resolved at
+   merge: `0009_source_lifecycle`, `0010_study_sessions`, journal entries 9
+   and 10.
+4. **`.claude/worktrees/` is now gitignored** — a `git add -A` swept the agent
+   worktrees in as embedded repos.
+5. **One existing assertion changed**, in `tests/context-packs.test.ts`. It
+   checked that a raw id appeared in exported Markdown, which was only true
+   because the body was a JSON dump. Its stated purpose (deterministic
+   frontmatter, stable ids) is still covered by the line above it; the body
+   assertion now checks real content. No other test was touched.
+
+### Known gaps in the new work
+
+- **Forget** (§9.9 AC-CX3) is not built — it needs a store write across both
+  `MemoryStore` and `NeonStore`. No dead button was shipped in its place.
+- **`⌘J` does not exist**, so Build's *Ask* and Library's *Ask about this* both
+  degrade honestly rather than opening a panel. Build passes an `onAskAssistant`
+  prop nothing supplies yet.
+- **`concept-map.tsx` is orphaned** — §14.1 moves it to the goal Overview, which
+  lives in `goal-screen.tsx`.
+- **BYOK now appears twice** — Settings › AI is its proper home, but the
+  composer's inline key modal still exists in `assistant-screen.tsx`.
+- **`e2e/continuum.spec.ts` will fail**; it drives the old Learn screen by copy.
+  Playwright is not part of `pnpm test`, so it did not block.
+- **`/start` is not visually verified** — reaching it needs an account with no
+  goals, and the demo account has four.
+
+---
+
+## What has been executed, phase by phase *(session 1 — see the table above for current state)*
 
 Phase numbers match §17 of `redesign.md`.
 
