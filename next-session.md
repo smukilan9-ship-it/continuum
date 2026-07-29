@@ -5,44 +5,84 @@ This file records only *what has already been executed from it*, what was
 deliberately deviated from, and what will waste your time if you don't know it.
 
 **Branch:** `feat/product-ready-premium-rebuild`
-**State:** 12 commits ahead of `origin`, **not pushed**
-**Green:** 393 tests across 43 files · `turbo typecheck` clean · `turbo build` clean
-**Scope of change:** 53 files, +6,279 / −472
+**State:** pushed to `origin/feat/product-ready-premium-rebuild`; **not merged to `main`**
+**Green:** 412 tests across 45 files · `turbo typecheck` clean · `turbo build` clean
 
 ---
 
 ## Read this before touching anything
 
-1. **Nothing is deployed.** All 12 commits are local. `continuumstudy.vercel.app`
-   is still running the pre-redesign build. Do not assume a fix is live because
-   it is committed.
+1. **The branch is pushed; production is old because nothing was merged.**
+   An earlier version of this file said "12 commits ahead of origin, **not
+   pushed**". That is wrong: `origin/feat/product-ready-premium-rebuild` is at
+   the same commit as local HEAD (0 ahead, 0 behind). What is true is that
+   `origin/main` contains **none** of this branch's commits, and production
+   deploys from `main` — so `continuumstudy.vercel.app` still runs the
+   pre-redesign build. Preview deployments of this branch **do** exist.
 
-2. **`.env.local` points at the production Neon database.** Confirmed, not
+2. **Preview deployments 500 on every DB-backed route — it is schema drift, not
+   connectivity.** `POST /api/auth/demo` returns an empty-body 500 on preview.
+   The runtime log gives the cause exactly:
+
+   ```
+   error: column users.email_verified_at does not exist
+   code: '42703'   routine: 'errorMissingColumn'
+   ```
+
+   The preview database **connects fine** — Postgres parses the query and
+   rejects it. `users.email_verified_at` is added by
+   `packages/db/migrations/0008_completion_systems.sql`; the branch-scoped
+   preview database is at 0007 or earlier and never received it.
+
+   - Branch-scoped `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `POSTGRES_URL`, and
+     `POSTGRES_URL_NON_POOLING` all exist for this git branch and take priority
+     over the shared Production/Preview/Development values.
+   - **The correct fix is to run migrations against the preview database**, which
+     keeps previews isolated. Getting its credential requires the Vercel
+     dashboard or API; reading the CLI credential store was blocked here.
+   - **Do not just delete the branch-scoped override.** It "works" only because
+     the shared value *is* the production database, so every preview would then
+     read and write production data. That is a much larger change than the bug
+     requires.
+   - Reproducing needs an `Origin` header — without one the route returns a 403
+     from the same-origin guard, not the 500.
+
+3. **Never run `pnpm build` while the dev server is running.** They share
+   `apps/web/.next`, and the production build wipes the chunks the dev server is
+   serving. The symptom is a cascade of `Cannot find module './9265.js'`,
+   `ENOENT vendor-chunks/lucide-react…`, and a missing `routes-manifest.json`.
+   Stop the dev server, `rm -rf apps/web/.next`, restart. This is the same class
+   of failure as note 5 below and cost time twice more this session.
+
+4. **Nothing is deployed to production.** Do not assume a fix is live because it
+   is committed or even pushed.
+
+5. **`.env.local` points at the production Neon database.** Confirmed, not
    assumed — `pnpm seed:demo` was run against it and the change was then
    observed on the live site. Any script you run locally with these env vars
    writes to production. `seed:demo` itself is safe and idempotent: it only
    touches `user_demo`.
 
-3. **The demo account has already been reseeded.** The seven `probe` /
+6. **The demo account has already been reseeded.** The seven `probe` /
    `latency probe` conversations are gone from production. It now holds 4 goals,
    15 milestones, 13 tasks, 3 projects, and two realistic seeded conversations
    whose citations resolve to real records. You do not need to run it again.
 
-4. **Kill `.next` when the dev server does something impossible.** Symptoms:
+7. **Kill `.next` when the dev server does something impossible.** Symptoms:
    `Cannot find module './vendor-chunks/parse5@7.3.0.js'`, a blank page on a
    route that builds fine, or a stale JSX syntax error for a line you already
    fixed. `rm -rf apps/web/.next` and restart. This cost time twice.
 
-5. **Dev-mode first-request timing is not app latency.** The first hit on any
+8. **Dev-mode first-request timing is not app latency.** The first hit on any
    route compiles it (1–3 s). Warm up before measuring anything, and remove
    ordering bias — measuring "real" before "fake" once produced a fake 13×
    timing gap that did not exist.
 
-6. **The browser pane's screencast freezes on native scroll events.** Scroll
+9. **The browser pane's screencast freezes on native scroll events.** Scroll
    with `javascript_tool` (`window.scrollTo`) and read state through
    `get_page_text` / the accessibility tree instead.
 
-7. **Dev server:** `preview_start` with `{ name: "continuum-web" }` (port 3000).
+10. **Dev server:** `preview_start` with `{ name: "continuum-web" }` (port 3000).
    Never run it through Bash.
 
 ---
