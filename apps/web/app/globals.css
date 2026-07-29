@@ -108,12 +108,12 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
 .button { min-height: 40px; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 14px; transition: background .15s ease, border-color .15s ease, box-shadow .15s ease; }
 .button-primary { color: #fff; background: var(--blue-strong); border-color: var(--blue-strong); }
-.button-primary:hover:not(:disabled) { background: var(--navy-2); border-color: var(--navy-2); box-shadow: 0 5px 14px rgba(21, 84, 141, .18); }
-.button-secondary { color: var(--navy); background: #fff; border-color: var(--line-strong); }
-.button-secondary:hover:not(:disabled) { background: var(--surface-soft); border-color: #9fb5c8; }
+.button-primary:hover:not(:disabled) { background: var(--navy-2); border-color: var(--navy-2); box-shadow: var(--shadow-md); }
+.button-secondary { color: var(--navy); background: var(--surface); border-color: var(--line-strong); }
+.button-secondary:hover:not(:disabled) { background: var(--surface-soft); border-color: var(--line-strong); }
 .button-large { min-height: 46px; padding: 0 20px; }
 .badge { width: fit-content; min-height: 24px; padding: 4px 9px; display: inline-flex; align-items: center; border-radius: 999px; font-size: 11px; font-weight: 750; line-height: 1.1; white-space: nowrap; }
-.badge-neutral { color: #52687d; background: #edf2f6; }
+.badge-neutral { color: var(--muted-strong); background: var(--surface-strong); }
 .badge-blue, .badge-purple { color: var(--blue-strong); background: var(--blue-soft); }
 .badge-green { color: var(--green); background: var(--green-soft); }
 .badge-orange { color: var(--orange); background: var(--orange-soft); }
@@ -752,7 +752,10 @@ textarea { min-height: 90px; resize: vertical; }
 
 /* Loading and long-list rendering */
 .screen-loading { min-height: 420px; padding-top: 35px; display: grid; align-content: start; gap: 12px; }
-.screen-loading span { height: 80px; display: block; background: linear-gradient(90deg, #eef3f7 25%, #f8fafc 50%, #eef3f7 75%); background-size: 200% 100%; border-radius: 8px; animation: loading 1.25s ease-in-out infinite; }
+/* Themed surfaces, not fixed light values: the previous #eef3f7/#f8fafc ramp
+   flashed three near-white blocks on the dark canvas every time a dynamically
+   imported screen loaded. */
+.screen-loading span { height: 80px; display: block; background: linear-gradient(90deg, var(--surface-soft) 25%, var(--surface-strong) 50%, var(--surface-soft) 75%); background-size: 200% 100%; border-radius: 8px; animation: loading 1.25s ease-in-out infinite; }
 .screen-loading span:first-child { width: 58%; height: 38px; }
 @keyframes loading { to { background-position: -200% 0; } }
 .goal-card, .project-card, .memory-row, .proposal-card, .connection-card { content-visibility: auto; contain-intrinsic-size: auto 180px; }
