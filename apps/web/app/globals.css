@@ -1741,10 +1741,14 @@ textarea { min-height: 90px; resize: vertical; }
 .plan-backlog article div span, .plan-backlog article > span { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 9px; }
 
 @media (max-width: 1120px) {
-  .draft-week-board { overflow-x: auto; }
-  .draft-day { min-width: 150px; }
-  .week-board { overflow-x: auto; }
-  .week-day { min-width: 128px; }
+  /* Widen the tracks, not the items. A `min-width` larger than its grid track
+     makes each day overflow and paint over its neighbour instead of pushing it,
+     so the columns overlapped and clipped titles mid-word. Sizing the track and
+     letting the day fill it keeps the board scrollable and legible. */
+  .draft-week-board { overflow-x: auto; grid-template-columns: repeat(7, minmax(150px, 1fr)); }
+  .draft-day { min-width: 0; }
+  .week-board { overflow-x: auto; grid-template-columns: repeat(7, minmax(128px, 1fr)); }
+  .week-day { min-width: 0; }
   .memory-overview-layout { grid-template-columns: 1fr; }
   .memory-resume-panel { position: static; }
   .context-pack-workspace { grid-template-columns: 270px minmax(0, 1fr); }
@@ -1790,14 +1794,16 @@ textarea { min-height: 90px; resize: vertical; }
   .draft-editor-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .draft-editor-actions .button:last-child { grid-column: 1 / -1; }
   .draft-health { align-items: flex-start; flex-direction: column; gap: 5px; }
-  .draft-week-board { scroll-snap-type: x mandatory; }
-  .draft-day { min-width: min(80vw, 290px); scroll-snap-align: start; }
+  /* One day per swipe. The track carries the width so the days sit side by side
+     in a scroll-snapping row instead of stacking on top of each other. */
+  .draft-week-board { scroll-snap-type: x mandatory; grid-template-columns: repeat(7, min(80vw, 290px)); }
+  .draft-day { min-width: 0; scroll-snap-align: start; }
   .draft-day > div { min-height: 260px; }
   .intake-grid, .block-time-grid { grid-template-columns: 1fr; }
   .block-editor-actions { align-items: stretch; flex-direction: column; }
   .block-editor-actions .button { width: 100%; }
-  .week-board { scroll-snap-type: x mandatory; }
-  .week-day { min-width: min(78vw, 280px); scroll-snap-align: start; }
+  .week-board { scroll-snap-type: x mandatory; grid-template-columns: repeat(7, min(78vw, 280px)); }
+  .week-day { min-width: 0; scroll-snap-align: start; }
   .week-day-blocks { min-height: 320px; }
   .plan-goals-layout { grid-template-columns: 1fr; }
   .plan-goal-index { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; }
