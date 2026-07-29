@@ -100,7 +100,11 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailab
             <input name="username" type="text" minLength={mode === "register" ? USERNAME_MIN_LENGTH : 1} maxLength={USERNAME_MAX_LENGTH} required autoComplete="username" placeholder={mode === "login" ? "Your username" : "Choose a username"} />
             {mode === "register" ? <small className="field-hint">{USERNAME_HELP}</small> : null}
           </label>
-          <label>Password
+          <label>
+            <span className="auth-label-row">
+              Password
+              {mode === "login" ? <Link className="auth-inline-link" href={"/forgot-password" as Route}>Forgot password?</Link> : null}
+            </span>
             <span className="password-field">
               <input name="password" type={showPassword ? "text" : "password"} minLength={mode === "register" ? PASSWORD_MIN_LENGTH : 1} required autoComplete={mode === "register" ? "new-password" : "current-password"} />
               <button type="button" className="password-toggle" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
@@ -114,7 +118,7 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailab
               </span>
             </label>
             <label className="auth-terms"><input name="termsAccepted" type="checkbox" required />I agree to the Privacy and account-retention terms.</label>
-          </> : <small className="field-hint">Self-service password recovery is not available yet. Keep your password somewhere safe.</small>}
+          </> : null}
           {error && <p className="auth-error" role="alert">{error}</p>}
           <button className="button button-primary button-large" disabled={busy !== null}>{busy === "form" ? "Please wait…" : mode === "login" ? "Sign in" : "Create private workspace"}<ArrowRight size={17} /></button>
         </form>
