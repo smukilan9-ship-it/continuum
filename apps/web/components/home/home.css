@@ -1,0 +1,100 @@
+/* /home (redesign.md §9.4). Tokens only. */
+
+.home { max-width: var(--content-max); margin: 0 auto; padding: var(--s-8) var(--s-6) var(--s-16); display: grid; gap: var(--s-8); }
+
+.home-head h1 { margin: 0; font-size: 28px; line-height: 1.2; font-weight: 600; letter-spacing: -.01em; }
+.home-head p { margin: var(--s-1) 0 0; color: var(--ink-3); font-size: var(--t-body); }
+
+.home-layout { display: grid; grid-template-columns: minmax(0, 720px) 360px; gap: var(--s-8); align-items: start; }
+/* Every one-column grid below declares minmax(0, 1fr) rather than relying on
+   the implicit `auto` track, which resolves to max-content and lets a long
+   goal title push the rail past the viewport. */
+.home-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-8); min-width: 0; }
+.home-rail { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-8); min-width: 0; }
+.home-rail > section { min-width: 0; }
+
+/* The single accent element on the page (AC-H1). It is marked with a 2px rail
+   and a quiet tint — never a saturated fill, which is what made the old nav
+   pill the loudest object on every screen (C18). */
+.next-action {
+  padding: var(--s-5);
+  display: grid;
+  gap: var(--s-2);
+  background: var(--accent-quiet);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent-mark);
+  border-radius: var(--r-lg);
+}
+.next-action h2 { margin: 0; font-size: var(--t-h2); font-weight: 600; line-height: 1.3; }
+.next-action-context { margin: 0; color: var(--ink-2); font-size: var(--t-small); }
+.next-action-reason { margin: 0; color: var(--ink-2); font-size: var(--t-small); line-height: 1.55; }
+.next-action-actions { margin-top: var(--s-2); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+
+.home-section { display: grid; gap: var(--s-3); }
+.home-section h2 { margin: 0; font-size: var(--t-h3); font-weight: 600; }
+.home-section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.home-section-head h2 { margin: 0; font-size: var(--t-h3); font-weight: 600; }
+
+.home-link {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  padding: 0; color: var(--ink-2); background: none; border: 0; cursor: pointer;
+  font-size: var(--t-small);
+}
+.home-link:hover { color: var(--ink); }
+
+.resume-list { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); }
+.resume-list li { border-bottom: 1px solid var(--line); }
+.resume-list li:last-child { border-bottom: 0; }
+.resume-list button {
+  width: 100%; min-height: 48px;
+  padding: var(--s-2) var(--s-2) var(--s-2) 0;
+  display: flex; align-items: center; gap: var(--s-3);
+  color: inherit; background: none; border: 0; cursor: pointer; text-align: left;
+}
+.resume-list button:hover { background: var(--surface-raised); }
+.resume-icon { flex: none; display: grid; place-items: center; width: 28px; height: 28px; color: var(--ink-3); background: var(--surface-raised); border-radius: var(--r-sm); }
+.resume-copy { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.resume-copy strong { color: var(--ink); font-size: var(--t-body); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resume-copy small { color: var(--ink-3); font-size: var(--t-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.week-summary { margin: 0; color: var(--ink-2); font-size: var(--t-small); font-variant-numeric: tabular-nums; }
+
+.day-agenda { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); }
+.agenda-block {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center; gap: var(--s-2);
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+.agenda-block:last-child { border-bottom: 0; }
+.agenda-time { color: var(--ink-3); font-size: var(--t-small); font-variant-numeric: tabular-nums; }
+.agenda-copy { min-width: 0; display: grid; gap: 1px; }
+.agenda-copy strong { color: var(--ink); font-size: var(--t-small); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agenda-copy small { color: var(--ink-3); font-size: var(--t-micro); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agenda-block.is-done .agenda-copy strong { color: var(--ink-3); text-decoration: line-through; }
+.agenda-block.is-now { box-shadow: inset 2px 0 0 var(--accent-mark); padding-left: var(--s-2); }
+
+.goal-rail { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); }
+.goal-rail li { border-bottom: 1px solid var(--line); }
+.goal-rail li:last-child { border-bottom: 0; }
+.goal-rail button {
+  width: 100%; min-width: 0; padding: var(--s-2) 0;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-1);
+  color: inherit; background: none; border: 0; cursor: pointer; text-align: left;
+}
+.goal-rail-head { min-width: 0; }
+.goal-rail button:hover .goal-rail-head strong { color: var(--accent); }
+.goal-rail-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2); }
+.goal-rail-head strong { min-width: 0; color: var(--ink); font-size: var(--t-small); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal-rail-head b { flex: none; color: var(--ink-3); font-size: var(--t-micro); font-variant-numeric: tabular-nums; }
+.goal-rail small { color: var(--ink-3); font-size: var(--t-micro); }
+
+@media (max-width: 1120px) {
+  .home-layout { grid-template-columns: minmax(0, 1fr); }
+  .home-rail { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+}
+@media (max-width: 900px) {
+  .home { padding: var(--s-6) var(--s-4) var(--s-12); gap: var(--s-6); }
+  .home-head h1 { font-size: 24px; }
+  .home-rail { grid-template-columns: minmax(0, 1fr); }
+}

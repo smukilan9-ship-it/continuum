@@ -1,0 +1,61 @@
+/* /review (redesign.md §9.8). Tokens only. */
+
+.review { max-width: 880px; margin: 0 auto; padding: var(--s-8) var(--s-6) var(--s-16); display: grid; gap: var(--s-10); }
+
+.review-head h1 { margin: 0; font-size: var(--t-h1); font-weight: 600; }
+.review-head p { margin: var(--s-1) 0 0; color: var(--ink-2); font-size: var(--t-body); }
+
+.review-section { display: grid; gap: var(--s-4); }
+.review-section h2 { margin: 0; font-size: var(--t-h2); font-weight: 600; }
+.review-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-4); }
+
+.proposal-stack { display: grid; gap: var(--s-4); }
+.proposal {
+  padding: var(--s-4);
+  display: grid; gap: var(--s-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+.proposal > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.proposal-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.proposal-scope { color: var(--ink-3); font-size: var(--t-micro); }
+.proposal > header time { color: var(--ink-3); font-size: var(--t-micro); }
+.proposal h3 { margin: 0; font-size: var(--t-h3); font-weight: 600; line-height: 1.4; }
+.proposal-note { margin: 0; color: var(--ink-2); font-size: var(--t-small); }
+
+/* Before → after. Never a JSON blob (AC-RV3), and never colour alone: the
+   <del>/<ins> markers and the screen-reader prefixes carry the direction. */
+.diff { margin: 0; display: grid; gap: var(--s-1); }
+.diff-row { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: var(--s-3); padding: var(--s-2) 0; border-top: 1px solid var(--line); }
+.diff-row dt { color: var(--ink-3); font-size: var(--t-small); }
+.diff-row dd { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-2); font-size: var(--t-small); }
+.diff-row del { color: var(--ink-3); background: var(--danger-surface); padding: 0 var(--s-1); border-radius: var(--r-sm); text-decoration: line-through; }
+.diff-row ins { color: var(--ink); background: var(--success-surface); padding: 0 var(--s-1); border-radius: var(--r-sm); text-decoration: none; }
+.diff-arrow { color: var(--ink-3); }
+.diff-same { color: var(--ink-2); }
+
+.proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.proposal-superseded { margin: 0; padding: 0 0 0 var(--s-4); color: var(--ink-3); font-size: var(--t-micro); }
+
+.event-days { display: grid; gap: var(--s-5); }
+.event-days h3 { margin: 0 0 var(--s-2); color: var(--ink-3); font-size: var(--t-micro); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.event-days ul { margin: 0; padding: 0; list-style: none; display: grid; }
+.event-days li {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; gap: var(--s-3);
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-small);
+}
+.event-days li:last-child { border-bottom: 0; }
+.event-days li span { min-width: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+.event-days li time { color: var(--ink-3); font-size: var(--t-micro); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 600px) {
+  .review { padding: var(--s-6) var(--s-4) var(--s-12); }
+  .diff-row { grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }
+  .proposal-actions .button { flex: 1 1 100%; }
+  .event-days li { grid-template-columns: minmax(0, 1fr) auto; }
+  .event-days li .status-chip { grid-column: 1 / -1; justify-self: start; }
+}
