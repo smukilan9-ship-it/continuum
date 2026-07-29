@@ -12,7 +12,7 @@ explicitly marked DONE in §2.**
   Learn browsing −3s, Plan −3s, Code −3s, Memory −2s, Connections −3s, Close −2s).
   Runtime (120.000s), the hook→problem→solution arc, and the entire Hook segment
   spec (T2) are unchanged.
-- Implementer: a contributor picking this up cold. This document is written to be
+- Implementer: **Opus** (a fresh Claude Code session). This document is written to be
   executed without access to the conversation that produced it.
 - Hard scope rule for the implementer: **Phase A only.** Build everything that does
   not require the web app to run. Do not start the Next.js dev server, do not touch
@@ -52,7 +52,7 @@ Per the v1 production doc, with verified status on this machine:
 
 | Tool | Role | Status |
 |---|---|---|
-| **Build automation** | Creative director + automation: builds all Remotion segments, generates the cutlist, timeline XML, scratch VO, Resolve build script; later drives capture choreography | this plan |
+| **Claude Code** | Creative director + automation: builds all Remotion segments, generates the cutlist, timeline XML, scratch VO, Resolve build script; later drives capture choreography | this plan |
 | **Remotion 4.0.500** | Everything synthetic: hook, bridge, close, label overlays, safety typography | ✅ installed in `apps/video`, render verified (ProRes HQ pipeline works end-to-end) |
 | **OBS Studio** | One continuous 1080p30 capture of the real app + Claude Desktop (Phase B) | ✅ `/Applications/OBS.app` |
 | **DaVinci Resolve (free)** | Conform, pacing, music, grade, Fairlight mix, deliver (Phase C) | ✅ `/Applications/DaVinci Resolve.app` |
@@ -438,7 +438,7 @@ it). Slate each line with its TC.
 
 ---
 
-## 4. PHASE A — build now (no app required). Implementer task list.
+## 4. PHASE A — build now (no app required). Task list for Opus.
 
 Conventions: all paths relative to `apps/video/`. After each task: run the listed
 DoD checks. Definition of done for the phase: §4.13. Use `pnpm --filter
@@ -578,7 +578,7 @@ do not improvise on-screen text.
 
 ---
 
-## 5. PHASE B — capture spec (requires the running app; recorded with an operator)
+## 5. PHASE B — capture spec (requires the running app; user + Claude together)
 
 Not for Phase A execution. Recorded after Phase A ships, in one sitting.
 
@@ -600,7 +600,7 @@ argument is continuity; cutting between separate recordings reads as stitching),
 then per-segment pickups ×2, then a 3s static hold of every screen as safety
 B-roll. Perform every move ~20% slower than natural; Resolve may speed 100–125%
 per shot (never more — it reads as fake). Cursor travels ≥600ms; 500ms hold after
-every state change. The choreography may be driven via computer control
+every state change. Claude Code may drive the choreography via computer control
 (per the v1 stack) with the user supervising; the click-path per segment is the
 §3.2 content contract, and the detailed per-second choreography tables are to be
 written as `docs/capture-runbook.md` during Phase B prep (blocked on seeded data
@@ -722,7 +722,7 @@ this table; §3.4 gives V2 label rows; §3.5 gives A1 rows.)
 
 ---
 
-## 10. Implementation order & effort (Phase A)
+## 10. Implementation order & effort (Phase A, for Opus)
 
 | Order | Task | Est. |
 |---|---|---|
@@ -750,6 +750,6 @@ polishing further — it's the segment with the most taste risk.
 2. **VO**: record §3.5 to `assets/vo/final/` (spec in §3.5).
 3. **End slate line**: confirm the GitHub URL (and whether a hackathon name/date
    line should appear under it).
-4. **Pilot session** (T11): ~15 min driving Resolve.
-5. **Capture day** (Phase B): ~1–2h with seeded data; operator choreographs.
+4. **Pilot session** (T11): ~15 min driving Resolve with Claude.
+5. **Capture day** (Phase B): ~1–2h with seeded data; Claude choreographs.
 6. Approve replacing the public thumbnail with the new poster frame, if desired.
