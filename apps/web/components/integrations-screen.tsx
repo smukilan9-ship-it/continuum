@@ -564,17 +564,21 @@ export function IntegrationsScreen({ showToast }: { showToast: Toast }) {
       <section className="connection-section" aria-labelledby="study-tools-title">
         <div className="section-heading"><div><h2 id="study-tools-title">Sources and notes</h2></div><p>Continuum’s planner uses its own editable schedule. These optional tools add research and note context.</p></div>
         <div className="connection-list">
+          {/* Search works without a key through OpenAlex's polite pool, so the
+              status has to describe whether the feature works — not whether a
+              key was supplied. Reporting "Not connected" for a capability the
+              user can already use reads as a broken integration. */}
           <ConnectionCard
             icon={<Library size={20} />}
             title="OpenAlex"
-            status={openAlexCredential?.status === "connected" ? "Connected" : openAlexCredential?.status === "degraded" ? "Needs a check" : openAlexCredential ? "Replace key" : "Not connected"}
-            connected={openAlexCredential?.status === "connected"}
+            status={openAlexCredential?.status === "connected" ? "Connected" : openAlexCredential?.status === "degraded" ? "Needs a check" : openAlexCredential ? "Replace key" : "Working — no setup needed"}
+            connected={openAlexCredential?.status === "connected" || !openAlexCredential}
             description="Search the public scholarly graph across works, authors, institutions, sources, topics, references, citations, and related works."
           >
-            {openAlexCredential ? <div className="connected-summary"><strong>{openAlexCredential.masked}</strong><span>{openAlexCredential.problem ?? `Last checked: ${dateLabel(openAlexCredential.lastValidatedAt)}`}</span>{openAlexCredential.lastUsedAt ? <small>Last used: {dateLabel(openAlexCredential.lastUsedAt)}</small> : null}</div> : <p className="connection-note">OpenAlex requires one free API key for production requests. No OAuth, client secret, or callback URL is involved.</p>}
+            {openAlexCredential ? <div className="connected-summary"><strong>{openAlexCredential.masked}</strong><span>{openAlexCredential.problem ?? `Last checked: ${dateLabel(openAlexCredential.lastValidatedAt)}`}</span>{openAlexCredential.lastUsedAt ? <small>Last used: {dateLabel(openAlexCredential.lastUsedAt)}</small> : null}</div> : <p className="connection-note">Scholarly search already works — OpenAlex answers Continuum without a key. Add your own free key only if you want higher rate limits during heavy searching.</p>}
             <div className="permission-line"><ShieldCheck size={15} /><span>Encrypted at rest · used only for OpenAlex requests · never returned to the browser</span></div>
-            <div className="connection-actions"><Button className="button-primary" onClick={() => { setOpenAlexTest(undefined); setOpenAlexOpen(true); }}><KeyRound size={15} />{openAlexCredential ? "Manage API key" : "Connect OpenAlex"}</Button></div>
-            <Guide title="Create an OpenAlex API key" steps={["Open your OpenAlex account settings and create or copy your free API key.", "Paste the single key into Continuum. No OAuth app, client secret, scope selection, or redirect URL is needed.", "Test the key live, then save it encrypted to your Continuum account.", "Continuum uses it only when you search or navigate OpenAlex scholarly data."]} official={[{ label: "OpenAlex API key settings", href: links.openAlexKey }, { label: "Official authentication guide", href: links.openAlexAuth }]} />
+            <div className="connection-actions"><Button className={openAlexCredential ? "button-primary" : "button-secondary"} onClick={() => { setOpenAlexTest(undefined); setOpenAlexOpen(true); }}><KeyRound size={15} />{openAlexCredential ? "Manage API key" : "Add a key for higher limits"}</Button></div>
+            <Guide title="Add an OpenAlex API key (optional)" steps={["Search already works without this — add a key only if you hit rate limits during heavy searching.", "Open your OpenAlex account settings and create or copy your free API key.", "Paste the single key into Continuum. No OAuth app, client secret, scope selection, or redirect URL is needed.", "Test the key live, then save it encrypted to your Continuum account.", "Continuum uses it only when you search or navigate OpenAlex scholarly data."]} official={[{ label: "OpenAlex API key settings", href: links.openAlexKey }, { label: "Official authentication guide", href: links.openAlexAuth }]} />
           </ConnectionCard>
 
           <ConnectionCard
