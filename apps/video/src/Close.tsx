@@ -15,6 +15,7 @@ import {
   barProgress,
 } from "./BrandMark";
 import { copy, palette, typography } from "./brand";
+import { Bloom, LightSweep, Vignette } from "./vfx";
 
 /**
  * S4 · Close — 330 frames (PLAN §3.2).
@@ -137,6 +138,23 @@ export const Close: React.FC = () => {
         fontFamily: typography.sans,
       }}
     >
+      {/* Glow behind the dot as it falls and again as the node lands, so the
+          mark resolves into light rather than simply appearing. */}
+      <Bloom
+        size={interpolate(frame, [0, 24, 102], [220, 260, 520], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        })}
+        strength={interpolate(frame, [0, 14, 60, 96, 130], [0, 0.6, 0.3, 0.75, 0.22], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        })}
+        // The mark sits at frame centre while it builds, then travels left and
+        // up into the lockup — the glow rides with it.
+        x={50 - (LOCKUP_SHIFT_X / 1920) * 100 * settle}
+        y={50 - (LOCKUP_SHIFT_Y / 1080) * 100 * settle}
+      />
+
       <div style={{ display: "grid", justifyItems: "center" }}>
         <div
           style={{
@@ -277,6 +295,17 @@ export const Close: React.FC = () => {
           {copy.repo}
         </p>
       </div>
+
+      {/* One pass of light across the finished lockup, then it settles. */}
+      <LightSweep
+        progress={interpolate(frame, [168, 232], [0, 1], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        })}
+        intensity={0.7}
+      />
+
+      <Vignette strength={0.4} />
     </AbsoluteFill>
   );
 };

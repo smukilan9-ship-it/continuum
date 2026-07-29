@@ -12,9 +12,15 @@
     "manifest:check": "node scripts/render-all.mjs --check",
     "cutlist": "node scripts/build-cutlist.mjs",
     "conform": "node scripts/make-fcpxml.mjs",
-    "vo:scratch": "node scripts/make-scratch-vo.mjs",
+    "vo": "node scripts/make-vo.mjs",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "music": "node scripts/make-music.mjs",
+    "sfx": "node scripts/make-sfx.mjs",
+    "mix": "node scripts/make-mix.mjs",
+    "tts": "node scripts/gemini-tts.mjs",
+    "animatic": "node scripts/make-animatic.mjs",
+    "audio": "node scripts/make-music.mjs && node scripts/make-sfx.mjs && node scripts/make-vo.mjs && node scripts/make-mix.mjs"
   },
   "dependencies": {
     "@remotion/google-fonts": "4.0.500",

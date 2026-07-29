@@ -27,8 +27,8 @@ TIMELINE_NAME = "Continuum-120 v1"
 
 # Resolve track indices are 1-based per type. Video 1 carries picture, video 2
 # the alpha overlays; audio 1 is voiceover, audio 2 the music bed.
-TRACK_INDEX = {"V1": 1, "V2": 2, "A1": 1, "A2": 2}
-TRACK_TYPE = {"V1": "video", "V2": "video", "A1": "audio", "A2": "audio"}
+TRACK_INDEX = {"V1": 1, "V2": 2, "A1": 1, "A2": 2, "A3": 3}
+TRACK_TYPE = {"V1": "video", "V2": "video", "A1": "audio", "A2": "audio", "A3": "audio"}
 
 BINS = {
     "remotion": "01_remotion",
@@ -172,7 +172,7 @@ def build(cutlist, rows):
 
     while timeline.GetTrackCount("video") < 2:
         timeline.AddTrack("video")
-    while timeline.GetTrackCount("audio") < 2:
+    while timeline.GetTrackCount("audio") < 3:
         timeline.AddTrack("audio")
 
     clips = []

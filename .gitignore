@@ -26,3 +26,6 @@ apps/video/capture/
 apps/video/assets/vo/scratch/
 apps/video/assets/audio/*.wav
 __pycache__/
+
+# Agent worktrees are transient checkouts, never content.
+.claude/worktrees/

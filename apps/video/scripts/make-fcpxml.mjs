@@ -27,7 +27,7 @@ const { fps, width, height, totalFrames, events } = cutlist;
 
 mkdirSync(join(ROOT, "out/conform"), { recursive: true });
 
-const LANES = { V1: 1, V2: 2, A1: -1, A2: -2 };
+const LANES = { V1: 1, V2: 2, A1: -1, A2: -2, A3: -3 };
 
 function frames(count) {
   // FCPXML wants rational time. 1001-free because we are true 30, not 29.97.
@@ -68,7 +68,7 @@ const resourceLines = [
 ];
 for (const asset of assets.values()) {
   const media = asset.isAudio
-    ? `hasAudio="1" audioSources="1" audioChannels="1" audioRate="48000"`
+    ? `hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000"`
     : `hasVideo="1" videoSources="1" format="r0"`;
   resourceLines.push(
     `    <asset id="${asset.id}" name="${escapeXml(asset.name)}" uid="${asset.id}" start="0s" duration="${frames(asset.frames)}" ${media}>`,
@@ -86,7 +86,7 @@ for (const event of events) {
   clipLines.push(
     `          <${element} ref="${asset.id}" lane="${lane}" offset="${frames(event.recIn)}" ` +
       `start="${frames(event.srcIn)}" duration="${frames(duration)}" ` +
-      `name="${escapeXml(event.id)}"${event.track.startsWith("A") ? ' audioRole="dialogue"' : ""}/>`,
+      `name="${escapeXml(event.id)}"${event.track === "A1" ? ' audioRole="dialogue"' : event.track === "A2" ? ' audioRole="music"' : event.track === "A3" ? ' audioRole="effects"' : ""}/>`,
   );
 }
 
@@ -157,11 +157,11 @@ ${byTrack("V1").map(row).join("\n")}
 |---|---|---|---|---|---|---|
 ${byTrack("V2").map(row).join("\n")}
 
-## A1 / A2 — audio
+## A1 / A2 / A3 — audio
 
 | id | source | rec in | rec out | frames | src in | note |
 |---|---|---|---|---|---|---|
-${[...byTrack("A1"), ...byTrack("A2")].map(row).join("\n")}
+${[...byTrack("A1"), ...byTrack("A2"), ...byTrack("A3")].map(row).join("\n")}
 
 ## Offline sources
 

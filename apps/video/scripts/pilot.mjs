@@ -112,14 +112,25 @@ sh("ffmpeg", [
 ]);
 
 // 3 — the paper background, measured through a full render round-trip.
+//
+// Measured on `ProblemLines`, not the Hook: the Hook carries a deliberate
+// vignette, so sampling its corner would measure the effect rather than the
+// colour. This check exists to prove the brand paper survives the pipeline,
+// so it needs an unmodified surface.
 console.log("\n3. Measuring the paper background through render → ProRes → frame");
 sh(REMOTION, [
-  "still", join(ROOT, "src/index.ts"), "Hook", "out/pilot/paper-source.png",
+  "still", join(ROOT, "src/index.ts"), "ProblemLines", "out/pilot/paper-source.png",
   "--frame=5", "--image-format=png", "--log=error",
+]);
+sh(REMOTION, [
+  "render", join(ROOT, "src/index.ts"), "ProblemLines", "out/pilot/paper-slice.mov",
+  "--frames=0-29",
+  "--codec=prores", "--prores-profile=hq",
+  "--pixel-format=yuv422p10le", "--image-format=jpeg", "--log=error",
 ]);
 sh("ffmpeg", [
   "-y", "-v", "error",
-  "-i", join(PILOT, "hook-slice.mov"),
+  "-i", join(PILOT, "paper-slice.mov"),
   "-vf", "select=eq(n\\,5)", "-vframes", "1",
   join(PILOT, "paper-roundtrip.png"),
 ]);

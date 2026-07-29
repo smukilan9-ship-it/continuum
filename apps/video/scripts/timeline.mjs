@@ -60,9 +60,15 @@ export const segments = [
   { comp: "ProblemLines", file: "out/segments/problem-lines.mov", frames: 150, alpha: false },
 ];
 
+/**
+ * Three stems, kept separate on the timeline so each stays adjustable against
+ * picture. `out/audio/mix.wav` is a stitched reference of the same three, for
+ * judging the audio before footage exists — never conform from it.
+ */
 export const audio = [
-  { id: "A1-vo", track: "A1", src: "out/audio/vo-scratch.wav", recIn: 0, recOut: TOTAL_FRAMES },
+  { id: "A1-vo", track: "A1", src: "out/audio/vo.wav", recIn: 0, recOut: TOTAL_FRAMES },
   { id: "A2-bgm", track: "A2", src: "assets/audio/bgm.wav", recIn: 0, recOut: TOTAL_FRAMES },
+  { id: "A3-sfx", track: "A3", src: "assets/audio/sfx.wav", recIn: 0, recOut: TOTAL_FRAMES },
 ];
 
 /** Throws if V1 does not tile [0, TOTAL_FRAMES) without gap or overlap. */

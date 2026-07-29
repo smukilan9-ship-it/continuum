@@ -1,4 +1,4 @@
-import { interpolate } from "remotion";
+import { Easing, interpolate } from "remotion";
 
 import { copy, palette, typography } from "../brand";
 
@@ -40,21 +40,38 @@ export const ProblemTypography: React.FC<{
           extrapolateLeft: "clamp",
           extrapolateRight: "clamp",
         });
+        // Wipes up from behind its own baseline rather than fading in — the
+        // type appears to be revealed by something moving, which is what
+        // separates a title card from a slide.
+        const reveal = interpolate(local, [start, start + 20], [0, 1], {
+          easing: Easing.out(Easing.cubic),
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        });
         return (
           <span
             key={line}
             style={{
               display: "block",
-              opacity: entrance,
-              transform: `translateY(${(1 - entrance) * 16}px)`,
-              color: palette.ink,
-              fontSize: 110,
-              fontWeight: 600,
-              letterSpacing: -3,
-              lineHeight: 1.08,
+              overflow: "hidden",
+              paddingBottom: "0.12em",
+              clipPath: `inset(0 0 ${(1 - reveal) * 100}% 0)`,
             }}
           >
-            {line}
+            <span
+              style={{
+                display: "block",
+                opacity: entrance,
+                transform: `translateY(${(1 - reveal) * 26}px)`,
+                color: palette.ink,
+                fontSize: 110,
+                fontWeight: 600,
+                letterSpacing: -3,
+                lineHeight: 1.08,
+              }}
+            >
+              {line}
+            </span>
           </span>
         );
       })}

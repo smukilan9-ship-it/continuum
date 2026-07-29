@@ -3,6 +3,8 @@
 The 120-second Continuum launch film. Remotion authors everything synthetic,
 OBS captures the real product, DaVinci Resolve conforms and delivers.
 
+**[SCRIPT.md](SCRIPT.md) is the locked script** — every narration line, label,
+music cue and effect with its timecode.
 **[PLAN.md](PLAN.md) is the master document** — creative, timeline, capture
 spec, grade, deliverables. This file is the operating manual.
 
@@ -12,7 +14,7 @@ spec, grade, deliverables. This file is the operating manual.
 
 | Phase | What | Status |
 |---|---|---|
-| **A** | Everything that needs no running app: Hook, Bridge, Close, 17 labels, scratch VO, conform bundle | ✅ built |
+| **A** | Everything that needs no running app: Hook, Bridge, Close, 17 labels, VFX, narration, score, SFX, mix, conform bundle | ✅ built |
 | **B** | OBS capture of the app + Claude Desktop (needs seeded data, user + Claude) | ⏳ not started |
 | **C** | Resolve conform, grade, mix, deliver | ⏳ needs Phase B |
 
@@ -68,15 +70,25 @@ pnpm render:labels     # the 17 overlays only
 pnpm manifest:check    # verify existing output without re-rendering
 pnpm cutlist           # regenerate cutlist.json
 pnpm conform           # regenerate FCPXML + EDL + manual table
-pnpm vo:scratch        # rebuild the scratch narration track
+pnpm tts               # generate narration with Gemini TTS
+pnpm vo                # assemble the narration track
+pnpm music             # generate the score
+pnpm sfx               # generate the effects bed
+pnpm mix               # stitch all three into a reference mix
+pnpm audio             # all of the above, in order
+pnpm animatic          # full 120s watchable cut
 node scripts/pilot.mjs # re-run the pipeline checks
 ```
 
 Full rebuild from clean:
 
 ```bash
-pnpm render:all && pnpm cutlist && pnpm conform && pnpm vo:scratch
+pnpm render:all && pnpm audio && pnpm cutlist && pnpm conform && pnpm animatic
 ```
+
+`pnpm animatic` is the one to watch. Real hook and close, real overlays, real
+audio, on-brand slates where the captures will go — the only way to judge the
+film's pacing before Phase B exists.
 
 ---
 
@@ -86,12 +98,18 @@ pnpm render:all && pnpm cutlist && pnpm conform && pnpm vo:scratch
 |---|---|
 | `out/segments/` | Hook, Bridge, Close, ProblemLines (ProRes; Bridge carries alpha) |
 | `out/overlays/` | `L01`–`L17` feature labels (ProRes 4444, alpha) |
-| `out/audio/vo-scratch.wav` | 120.000s scratch narration — **replace before delivery** |
+| `out/audio/vo.wav` | 120.000s narration (A1) |
+| `assets/audio/bgm.wav` | Generated score (A2) — original, no licence needed |
+| `assets/audio/sfx.wav` | Generated effects bed (A3) |
+| `out/audio/mix.wav` | Reference stitch of all three, −14.4 LUFS / −1.0 dBTP |
+| `out/audio/vo-manifest.json` | Which lines are real takes vs scratch |
+| `out/preview/animatic.mp4` | Full 120s watchable cut |
 | `out/conform/` | `continuum-120.fcpxml`, `.edl`, `cutlist.md` |
 | `out/manifest.json` | Every asset with frames, seconds, pixel format, md5 |
 | `out/pilot/` | Pipeline pilot artifacts |
 | `cutlist.json` | The machine-readable master timeline |
 | `assets/vo/vo-script.txt` | The recording sheet |
+| `SCRIPT.md` | The locked final script — every line, timecode, label and cue |
 | `docs/pilot-report.md` | Pilot results + the user-assisted Resolve checklist |
 
 `out/` is gitignored. Everything in it regenerates from source.
@@ -152,7 +170,7 @@ Check these against the final export, not against intentions.
 - [ ] **Coverage pass** — all 26 rows of PLAN §3.3 visibly present
 - [ ] **Brand pass** — DM Sans throughout, paper-true, real mark geometry, only verbatim product copy
 - [ ] Audio at −14 LUFS integrated, true peak −1.0 dBTP
-- [ ] VO is the recorded voice, **not** `vo-scratch.wav`
-- [ ] Music is the licensed track, **not** the silent placeholder
+- [ ] VO is real takes throughout — `out/audio/vo-manifest.json` reports `readyForDelivery: true`
+- [ ] Music and SFX are the generated beds (original — no licence required)
 - [ ] No capture slugs or offline media on the timeline
 - [ ] Plays through at 1080p on YouTube with no banding on the paper background

@@ -1,75 +1,135 @@
 {
-  "note": "PLAN §3.5. Source of truth for both the human recording sheet and the scratch track. `start`/`end` are seconds on the 120s film timeline. Silence between entries is deliberate — roughly a third of the film carries no narration.",
+  "note": "PLAN §3.5. Source of truth for the recording sheet, the Gemini TTS script, and the assembled track. `start`/`end` are seconds on the 120s film timeline. Silence between entries is deliberate — roughly a third of the film carries no narration, and the approval click at 1:34 plus the MCP proof at 1:37–1:47 play almost dry.",
+  "pace": {
+    "wpm": 120,
+    "why": "Charon reads at ~120 wpm. Copy is sized against that, measured, not against the 135 a human would hit."
+  },
   "lines": [
     {
       "n": 1,
-      "start": 1.0,
-      "end": 12.0,
+      "start": 0.4,
+      "end": 9.4,
       "segment": "S0 Hook",
-      "text": "Every tool you use sees a sliver of your work. So you spend your best attention re-explaining context that already exists."
+      "text": "Every tool sees a sliver of your work. So your attention goes to re-explaining what already exists.",
+      "direction": "state this as a relaxed observation, not a complaint — no sympathy or heaviness in the voice"
     },
     {
       "n": 2,
-      "start": 14.5,
-      "end": 20.0,
-      "segment": "S1 Today",
-      "text": "One workspace, one memory. Continuum already knows where you are — and decides your next step."
+      "start": 9.7,
+      "end": 13.2,
+      "segment": "S0 Problem statement",
+      "text": "Information is abundant. Learning is fragmented.",
+      "direction": "two separate statements of fact, even and unhurried, with no lift on either",
+      "maxSilence": 0.6
     },
     {
       "n": 3,
-      "start": 21.0,
-      "end": 33.0,
-      "segment": "S2a Learn",
-      "text": "It finds the best resource and shows you why. It maps what you know — and when you get something wrong, the path adapts."
+      "start": 14.3,
+      "end": 20.8,
+      "segment": "S1 Today",
+      "text": "One workspace. One memory. Continuum opens on your next step, and why.",
+      "direction": "assured and clear, with a small warm lift on the last few words"
     },
     {
       "n": 4,
-      "start": 39.0,
-      "end": 54.0,
-      "segment": "S2c Library",
-      "text": "This is the live scholarly graph. Follow the citations, keep the paper — it lands beside your Zotero library, PDFs indexed and searchable."
+      "start": 21.0,
+      "end": 33.0,
+      "segment": "S2a Learn",
+      "text": "It finds the best resource, and shows you why it won. It maps what you know, tests it, and adapts when you get something wrong. Mastery is earned, not assumed.",
+      "direction": "bright and engaged, leaning very lightly on \"why\" and \"adapts\""
     },
     {
       "n": 5,
-      "start": 59.0,
-      "end": 66.0,
-      "segment": "S2e Obsidian",
-      "text": "Your notes don't have to move in. Continuum meets them in Obsidian — plain markdown, synced."
+      "start": 34.0,
+      "end": 38.8,
+      "segment": "S2b Plan",
+      "text": "Outcomes become a week of work, with proof.",
+      "direction": "brisk and practical, matter-of-fact"
     },
     {
       "n": 6,
-      "start": 67.0,
-      "end": 72.0,
-      "segment": "S2f Memory",
-      "text": "Everything becomes memory, retrieved by relevance — not by scrolling back."
+      "start": 39.0,
+      "end": 54.0,
+      "segment": "S2c Library",
+      "text": "This is the live scholarly graph — real papers, real citations. Follow the evidence, keep what matters, and it lands beside your Zotero library, every PDF indexed and searchable.",
+      "direction": "easy and unfussy, letting each clause land without weight"
     },
     {
       "n": 7,
-      "start": 80.0,
-      "end": 84.0,
-      "segment": "S2h Connections",
-      "text": "It connects to the tools you already use —"
+      "start": 55.0,
+      "end": 58.8,
+      "segment": "S2d Research",
+      "text": "Every claim, tied to its source.",
+      "direction": "clean and declarative, no lift"
     },
     {
       "n": 8,
-      "start": 85.0,
-      "end": 93.0,
-      "segment": "S3a Assistant",
-      "text": "— so the assistant is already briefed: your mastery, your weak spots, your deadline. It proposes. You approve."
+      "start": 59.0,
+      "end": 66.0,
+      "segment": "S2e Obsidian",
+      "text": "Your notes don't have to move. Continuum meets them in Obsidian — plain markdown.",
+      "direction": "friendly and reassuring, as if casually removing an objection"
     },
     {
       "n": 9,
-      "start": 97.0,
-      "end": 106.0,
-      "segment": "S3c Claude MCP",
-      "text": "And because Continuum speaks MCP, that memory follows you into Claude itself. Nothing explained twice."
+      "start": 67.0,
+      "end": 72.0,
+      "segment": "S2f Memory",
+      "text": "Everything becomes memory — retrieved by relevance, not replay.",
+      "direction": "clean and certain, leaning very lightly on \"relevance\""
     },
     {
       "n": 10,
+      "start": 73.0,
+      "end": 79.5,
+      "segment": "S2g Code",
+      "text": "Run it. When it breaks, the fix cites the paper you just saved.",
+      "direction": "easy and slightly wry, as if it were unremarkable"
+    },
+    {
+      "n": 11,
+      "start": 80.0,
+      "end": 84.3,
+      "segment": "S2h Connections",
+      "text": "It connects to what you already use —",
+      "direction": "light and easy, with a small forward lift at the end"
+    },
+    {
+      "n": 12,
+      "start": 85.0,
+      "end": 93.0,
+      "segment": "S3a Assistant",
+      "text": "— so the assistant already knows your mastery, your weak spots, your deadline. It proposes. You approve.",
+      "direction": "even and warm, landing the last two sentences cleanly and lightly"
+    },
+    {
+      "n": 13,
+      "start": 97.0,
+      "end": 103.5,
+      "segment": "S3c Claude MCP",
+      "text": "And because Continuum speaks MCP, that memory follows you into Claude itself.",
+      "direction": "relaxed and confident — understated, as if it were obvious"
+    },
+    {
+      "n": 14,
+      "start": 103.9,
+      "end": 107.0,
+      "segment": "S3c payoff",
+      "text": "Nothing. Explained. Twice.",
+      "direction": "three separate words, each landing on its own — flat, certain, no rise",
+      "maxSilence": 0.5
+    },
+    {
+      "n": 15,
       "start": 109.0,
       "end": 118.0,
       "segment": "S4 Close",
-      "text": "Information is abundant. Learning is fragmented. Continuum is one workspace — where knowledge compounds."
+      "text": "Information is abundant. Learning is fragmented. Continuum is one workspace — where knowledge compounds.",
+      "direction": "warm and assured, clean and even — confident rather than solemn"
     }
-  ]
+  ],
+  "ttsNote": "Two things Gemini TTS takes literally, both learned the hard way: asking for a pause or beat inserts multi-second silences (line 10 once returned 32.4s for 14 words), and emotional words like \"weariness\" or \"finality\" produce a genuinely mournful read. Directions carry register and emphasis only. `houseStyle` is prepended to every line so all ten sound like one performance.",
+  "houseStyle": "In the voice of a premium technology brand film — calm, warm and assured, at an easy natural pace. Confident and matter-of-fact. Light rather than heavy, never sad, never dramatic, never salesy",
+  "bookend": "Line 2 and line 11 both say \"Information is abundant. Learning is fragmented.\" That is deliberate: line 2 lands it as the problem, on the frame where the hook puts the same words on screen; line 11 repeats it and resolves it. Do not de-duplicate them.",
+  "coverage": "Narration now covers ~80% of the runtime. Two silences are deliberate and must survive any future edit: Review at 1:33–1:37 (the approval click lands in the clear) and 1:47–1:49 after \"Twice.\" Everything else was dead air — Plan, Research and Code carried no narration at all, which on a film judges score from is a wasted feature explanation."
 }

@@ -12,6 +12,15 @@ import { palette, typography } from "./brand";
 import { ProblemTypography } from "./hook/Typography";
 import { HookWindow } from "./hook/Window";
 import { DUPLICATE_COUNT, windows, type WindowSpec } from "./hook/windows-data";
+import { Bloom, LightSweep, Vignette, depthOf, motionBlur } from "./vfx";
+import {
+  GlassSheen,
+  GridOverlay,
+  InkGrain,
+  SignalLines,
+  styleParams,
+  type HookStyle,
+} from "./hook/styles";
 
 /**
  * S0 · Hook — 420 frames (PLAN §3.2).
@@ -77,11 +86,17 @@ const stack: PlacedWindow[] = [
   ...windows.map((window) => ({ ...window, scale: 1, opacity: 1, blur: 0 })),
 ];
 
-const HookWindowLayer: React.FC<{ spec: PlacedWindow; frame: number; fps: number }> = ({
-  spec,
-  frame,
-  fps,
-}) => {
+const MAX_Z = Math.max(...windows.map((window) => window.z));
+
+const HookWindowLayer: React.FC<{
+  spec: PlacedWindow;
+  frame: number;
+  fps: number;
+  /** 0→1 across the camera push; drives how far the parallax opens up. */
+  push: number;
+  style: HookStyle;
+}> = ({ spec, frame, fps, push, style }) => {
+  const look = styleParams(style);
   const local = frame - spec.arriveAt;
   if (local < 0) return null;
 
@@ -95,6 +110,12 @@ const HookWindowLayer: React.FC<{ spec: PlacedWindow; frame: number; fps: number
   // Every window falls toward frame centre and shrinks to nothing, staggered so
   // the pile implodes rather than snapping.
   const collapseStart = COLLAPSE_START + Math.round(random(`${spec.id}-stagger`) * 8);
+  const collapseLinear = interpolate(
+    frame,
+    [collapseStart, collapseStart + COLLAPSE_DURATION],
+    [0, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
   const collapse = interpolate(
     frame,
     [collapseStart, collapseStart + COLLAPSE_DURATION],
@@ -109,6 +130,9 @@ const HookWindowLayer: React.FC<{ spec: PlacedWindow; frame: number; fps: number
       extrapolateRight: "clamp",
     },
   );
+  // d/dt of a cubic ease-in is 3t², so the smear builds exactly as the window
+  // accelerates rather than being keyed by hand.
+  const smear = motionBlur(3 * collapseLinear * collapseLinear * 0.5);
 
   const dx = FRAME_CENTER_X - (spec.x + (spec.width * spec.scale) / 2);
   const dy = FRAME_CENTER_Y - (spec.y + (spec.height * spec.scale) / 2);
@@ -119,8 +143,20 @@ const HookWindowLayer: React.FC<{ spec: PlacedWindow; frame: number; fps: number
     extrapolateRight: "clamp",
   });
 
-  const scale = spec.scale * (0.92 + 0.08 * entrance) * (1 - collapse);
+  // Nearer windows open up faster under the push and sit fractionally softer;
+  // the focal plane sits mid-stack. This is what stops nine flat rectangles
+  // reading as a collage.
+  const depth = depthOf(spec.z, MAX_Z);
+  const parallax = 1 + (depth.parallax - 1) * push * look.parallax;
+  const defocus = depth.defocus * push * 0.8 * look.defocus;
+
+  const scale = spec.scale * parallax * (0.92 + 0.08 * entrance) * (1 - collapse);
   if (scale <= 0.001) return null;
+
+  const softness = Math.max(spec.blur, defocus);
+  const filters = [softness > 0.15 ? `blur(${softness.toFixed(2)}px)` : null, smear]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div
@@ -129,8 +165,10 @@ const HookWindowLayer: React.FC<{ spec: PlacedWindow; frame: number; fps: number
         left: spec.x,
         top: spec.y,
         zIndex: spec.z,
-        opacity: spec.opacity * entrance,
-        filter: spec.blur > 0 ? `blur(${spec.blur}px)` : undefined,
+        opacity: spec.opacity * entrance * look.windowOpacity,
+        filter: filters || undefined,
+        boxShadow: look.glow,
+        borderRadius: 11,
         transform: [
           `translate(${dx * collapse}px, ${dy * collapse + (1 - entrance) * 18}px)`,
           `rotate(${spec.rotate + spin * collapse}deg)`,
@@ -157,15 +195,16 @@ const HookWindowLayer: React.FC<{ spec: PlacedWindow; frame: number; fps: number
   );
 };
 
-export const Hook: React.FC = () => {
+export const Hook: React.FC<{ style?: HookStyle }> = ({ style = "depth" }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
   // Imperceptible push across the whole build (PLAN: 1.00→1.06 over f0–288).
-  const push = interpolate(frame, [0, PUSH_END], [1, 1.06], {
+  const pushProgress = interpolate(frame, [0, PUSH_END], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
+  const push = 1 + pushProgress * 0.06;
 
   // Shake ramps in with the acceleration and dies at the freeze. Driven by
   // smooth 2D noise rather than per-frame randomness so it drifts like a real
@@ -234,7 +273,14 @@ export const Hook: React.FC = () => {
           }}
         >
           {stack.map((spec) => (
-            <HookWindowLayer key={spec.id} spec={spec} frame={frame} fps={fps} />
+            <HookWindowLayer
+              key={spec.id}
+              spec={spec}
+              frame={frame}
+              fps={fps}
+              push={pushProgress}
+              style={style}
+            />
           ))}
         </AbsoluteFill>
       </AbsoluteFill>
@@ -274,20 +320,44 @@ export const Hook: React.FC = () => {
         </AbsoluteFill>
       ) : null}
 
+      {style === "grid" ? <GridOverlay opacity={1 - defocus} /> : null}
+      {style === "signal" ? <SignalLines frame={frame} opacity={1 - defocus} /> : null}
+      {style === "glass" ? <GlassSheen opacity={1 - defocus * 0.6} /> : null}
+      {style === "ink" ? <InkGrain frame={frame} opacity={1} /> : null}
+
+      {/* One pass of light as the statement lands — the frame's only flourish,
+          and it reads as a light source moving past rather than an overlay. */}
+      {style === "depth" || style === "glass" ? (
+        <LightSweep
+          progress={interpolate(frame, [292, 356], [0, 1], {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+          })}
+          intensity={style === "glass" ? 1 : 0.85}
+        />
+      ) : null}
+
       {/* All that mass, compressed. The Close re-opens this exact dot. */}
       {dotScale > 0 ? (
-        <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
-          <div
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 6,
-              backgroundColor: palette.accent,
-              transform: `scale(${dotScale * breathe})`,
-            }}
-          />
-        </AbsoluteFill>
+        <>
+          <Bloom size={340} strength={dotScale * 0.85} />
+          <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
+            <div
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: palette.accent,
+                transform: `scale(${dotScale * breathe})`,
+                boxShadow: `0 0 ${18 * dotScale}px ${6 * dotScale}px rgba(217,255,47,0.55)`,
+              }}
+            />
+          </AbsoluteFill>
+        </>
       ) : null}
+
+      {/* Deepens as the desktop goes cold, lifts as it resolves. */}
+      <Vignette strength={(style === "grid" ? 0.15 : 0.35) + cool * 0.65} />
     </AbsoluteFill>
   );
 };

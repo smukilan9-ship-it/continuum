@@ -1,6 +1,6 @@
 {
   "$schema": "./cutlist.schema.md",
-  "generatedAt": "2026-07-28T19:25:28.880Z",
+  "generatedAt": "2026-07-29T15:33:08.261Z",
   "project": "Continuum-120",
   "fps": 30,
   "width": 1920,
@@ -394,8 +394,8 @@
     {
       "id": "A1-vo",
       "track": "A1",
-      "src": "out/audio/vo-scratch.wav",
-      "name": "vo-scratch.wav",
+      "src": "out/audio/vo.wav",
+      "name": "vo.wav",
       "recIn": 0,
       "recOut": 3600,
       "srcIn": 0,
@@ -408,6 +408,18 @@
       "track": "A2",
       "src": "assets/audio/bgm.wav",
       "name": "bgm.wav",
+      "recIn": 0,
+      "recOut": 3600,
+      "srcIn": 0,
+      "kind": "audio",
+      "offline": false,
+      "note": "Licensed music bed"
+    },
+    {
+      "id": "A3-sfx",
+      "track": "A3",
+      "src": "assets/audio/sfx.wav",
+      "name": "sfx.wav",
       "recIn": 0,
       "recOut": 3600,
       "srcIn": 0,

@@ -1,6 +1,6 @@
 # Pipeline pilot report
 
-Generated 2026-07-28T20:01:10.305Z by `scripts/pilot.mjs`.
+Generated 2026-07-29T17:37:09.071Z by `scripts/pilot.mjs`.
 
 De-risks Phase C (PLAN §4 T11) before a single frame of Phase B is shot.
 
