@@ -315,8 +315,25 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
   const coachAbortRef = useRef<AbortController | undefined>(undefined);
   const runRef = useRef<ExecutionHandle | undefined>(undefined);
   const studioRef = useRef<HTMLDivElement>(null);
+  const executionPaneRef = useRef<HTMLElement>(null);
 
   const setPanel = (next: OutputPanel) => update({ panel: next, panelCollapsed: false });
+
+  /**
+   * Scrolls the console into view, but only when it is actually out of view —
+   * scrolling unconditionally would yank the page on every run for users whose
+   * viewport already shows the output.
+   */
+  function revealConsole() {
+    window.requestAnimationFrame(() => {
+      const pane = executionPaneRef.current;
+      if (!pane) return;
+      const box = pane.getBoundingClientRect();
+      const visibleHeight = Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0);
+      if (visibleHeight >= Math.min(240, box.height)) return;
+      pane.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
 
   useEffect(() => {
     if (runnableLanguage) return prewarmBrowserRuntime(runnableLanguage);
@@ -436,6 +453,11 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
     // On a phone the output pane is hidden behind the segmented switch, so a run
     // that produced nothing visible would look like nothing happened.
     setMobilePane("output");
+    // The same was true on a laptop for a different reason: at 1280x720 the
+    // console sits below the fold, so pressing Run left the viewport visually
+    // identical and the program looked like it had not executed. Bring the
+    // console into view as the run starts, so every run has visible feedback.
+    revealConsole();
     const handle = startBrowserExecution(request, setRuntimeStatus);
     runRef.current = handle;
     const result = await handle.result;
@@ -525,6 +547,8 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
     setRuntimeBusy(true);
     setRuntimeStatus("preparing");
     setPanel("console");
+    setMobilePane("output");
+    revealConsole();
     const handle = startBrowserExecution(request, setRuntimeStatus);
     runRef.current = handle;
     const result = await handle.result;
@@ -686,7 +710,7 @@ export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; 
           window.addEventListener("pointerup", stop);
         }} /> : null}
 
-        <section className="execution-pane" aria-label="Execution and assistance">
+        <section className="execution-pane" ref={executionPaneRef} aria-label="Execution and assistance">
           {panelCollapsed ? <button className="code-panel-open" onClick={() => update({ panelCollapsed: false })}><PanelRightOpen size={17} /><span>Open panel</span></button> : null}
           {!panelCollapsed ? <>
           {/* The collapse control is not a tab, so it sits outside the tablist —

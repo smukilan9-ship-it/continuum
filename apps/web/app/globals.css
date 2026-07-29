@@ -3607,6 +3607,75 @@ html[data-theme="dark"] .code-editor-shell .cm-activeLineGutter { color: var(--l
   grid-template-areas: "rail" "editor" "execution";
   border-radius: var(--radius-card);
 }
+
+/* The console must share a row with the editor at every width where the studio
+   is not using the mobile pane switch.
+ *
+ * Stacking it under a 480px-min editor put its top at 785px inside a 720px
+ * frame that does not scroll, so on a 1280x720 laptop pressing Run changed
+ * nothing on screen and the program looked like it had not executed — the
+ * output was not merely below the fold, it was unreachable.
+ *
+ * Two bands keep it in view. From 1040px the editor and console sit side by
+ * side and the file rail becomes a horizontal strip above them; from 1180px the
+ * rail returns to its own column. */
+@media (min-width: 1040px) {
+  .code-screen .code-studio {
+    grid-template-columns: minmax(300px, 1fr) 6px minmax(280px, var(--code-panel-width, 380px));
+    grid-template-areas:
+      "rail rail rail"
+      "editor resizer execution";
+  }
+  .code-screen .code-studio.panel-collapsed {
+    grid-template-columns: minmax(300px, 1fr) 52px;
+    grid-template-areas: "rail rail" "editor execution";
+  }
+  /* Horizontal rail: files and actions flow along one row instead of a column. */
+  .code-screen .code-studio > .code-rail {
+    height: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .code-screen .code-studio > .code-rail .code-rail-files { grid-auto-flow: column; grid-auto-columns: max-content; align-items: center; }
+  .code-screen .code-studio > .code-rail .code-rail-file-actions { margin-left: auto; }
+}
+
+@media (min-width: 1180px) {
+  .code-screen .code-studio {
+    grid-template-columns: 180px minmax(320px, 1fr) 6px minmax(280px, var(--code-panel-width, 400px));
+    grid-template-areas: "rail editor resizer execution";
+  }
+  .code-screen .code-studio.panel-collapsed { grid-template-columns: 180px minmax(320px, 1fr) 52px; grid-template-areas: "rail editor execution"; }
+  /* Back to a vertical rail in its own column. These also have to win against
+     the max-width:1399px tablet block below, which lays the rail out as a
+     horizontal strip for the stacked layout this breakpoint replaces. */
+  .code-screen .code-studio > .code-rail {
+    height: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+    border-right: 1px solid var(--line);
+    border-bottom: 0;
+  }
+  .code-screen .code-studio > .code-rail .code-rail-files { display: grid; grid-auto-flow: row; grid-auto-columns: auto; gap: 2px; }
+  .code-screen .code-studio > .code-rail .code-rail-files button { width: 100%; }
+  .code-screen .code-studio > .code-rail .code-rail-file-actions {
+    display: grid;
+    gap: 2px;
+    margin-left: 0;
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--line);
+  }
+  .code-screen .code-studio > .code-rail .code-rail-file-actions button { width: 100%; }
+  .code-screen .code-studio > .code-rail .studio-save-status { margin-inline-start: 0; }
+  /* Side by side, the console is divided from the editor on its leading edge. */
+  .code-screen .code-studio > .execution-pane { min-height: 0; border-top: 0; }
+}
+
 @media (min-width: 1400px) {
   .code-screen .code-studio {
     grid-template-columns: 190px minmax(380px, 1fr) 6px minmax(320px, var(--code-panel-width, 420px));
