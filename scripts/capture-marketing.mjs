@@ -60,9 +60,8 @@ const only = args.find((arg) => arg.startsWith("--only="))?.slice("--only=".leng
 
 /** @type {Shot[]} */
 /**
- * The three-step first-run tour is a coach-mark overlay that fires for any
- * account with goals and no completion flag — which every fresh browser context
- * is. It sat in the corner of every shot.
+ * A fresh browser context has no "skip onboarding" flag, so an account with no
+ * goals would be redirected to `/start` mid-capture.
  *
  * The try/catch matters: an init script also runs on `about:blank`, where
  * touching localStorage throws and would abort the whole script silently.
@@ -70,7 +69,6 @@ const only = args.find((arg) => arg.startsWith("--only="))?.slice("--only=".leng
 async function dismissFirstRun(context) {
   await context.addInitScript(() => {
     try {
-      window.localStorage.setItem("continuum.tour.completed.v1", "1");
       window.localStorage.setItem("continuum.onboarding.skipped.v1", "1");
     } catch { /* Not a real origin yet. */ }
   });

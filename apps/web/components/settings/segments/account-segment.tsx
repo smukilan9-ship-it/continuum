@@ -101,19 +101,7 @@ export function AccountSegment({
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Getting started tour" description="The three-step introduction to Today, Plan, and ⌘K.">
-        <div className="settings-form-actions">
-          <Button
-            variant="secondary"
-            onClick={() => {
-              window.localStorage.removeItem("continuum.tour.completed.v1");
-              showToast("The tour will start again on your next screen.");
-            }}
-          >
-            Restart the tour
-          </Button>
-        </div>
-      </SettingsSection>
+
     </>
   );
 }

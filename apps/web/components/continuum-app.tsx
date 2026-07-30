@@ -103,14 +103,6 @@ function initials(name: string) {
 }
 
 const SKIP_ONBOARDING_KEY = "continuum.onboarding.skipped.v1";
-const TOUR_KEY = "continuum.tour.completed.v1";
-
-/** The three things a new user needs to know before the app makes sense. */
-const TOUR_STEPS = [
-  { title: "Today is your next action", body: "One decided next step, with the reasoning behind it — not a blank page to plan from." },
-  { title: "Plan is your week", body: "A deterministic draft you can move, resize, and edit before anything is saved." },
-  { title: "⌘K finds anything, ⌘J asks about it", body: "Search every goal, source, paper, conversation, and concept — then ask Continuum without leaving the page." },
-] as const;
 
 /**
  * §8.5: the panel attaches the page it was opened from as a removable chip.
@@ -149,7 +141,6 @@ export function ContinuumApp({ user, initialState, shell, view, goalId, projectI
   const [toast, setToast] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [tourStep, setTourStep] = useState<number>();
   const currentView = view;
   const sidebarRef = useRef<HTMLElement>(null);
   const closeNavigationRef = useRef<HTMLButtonElement>(null);
@@ -243,13 +234,6 @@ export function ContinuumApp({ user, initialState, shell, view, goalId, projectI
     if (window.localStorage.getItem(SKIP_ONBOARDING_KEY) === "1") return;
     window.location.assign("/start");
   }, [needsOnboarding]);
-
-  // The tour runs once, after a plan exists, and is resumable from Account.
-  useEffect(() => {
-    if (needsOnboarding || !state?.goals.length) return;
-    if (window.localStorage.getItem(TOUR_KEY) === "1") return;
-    setTourStep(0);
-  }, [needsOnboarding, state?.goals.length]);
 
   useEffect(() => {
     const query = window.matchMedia("(max-width: 840px)");
@@ -444,27 +428,7 @@ export function ContinuumApp({ user, initialState, shell, view, goalId, projectI
         </Dialog.Portal>
       </Dialog.Root>
 
-      {/* A three-step coach-mark tour, dismissible and resumable from Account. */}
-      {typeof tourStep === "number" && TOUR_STEPS[tourStep] ? <div className="tour-mark" role="dialog" aria-label="Getting started tour">
-        <strong>{TOUR_STEPS[tourStep]!.title}</strong>
-        <p>{TOUR_STEPS[tourStep]!.body}</p>
-        <footer>
-          <span>{tourStep + 1} of {TOUR_STEPS.length}</span>
-          <div>
-            <button onClick={() => { window.localStorage.setItem(TOUR_KEY, "1"); setTourStep(undefined); }}>Skip</button>
-            <button
-              className="tour-next"
-              onClick={() => {
-                if (tourStep + 1 >= TOUR_STEPS.length) { window.localStorage.setItem(TOUR_KEY, "1"); setTourStep(undefined); return; }
-                if (tourStep === 0) navigate("goals");
-                setTourStep(tourStep + 1);
-              }}
-            >
-              {tourStep + 1 >= TOUR_STEPS.length ? "Done" : "Next"}
-            </button>
-          </div>
-        </footer>
-      </div> : null}
+
 
       {toast ? <div className="toast" role="status"><span className="toast-icon">✓</span><span>{toast}</span><button onClick={() => setToast(null)} aria-label="Dismiss"><X size={16} /></button></div> : null}
     </div>
