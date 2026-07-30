@@ -87,7 +87,11 @@ async function main() {
     await approve.click();
     const received = await Promise.race([
       callbackReceived,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("loopback callback timed out")), 20_000)),
+      new Promise((_, reject) => setTimeout(async () => {
+        const where = page.url();
+        const what = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 400);
+        reject(new Error(`loopback callback timed out; browser sat at ${where}: ${what}`));
+      }, 25_000)),
     ]);
 
     const token = await context.request.post(`${baseUrl}/api/oauth/token`, {

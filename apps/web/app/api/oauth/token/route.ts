@@ -41,7 +41,7 @@ export async function POST(request: Request) {
   if (!form) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   try {
     if (form.get("grant_type") === "authorization_code") {
-      const code = await verifyToken(String(form.get("code") ?? ""), "code");
+      const code = await verifyToken(String(form.get("code") ?? ""), "code", request.url);
       const clientId = String(form.get("client_id") ?? "");
       await verifyClientRegistration(clientId);
       if (clientId !== code.clientId) throw new Error("Authorization code was issued to a different client");
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     }
     if (form.get("grant_type") === "refresh_token") {
       const raw = String(form.get("refresh_token") ?? "");
-      const refresh = await verifyToken(raw, "refresh");
+      const refresh = await verifyToken(raw, "refresh", request.url);
       const clientId = String(form.get("client_id") ?? "");
       await verifyClientRegistration(clientId);
       if (clientId !== refresh.clientId) throw new Error("Refresh token was issued to a different client");

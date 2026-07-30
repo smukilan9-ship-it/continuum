@@ -1,5 +1,6 @@
 import { scopes as supportedScopes } from "@continuum/domain";
 import { ArrowLeft, ExternalLink, Shield } from "lucide-react";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { OAuthConsentForm } from "@/components/oauth-consent-form";
 import { getServerUser } from "@/lib/auth";
@@ -63,9 +64,17 @@ export default async function OAuthAuthorizePage({
   }
   if (!user) redirect(`/login?returnTo=${encodeURIComponent(`/oauth/authorize?${query}`)}`);
 
+  // The consent page validates the same request the API route did, so it needs
+  // the same view of which origin this deployment answers on — otherwise a
+  // preview build rejects the resource its own discovery document advertises.
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "";
+  const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  const requestUrl = host ? `${protocol}://${host}/oauth/authorize` : undefined;
+
   let authorization;
   try {
-    authorization = await parseAuthorizationRequest(query, supportedScopes);
+    authorization = await parseAuthorizationRequest(query, supportedScopes, requestUrl);
   } catch {
     return (
       <main className="oauth-page">
@@ -74,7 +83,7 @@ export default async function OAuthAuthorizePage({
           <p className="eyebrow">CONNECTION NOT STARTED</p>
           <h1>This authorization request is not valid</h1>
           <p>The callback, state, or security information is missing or does not match. Return to Claude and start the connection again.</p>
-          <a className="button button-primary" href="/integrations#claude">Return to Connections</a>
+          <a className="button button-primary" href="/settings/connections#claude">Return to Connections</a>
         </section>
       </main>
     );
@@ -127,7 +136,7 @@ export default async function OAuthAuthorizePage({
           <p>Uncheck anything you do not want to share. Permission names are explained in plain English.</p>
         </div>
         <OAuthConsentForm consentToken={consentToken} permissions={permissions} fields={fields} />
-        <a className="oauth-cancel-link" href="/integrations?connection=cancelled#claude">
+        <a className="oauth-cancel-link" href="/settings/connections?connection=cancelled#claude">
           <ArrowLeft size={14} aria-hidden="true" /> Cancel and return to Connections
         </a>
       </section>

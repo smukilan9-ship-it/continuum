@@ -103,7 +103,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const consent = await verifyToken(String(form.get("consent_token") ?? ""), "consent");
+    const consent = await verifyToken(String(form.get("consent_token") ?? ""), "consent", request.url);
     const consentMatches = consent.sub === user.id
       && consent.clientId === authorization.clientId
       && consent.redirectUri === authorization.redirectUri

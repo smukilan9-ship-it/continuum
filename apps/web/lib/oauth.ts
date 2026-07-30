@@ -170,7 +170,11 @@ export async function parseAuthorizationRequest(params: URLSearchParams, support
 }
 
 export async function issueOAuthConsent(userId: string, request: AuthorizationRequest) {
+  // `request.resource` was already validated against the serving origin when
+  // the authorization request was parsed, so it is trusted here rather than
+  // re-checked against the configured issuer alone.
   return issueToken({
+    trustedResource: true,
     sub: userId,
     clientId: request.clientId,
     scopes: request.requestedScopes,
@@ -183,9 +187,17 @@ export async function issueOAuthConsent(userId: string, request: AuthorizationRe
   });
 }
 
-export async function issueToken(payload: Omit<TokenPayload, "iat" | "jti" | "iss" | "aud" | "resource"> & { resource?: string }) {
-  const resource = payload.resource && validMcpResource(payload.resource) ? payload.resource : mcpResource();
-  const full: TokenPayload = { ...payload, resource, iss: issuer(), aud: resource, iat: Math.floor(Date.now() / 1000), jti: randomUUID() };
+/**
+ * `trustedResource` marks a resource the caller has already validated against
+ * the origin this deployment is being served on. Without it, a preview build
+ * silently rewrote the requested resource to `{APP_BASE_URL}/mcp`, and the
+ * consent token then disagreed with the form it was issued for — which the POST
+ * handler correctly rejected as an expired approval.
+ */
+export async function issueToken(payload: Omit<TokenPayload, "iat" | "jti" | "iss" | "aud" | "resource"> & { resource?: string; trustedResource?: boolean }) {
+  const { trustedResource, ...rest } = payload;
+  const resource = payload.resource && (trustedResource || validMcpResource(payload.resource)) ? payload.resource : mcpResource();
+  const full: TokenPayload = { ...rest, resource, iss: issuer(), aud: resource, iat: Math.floor(Date.now() / 1000), jti: randomUUID() };
   const encoded = encode(JSON.stringify(full));
   await getStore(full.sub).registerOAuthGrant({
     jti: full.jti,
@@ -198,7 +210,7 @@ export async function issueToken(payload: Omit<TokenPayload, "iat" | "jti" | "is
   return `${encoded}.${signature(encoded)}`;
 }
 
-export async function verifyToken(token: string, expectedType?: TokenPayload["type"]): Promise<TokenPayload> {
+export async function verifyToken(token: string, expectedType?: TokenPayload["type"], requestUrl?: string): Promise<TokenPayload> {
   if (token.length > 16_384) throw new Error("Malformed token");
   const [encoded, provided] = token.split(".");
   if (!encoded || !provided) throw new Error("Malformed token");
@@ -207,7 +219,7 @@ export async function verifyToken(token: string, expectedType?: TokenPayload["ty
   const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as TokenPayload;
   const legacyAudience = payload.aud === "continuum-mcp" && !payload.resource;
   if (legacyAudience) payload.resource = mcpResource();
-  else if (payload.iss !== issuer() || payload.aud !== payload.resource || !validMcpResource(payload.resource)) throw new Error("Token issuer, audience, or resource is invalid");
+  else if (payload.iss !== issuer() || payload.aud !== payload.resource || !validMcpResource(payload.resource, requestUrl)) throw new Error("Token issuer, audience, or resource is invalid");
   if (payload.iss !== issuer()) throw new Error("Token issuer is invalid");
   if (payload.exp <= Math.floor(Date.now() / 1000)) throw new Error("Token expired");
   if (await getStore(payload.sub).oauthGrantUnavailable(payload.jti)) throw new Error("Token revoked or already used");
@@ -246,7 +258,7 @@ export async function authorizedMcpIdentity(request: Request): Promise<Authorize
     };
   }
   try {
-    const payload = await verifyToken(token, "access");
+    const payload = await verifyToken(token, "access", request.url);
     return { userId: payload.sub, clientId: payload.clientId, scopes: payload.scopes, tokenId: payload.jti, authentication: "oauth" };
   } catch { return undefined; }
 }
