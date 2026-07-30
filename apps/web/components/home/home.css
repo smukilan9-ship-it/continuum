@@ -112,9 +112,9 @@
 .today-grid > .card { padding: 22px; }
 .next-action-card { display: flex; flex-direction: column; align-items: flex-start; background: var(--ink); border-color: var(--ink); color: var(--on-accent); }
 .next-action-card h2 { max-width: 700px; margin: 26px 0 10px; font-size: clamp(27px, 3vw, 38px); line-height: 1.12; letter-spacing: -.03em; }
-.next-action-card > p { max-width: 650px; margin: 0; color: #c5d8e9; line-height: 1.6; }
+.next-action-card > p { max-width: 650px; margin: 0; color: var(--ink-inverse-2); line-height: 1.6; }
 .next-action-card .button { color: var(--ink); background: var(--surface); border-color: var(--on-accent); }
-.action-evidence { margin: 16px 0 22px; display: flex; align-items: center; gap: 8px; color: #b9d2e6; font-size: 13px; }
+.action-evidence { margin: 16px 0 22px; display: flex; align-items: center; gap: 8px; color: var(--ink-inverse-2); font-size: 13px; }
 .summary-card { min-height: 0; }
 .workspace-metrics { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .workspace-metrics div { min-height: 84px; padding: 15px 16px; display: grid; align-content: center; gap: 3px; background: var(--surface-raised); border-radius: 11px; }
@@ -143,16 +143,16 @@
 /* Height follows content. A fixed 390px minimum with the CTA pinned to the
    bottom left a ~100px hole in the middle of the card whenever the action
    description was short, which is the common case. */
-.next-action-card { min-height: 0; color: #f6f3e9; background: #181912; border: 0; border-radius: 24px; }
+.next-action-card { min-height: 0; color: var(--ink-inverse); background: var(--surface-inverse); border: 0; border-radius: 24px; }
 .next-action-card h2 { margin-top: 26px; font-size: clamp(33px, 4vw, 50px); }
 .next-action-card .button { margin-top: 28px; }
-.next-action-card > p, .action-evidence { color: #c6c7ba; }
+.next-action-card > p, .action-evidence { color: var(--ink-inverse-2); }
 .next-action-card .button { color: var(--on-accent); background: var(--accent-mark); border-color: var(--accent-mark); }
 .summary-card { min-height: 0; background: color-mix(in srgb, var(--surface) 72%, transparent); border: 0; }
 .summary-card .workspace-metrics { border-top-color: var(--line); }
 .summary-card .workspace-metrics strong { color: var(--ink); }
 .schedule-card, .resume-card { background: color-mix(in srgb, var(--surface) 88%, transparent); }
-html[data-theme="dark"] .next-action-card { color: #f6f3e9; background: #0b0c09; }@media (max-width: 760px) {
+@media (max-width: 760px) {
   .today-grid { grid-template-columns: 1fr; }
   .next-action-card { min-height: 0; }
 }
@@ -169,7 +169,7 @@ html[data-theme="dark"] .next-action-card { color: #f6f3e9; background: #0b0c09;
 
 /* The next-action card is dark in both themes, so text inside it cannot use the
    page's muted token — that combination measured 2.71:1. */
-.next-action-card .today-technical summary { color: #c9cdbe; }
-.next-action-card .today-technical p { color: #d8dccd; }
+.next-action-card .today-technical summary { color: var(--ink-inverse-2); }
+.next-action-card .today-technical p { color: var(--ink-inverse-2); }
 .today-grid > .card { padding: 28px; }
 html[data-theme="dark"] .next-action-card .button { color: var(--on-accent); }

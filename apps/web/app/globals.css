@@ -46,6 +46,28 @@
      light-olive dark accent. */
   --on-accent: #ffffff;
 
+  /* --accent-mark is bright lime in BOTH themes, so text on it is dark in both
+     and --on-accent (white in light) fails on it at 1.7:1. */
+  --on-accent-mark:   #1f2114;
+  --on-accent-mark-2: #4a4d2a;
+
+  --danger-hover: #862f2f;
+
+  /* Deliberately dark in both themes: console output, code blocks, and the one
+     next-action card. These are not the dark theme's surfaces — they stay dark
+     when the page is light, so they cannot use --surface. */
+  --surface-inverse:        #181912;
+  --surface-inverse-raised: #22241b;
+  --surface-inverse-danger: #331a1d;
+  --ink-inverse:            #f6f3e9;
+  --ink-inverse-2:          #c6c7ba;
+  --ink-inverse-3:          #a9aa9d;
+  --ink-inverse-danger:     #ffd8dc;
+
+  /* CodeMirror's default light theme paints string literals at #ee4400, which
+     is off-palette and fails on the editor surface. */
+  --syntax-string: #b8330b;
+
   --shadow-1: 0 1px 2px rgba(27, 28, 22, .05);
   --shadow-2: 0 8px 24px rgba(27, 28, 22, .08);
   --shadow-3: 0 24px 64px rgba(27, 28, 22, .14);
@@ -79,6 +101,13 @@ html[data-theme="dark"] {
   --info:    #8fb3c6; --info-surface:    #1a2429;
   --focus:   #dff53b;
   --on-accent: #171812;
+  --danger-hover: #f2b3ad;
+
+  --surface-inverse:        #0b0c09;
+  --surface-inverse-raised: #17180f;
+  --surface-inverse-danger: #2a1516;
+
+  --syntax-string: #ff9a6b;
 
   --shadow-1: 0 1px 2px rgba(0, 0, 0, .3);
   --shadow-2: 0 8px 24px rgba(0, 0, 0, .35);
@@ -86,6 +115,18 @@ html[data-theme="dark"] {
 
   --goal-1: #c3d268; --goal-2: #8fb3c6; --goal-3: #dfae68;
   --goal-4: #c0a2c0; --goal-5: #7fc4ae; --goal-6: #e59aa6;
+}
+
+/* A status tint needs a border a step stronger than its surface but far weaker
+   than its ink. Derived rather than hand-picked so it tracks both themes from
+   one definition — the twelve hand-picked values these replace only ever
+   existed for the light theme. */
+:root {
+  --success-line: color-mix(in srgb, var(--success) 38%, var(--success-surface));
+  --warning-line: color-mix(in srgb, var(--warning) 38%, var(--warning-surface));
+  --danger-line:  color-mix(in srgb, var(--danger)  38%, var(--danger-surface));
+  --info-line:    color-mix(in srgb, var(--info)    38%, var(--info-surface));
+  --accent-line:  color-mix(in srgb, var(--accent)  32%, var(--accent-quiet));
 }
 
 /* Type, space, radius, and motion are theme-independent (§15.4–§15.7). */

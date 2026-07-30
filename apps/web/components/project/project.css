@@ -162,7 +162,7 @@
 .discovery-check { min-height: 40px; padding: 0 10px; display: flex; align-items: center; gap: 7px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; white-space: nowrap; }
 .discovery-check input { width: 15px; height: 15px; margin: 0; }
 .research-callout { min-height: 44px; padding: 10px 12px; display: flex; align-items: center; gap: 9px; border-radius: 8px; font-size: 12px; }
-.research-callout.error { color: var(--danger); background: var(--danger-surface); border: 1px solid #efc7c7; }
+.research-callout.error { color: var(--danger); background: var(--danger-surface); border: 1px solid var(--danger-line); }
 .provider-status-row { min-height: 30px; display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
 .provider-status { padding: 5px 8px; display: flex; align-items: center; gap: 6px; color: var(--ink-2); background: var(--surface-raised); border-radius: 6px; font-size: 10px; font-weight: 700; }
 .provider-status i { width: 6px; height: 6px; background: var(--ink-2); border-radius: 50%; }

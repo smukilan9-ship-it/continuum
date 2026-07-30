@@ -26,8 +26,8 @@
 .demo-cta > svg:first-child { flex: none; color: var(--accent); }
 .demo-cta span { flex: 1; display: grid; gap: 1px; }
 .demo-cta strong { font-size: 14px; }
-.demo-cta small { color: #50543a; font-size: 12px; font-weight: 550; }
-.demo-cta > svg:first-child, .demo-cta > svg:last-child { flex: none; color: #51562c; }
+.demo-cta small { color: var(--on-accent-mark-2); font-size: 12px; font-weight: 550; }
+.demo-cta > svg:first-child, .demo-cta > svg:last-child { flex: none; color: var(--on-accent-mark-2); }
 .auth-form { display: grid; gap: 14px; }
 .auth-form label { display: grid; gap: 6px; font-size: 13px; font-weight: 700; }
 .auth-form input { width: 100%; min-height: 45px; padding: 9px 11px; color: var(--ink); border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); }

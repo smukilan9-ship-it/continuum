@@ -161,6 +161,6 @@
 .goal-progress-bar { height: 6px; margin: 7px 0 5px; overflow: hidden; background: var(--surface-raised); border-radius: 99px; }
 .goal-progress-bar i { height: 100%; display: block; background: var(--accent); border-radius: 99px; }
 .goal-progress-list small { color: var(--ink-2); font-size: 11px; }
-.goal-progress-list small.is-soon { color: var(--danger, #a4443a); font-weight: 700; }
+.goal-progress-list small.is-soon { color: var(--danger, var(--danger)); font-weight: 700; }
 .goal-list { display: grid; gap: 14px; }
 .goal-card { content-visibility: auto; contain-intrinsic-size: auto 180px; }
