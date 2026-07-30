@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateQuestionAnswer, extractQuestionBankQuestions, needsDualVerification } from "../apps/web/lib/question-bank";
+import { deterministicCanConfirm, evaluateQuestionAnswer, extractQuestionBankQuestions, needsDualVerification } from "../apps/web/lib/question-bank";
 import type { StoredSourceChunk } from "../packages/db/src";
 
 function chunk(text: string, passage = 1): StoredSourceChunk {
@@ -65,5 +65,61 @@ describe("document question banks", () => {
     expect(complete.score).toBeGreaterThan(incomplete.score);
     expect(complete.correct).toBe(true);
     expect(needsDualVerification(question, complete.score)).toBe(true);
+  });
+});
+
+/**
+ * The near miss.
+ *
+ * Found live in production. The question asked the learner to rewrite an
+ * injectable insert safely; the answer given was the injectable line itself
+ * plus "which is safe because .format handles the quoting for you" — the exact
+ * misconception the question exists to catch. It came back **Correct**, with
+ * "Covered source terms: cursor, execute, insert, students, values, roll, name".
+ *
+ * Term overlap measured vocabulary and called it a claim. The wrong answer
+ * reuses every word of the right one, so it scored at the top of the range —
+ * which was also the band that skipped model verification, because the old gate
+ * escalated *uncertain* scores and trusted confident ones.
+ */
+describe("an answer that keeps the words and negates the claim", () => {
+  const question = {
+    id: "question_001",
+    type: "short_answer" as const,
+    prompt: "Rewrite this so it cannot be injected: cursor.execute(\"INSERT INTO students VALUES ({},{})\".format(roll, name))",
+    expectedAnswer: "cursor.execute(\"INSERT INTO students VALUES (%s,%s)\", (roll, name))",
+    explanation: "The values travel as parameters, separate from the SQL text.",
+    difficulty: 0.45,
+    sourceChunkIds: ["chunk_demo_sql_2"],
+  };
+  const wrong = "You use cursor.execute(\"INSERT INTO students VALUES ({},{})\".format(roll, name)) which is safe because .format handles the quoting for you.";
+
+  it("is escalated for model verification rather than trusted", () => {
+    const graded = evaluateQuestionAnswer(question, wrong);
+    expect(needsDualVerification(question, graded.score)).toBe(true);
+  });
+
+  it("cannot be confirmed by the deterministic pass alone", () => {
+    expect(deterministicCanConfirm(wrong, question.expectedAnswer)).toBe(false);
+  });
+
+  it("still confirms an answer that is the expected one", () => {
+    expect(deterministicCanConfirm(question.expectedAnswer, question.expectedAnswer)).toBe(true);
+    expect(deterministicCanConfirm(`So: ${question.expectedAnswer}`, question.expectedAnswer)).toBe(true);
+  });
+
+  it("scores below the safe answer, because %s is a token again", () => {
+    // The tokeniser split on every non-alphanumeric and dropped anything under
+    // three characters, so `%s` became `s` and vanished. The injectable answer
+    // and the parameterised one tokenised identically.
+    const right = evaluateQuestionAnswer(question, question.expectedAnswer);
+    expect(evaluateQuestionAnswer(question, wrong).score).toBeLessThan(right.score);
+  });
+
+  it("keeps formula symbols apart, which is the same bug in mathematics", () => {
+    // The product's own demo describes a student who swaps arc length and
+    // sector area. Under the old tokeniser both answers reduced to nothing.
+    const arc = { ...question, id: "q", prompt: "Arc length of a 60° arc, r=6", expectedAnswer: "2π", explanation: "", difficulty: 0.5 };
+    expect(evaluateQuestionAnswer(arc, "6π").score).toBeLessThan(evaluateQuestionAnswer(arc, "2π").score);
   });
 });

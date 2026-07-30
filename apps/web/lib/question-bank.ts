@@ -117,8 +117,28 @@ export function extractQuestionBankQuestions(chunks: StoredSourceChunk[], maxQue
   });
 }
 
+/**
+ * Characters that carry the meaning in code and mathematics.
+ *
+ * `split(/[^a-z0-9]+/)` plus a `length > 2` floor deletes exactly the tokens a
+ * technical answer turns on. `%s` became `s` and was then dropped for being too
+ * short; `2π` and `6π` both became `2` and `6` and were dropped as well. So
+ * `cursor.execute(..., (roll, name))` with `%s` and the same line with
+ * `.format()` tokenised identically — the injectable answer and the safe one
+ * were indistinguishable to the grader. Same for the arc-length and sector-area
+ * formulas this product's own demo describes a student confusing.
+ */
+const MEANINGFUL_SYMBOL = /[%=^√π°µ×÷<>≤≥≠+*/\\-]/;
+
 function terms(value: string) {
-  return value.toLowerCase().normalize("NFKC").split(/[^a-z0-9]+/).filter((term) => term.length > 2 && !stopWords.has(term));
+  const lower = value.toLowerCase().normalize("NFKC");
+  const words = lower.split(/[^a-z0-9]+/).filter((term) => term.length > 2 && !stopWords.has(term));
+  // Whitespace-delimited chunks survive whole when they carry a symbol, with
+  // wrapping punctuation trimmed: `(%s,%s)",` → `%s,%s`, `U=qV.` → `u=qv`.
+  const symbols = lower.split(/\s+/)
+    .map((chunk) => chunk.replace(/^[("'`[{,.]+/, "").replace(/[)"'`\]},.;:]+$/, ""))
+    .filter((chunk) => chunk.length > 0 && MEANINGFUL_SYMBOL.test(chunk));
+  return [...words, ...symbols];
 }
 
 export function evaluateQuestionAnswer(questionValue: QuestionBankQuestion, answer: string) {
@@ -176,8 +196,30 @@ export function evaluateQuestionAnswer(questionValue: QuestionBankQuestion, answ
   };
 }
 
+/**
+ * The upper bound used to be 0.82 — a confident deterministic "correct" was the
+ * one case that skipped model verification. That is backwards. Term overlap
+ * measures vocabulary, not claims, so its characteristic failure is the near
+ * miss that reuses every word of the right answer and negates it. Those score
+ * *high*, which is exactly why they were never checked.
+ *
+ * Anything we are about to call correct now gets verified.
+ */
 export function needsDualVerification(questionValue: QuestionBankQuestion, deterministicScore: number) {
   return questionValue.type === "long_answer"
     || questionValue.difficulty >= 0.7
-    || (deterministicScore >= 0.35 && deterministicScore <= 0.82);
+    || deterministicScore >= 0.35;
+}
+
+/**
+ * Whether a deterministic pass may be reported as "correct" on its own.
+ *
+ * Only for an answer that essentially *is* the expected one. Term overlap can
+ * withhold a grade honestly — missing the source's vocabulary is real evidence
+ * of missing content — but it cannot award one, because containing the right
+ * words is not evidence of the right claim.
+ */
+export function deterministicCanConfirm(answer: string, expected: string) {
+  const tidy = (value: string) => value.toLowerCase().normalize("NFKC").replace(/[\s"'`]+/g, "");
+  return tidy(answer) === tidy(expected) || tidy(answer).includes(tidy(expected));
 }

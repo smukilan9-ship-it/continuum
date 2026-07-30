@@ -6,7 +6,7 @@ import { z } from "zod";
 import { availableAiProviders, runStructuredAi } from "@/lib/ai-gateway";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { buildAcademicPrompt } from "@/lib/prompt-context";
-import { evaluateQuestionAnswer, extractQuestionBankQuestions, needsDualVerification } from "@/lib/question-bank";
+import { deterministicCanConfirm, evaluateQuestionAnswer, extractQuestionBankQuestions, needsDualVerification } from "@/lib/question-bank";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -129,8 +129,13 @@ async function independentModelEvaluations(input: {
   answer: string;
   sourcePassages: Array<{ id: string; reference: string; text: string }>;
 }) {
+  // Two independent evaluators is the ideal, one is the realistic
+  // configuration, and this gate demanded two-or-nothing — so a
+  // single-provider deployment got zero model verification and term overlap
+  // graded everything unchallenged. `reconcile` already labels a single
+  // evaluator honestly; let it have one.
   const providers = availableAiProviders().slice(0, 2);
-  if (providers.length < 2) return [];
+  if (providers.length < 1) return [];
   const academicPrompt = buildAcademicPrompt({
     surface: "learning",
     taskClass: "citation_entailment",
@@ -158,16 +163,37 @@ async function independentModelEvaluations(input: {
   return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
 }
 
-function reconcile(deterministic: ReturnType<typeof evaluateQuestionAnswer>, modelResults: Evaluation[]) {
+function reconcile(deterministic: ReturnType<typeof evaluateQuestionAnswer>, modelResults: Evaluation[], answer = "", expected = "") {
+  // With nothing to corroborate it, a term-overlap "correct" is withheld unless
+  // the answer essentially is the expected one. The failure this prevents was
+  // live in production: an answer that kept every word of the marking key and
+  // asserted the opposite of it — the exact misconception the question was
+  // written to catch — came back Correct, because it shared the key's
+  // vocabulary. Telling a learner "not yet" when they were right costs them a
+  // second look; telling them "correct" when they hold the misconception is the
+  // product teaching it to them.
+  const unconfirmable = modelResults.length === 0
+    && deterministic.correct
+    && !deterministicCanConfirm(answer, expected);
   if (modelResults.length < 2) {
+    const withheld = unconfirmable
+      ? {
+        correct: false,
+        verdict: "incomplete" as const,
+        explanation: "Your answer uses the source's vocabulary, but nothing here could check what it claims — no model route was available, and matching words are not a matching answer. Compare it with the source-backed answer below.",
+      }
+      : {};
     return {
       ...deterministic,
+      ...withheld,
       verification: {
         status: modelResults.length ? "single_model_plus_source_rules" : "source_rules_only",
         evaluators: modelResults.map((result) => ({ provider: result.provider, model: result.model, confidence: result.confidence })),
         note: modelResults.length
           ? "One independent model was available. The uploaded source and deterministic coverage check remained authoritative."
-          : "No two independent model routes were available. The uploaded source and deterministic coverage check were used.",
+          : unconfirmable
+            ? "No model route was available, so this answer was not confirmed — only checked against the source's vocabulary."
+            : "No independent model route was available. The uploaded source and deterministic coverage check were used.",
       },
     };
   }
@@ -282,7 +308,7 @@ export async function POST(request: Request) {
   const modelResults = needsDualVerification(question, deterministic.score)
     ? await independentModelEvaluations({ request, userId: user.id, question, answer: answerData.answer, sourcePassages: sourceChunks })
     : [];
-  const evaluation = reconcile(deterministic, modelResults);
+  const evaluation = reconcile(deterministic, modelResults, answerData.answer, question.expectedAnswer);
   const existingAttempts = Array.isArray(bank.attempts) ? bank.attempts as Array<Record<string, unknown>> : [];
   const attemptId = answerData.attemptId ?? id("question_attempt");
   const existing = existingAttempts.find((attempt) => attempt.id === attemptId);
