@@ -19,17 +19,30 @@
 .context-empty { margin: 0; color: var(--ink-3); font-size: var(--t-small); }
 
 .context-list { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); }
+/* Three of these sit side by side, so each row is about a third of the content
+   width. The provenance label used to be `flex: none` opposite the record,
+   which at that width took the entire row and left the decision itself wrapping
+   one word per line. It reads as a meta line under the record instead — which
+   is also the right order: the decision first, where it came from second. */
 .context-row {
   min-width: 0;
-  padding: var(--s-2) 0;
-  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3);
+  padding: var(--s-3) 0;
+  display: grid;
+  gap: var(--s-1);
   border-bottom: 1px solid var(--line);
 }
 .context-row:last-child { border-bottom: 0; }
 .context-row > div { min-width: 0; display: grid; gap: 2px; }
-.context-row strong { color: var(--ink); font-size: var(--t-body); font-weight: 500; }
-.context-row > div > span { color: var(--ink-2); font-size: var(--t-small); }
-.context-row small { flex: none; color: var(--ink-3); font-size: var(--t-micro); }
+.context-row strong { color: var(--ink); font-size: var(--t-body); font-weight: 500; line-height: 1.4; }
+.context-row > div > span { color: var(--ink-2); font-size: var(--t-small); line-height: 1.5; }
+.context-row small {
+  min-width: 0;
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* Forget (§9.9 AC-CX3). Quiet until hovered or focused, because the row is for
    reading; the confirmation that follows is the loud part. */

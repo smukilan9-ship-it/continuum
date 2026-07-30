@@ -1096,8 +1096,10 @@
   .scholarly-detail { position: static; max-height: none; overflow-y: visible; }
 }
 
-.source-row { padding: 13px 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 12px; border-top: 1px solid var(--line); }
-.source-row:first-of-type { margin-top: 16px; }
-.source-row div { display: grid; gap: 4px; }
-.source-row span { color: var(--ink-2); font-size: 12px; }
+/* A `.source-row` block from the pre-migration research screen used to sit here
+   and redefine the row as a content-sized grid. It won on source order, so the
+   Library's rows were laid out by the wrong stylesheet: every row's chips began
+   wherever its title happened to end, which is why the list read as a ragged
+   staircase rather than a table. The research screen's own rows are
+   `.research-source-row` and were never styled by it. */
 .scholarly-card-main:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }

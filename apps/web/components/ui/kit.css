@@ -332,10 +332,18 @@
 
 .list { margin: 0; padding: 0; list-style: none; }
 .row { display: flex; align-items: center; gap: var(--s-2); border-bottom: 1px solid var(--line); }
+.row:hover .row-actions { opacity: 1; }
+.row-actions { opacity: .55; transition: opacity var(--d-fast) var(--e-out); }
 .row:last-child { border-bottom: 0; }
+/* A grid, not a flex row. With flex the trailing chips started wherever the
+   title happened to end, so a list of sources was a ragged staircase; the
+   columns now line up down the list however long a title is. */
 .row-hit {
   flex: 1; min-width: 0;
-  display: flex; align-items: center; gap: var(--s-3);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
   padding: var(--s-2) var(--s-3);
   min-height: var(--row-h);
   color: inherit;
@@ -343,7 +351,12 @@
   border: 0;
   text-align: left;
   font: inherit;
+  border-radius: var(--r-md);
+  transition: background var(--d-fast) var(--e-out);
 }
+.row-hit:hover { background: var(--surface-raised); }
+/* Without a leading slot the grid still needs its first track filled. */
+.row-hit > .row-copy:first-child { grid-column: 1 / 3; }
 .row-compact .row-hit { min-height: 32px; }
 .row-comfortable .row-hit { min-height: 48px; }
 .row-interactive .row-hit { cursor: pointer; }
@@ -352,7 +365,8 @@
 .row-copy { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .row-title { color: var(--ink); font-size: var(--t-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-meta { color: var(--ink-3); font-size: var(--t-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-leading, .row-trailing { flex: none; display: flex; align-items: center; gap: var(--s-2); color: var(--ink-3); }
+.row-leading { display: flex; align-items: center; color: var(--ink-3); }
+.row-trailing { min-width: 0; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--s-2); color: var(--ink-3); }
 .row-actions { flex: none; display: flex; align-items: center; gap: var(--s-1); padding-right: var(--s-2); }
 
 .table-scroll { width: 100%; overflow-x: auto; }

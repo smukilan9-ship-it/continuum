@@ -351,7 +351,7 @@ export function LibraryPage({
         stats={[{ label: "sources", value: allSources.length }, { label: "saved", value: saved.length }]}
         actions={
           <>
-            <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}><Plus size={14} aria-hidden="true" />Add source</Button>
+            <Button variant="secondary" size="sm" onClick={() => setAddOpen(true)}><Plus size={14} aria-hidden="true" />Add source</Button>
             <Button variant="secondary" size="sm" onClick={() => onNavigate("integrations")}><ExternalLink size={14} aria-hidden="true" />Connections</Button>
           </>
         }
