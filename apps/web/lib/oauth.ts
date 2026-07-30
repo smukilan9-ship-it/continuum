@@ -28,8 +28,25 @@ export function mcpResource() {
   return `${issuer()}/mcp`;
 }
 
-export function validMcpResource(value: string | null | undefined) {
-  return !value || value === mcpResource() || value === `${issuer()}/api/mcp`;
+/**
+ * RFC 8707 resource indicators, checked against every address this deployment
+ * actually answers on.
+ *
+ * It used to compare only against `APP_BASE_URL`, while
+ * `/.well-known/oauth-protected-resource/mcp` advertises the *serving* origin.
+ * On any deployment where the two differ — every preview, and production
+ * whenever `APP_BASE_URL` is an alias — a client that followed discovery
+ * correctly, which is exactly what Claude does, had its authorization request
+ * rejected with `invalid_request`. Found by the §12.6 procedure against a
+ * preview build; it would have failed identically for a real user.
+ */
+export function validMcpResource(value: string | null | undefined, requestUrl?: string) {
+  if (!value) return true;
+  const origins = [issuer()];
+  if (requestUrl) {
+    try { origins.push(new URL(requestUrl).origin); } catch { /* Ignore an unparseable request URL. */ }
+  }
+  return origins.some((origin) => value === `${origin}/mcp` || value === `${origin}/api/mcp`);
 }
 
 export type OAuthClientRegistration = {
@@ -125,7 +142,7 @@ export type AuthorizationRequest = {
   requestedScopes: string[];
 };
 
-export async function parseAuthorizationRequest(params: URLSearchParams, supportedScopes: readonly string[]): Promise<AuthorizationRequest> {
+export async function parseAuthorizationRequest(params: URLSearchParams, supportedScopes: readonly string[], requestUrl?: string): Promise<AuthorizationRequest> {
   const clientId = params.get("client_id") ?? "";
   const redirectUri = params.get("redirect_uri") ?? "";
   const client = await verifyClientRegistration(clientId);
@@ -141,7 +158,7 @@ export async function parseAuthorizationRequest(params: URLSearchParams, support
     || !/^[A-Za-z0-9_-]{43}$/.test(codeChallenge)
     || !state
     || state.length > 512
-    || !validMcpResource(resource)
+    || !validMcpResource(resource, requestUrl)
   ) {
     throw new Error("This authorization request is missing valid state, PKCE, or resource information");
   }

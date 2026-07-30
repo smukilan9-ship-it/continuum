@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       await verifyClientRegistration(clientId);
       if (clientId !== code.clientId) throw new Error("Authorization code was issued to a different client");
       const resource = String(form.get("resource") ?? code.resource ?? mcpResource());
-      if (!validMcpResource(resource) || resource !== code.resource) throw new Error("Resource indicator does not match the authorization request");
+      if (!validMcpResource(resource, request.url) || resource !== code.resource) throw new Error("Resource indicator does not match the authorization request");
       if (code.redirectUri !== String(form.get("redirect_uri") ?? "") || !code.codeChallenge || !verifyPkce(String(form.get("code_verifier") ?? ""), code.codeChallenge)) throw new Error("PKCE or redirect URI verification failed");
       await getStore(code.sub).consumeOAuthCode(code.jti);
       const payload = await tokenResponse({ ...code, resource });
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       await verifyClientRegistration(clientId);
       if (clientId !== refresh.clientId) throw new Error("Refresh token was issued to a different client");
       const resource = String(form.get("resource") ?? refresh.resource ?? mcpResource());
-      if (!validMcpResource(resource) || resource !== refresh.resource) throw new Error("Resource indicator does not match the refresh token");
+      if (!validMcpResource(resource, request.url) || resource !== refresh.resource) throw new Error("Resource indicator does not match the refresh token");
       await getStore(refresh.sub).consumeOAuthGrant(refresh.jti, "refresh");
       const payload = await tokenResponse({ ...refresh, resource });
       console.info(JSON.stringify({ level: "info", message: "oauth_token_issued", requestId, grantType: "refresh_token", ms: Date.now() - startedAt }));

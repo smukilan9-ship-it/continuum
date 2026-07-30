@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { scopes as supportedScopes } from "../packages/domain/src";
-import { issueClientRegistration, issueOAuthConsent, issueToken, parseAuthorizationRequest, revokeToken, verifyClientRegistration, verifyPkce, verifyToken } from "../apps/web/lib/oauth";
+import { issueClientRegistration, issueOAuthConsent, issueToken, parseAuthorizationRequest, revokeToken, validMcpResource, verifyClientRegistration, verifyPkce, verifyToken } from "../apps/web/lib/oauth";
 import { POST as authorize } from "../apps/web/app/api/oauth/authorize/route";
 import { POST as registerClient } from "../apps/web/app/api/oauth/register/route";
 import { POST as exchangeToken } from "../apps/web/app/api/oauth/token/route";
@@ -155,6 +155,65 @@ describe("durable OAuth grant state", () => {
     await expect(tokenResponse.json()).resolves.toMatchObject({
       error: "invalid_grant",
       error_description: expect.stringMatching(/PKCE|redirect URI/i),
+    });
+  });
+});
+
+/**
+ * The regression the §12.6 procedure caught against a preview deployment.
+ *
+ * `/.well-known/oauth-protected-resource/mcp` advertises the resource as
+ * `{serving-origin}/mcp`, but resource validation compared only against
+ * `APP_BASE_URL`. On every preview — and on production whenever `APP_BASE_URL`
+ * is an alias of the serving domain — a client that followed discovery
+ * correctly, which is exactly what Claude does, had its authorization request
+ * rejected with `invalid_request`.
+ */
+describe("RFC 8707 resource indicators", () => {
+  const issuer = "https://continuum.example";
+  const preview = "https://continuum-preview-abc123.vercel.app";
+
+  function withIssuer<T>(run: () => T): T {
+    const previousIssuer = process.env.MCP_OAUTH_ISSUER_URL;
+    const previousBase = process.env.APP_BASE_URL;
+    process.env.MCP_OAUTH_ISSUER_URL = issuer;
+    process.env.APP_BASE_URL = issuer;
+    try { return run(); } finally {
+      if (previousIssuer === undefined) delete process.env.MCP_OAUTH_ISSUER_URL; else process.env.MCP_OAUTH_ISSUER_URL = previousIssuer;
+      if (previousBase === undefined) delete process.env.APP_BASE_URL; else process.env.APP_BASE_URL = previousBase;
+    }
+  }
+
+  it("accepts both address shapes on the configured issuer", () => {
+    withIssuer(() => {
+      expect(validMcpResource(`${issuer}/mcp`)).toBe(true);
+      expect(validMcpResource(`${issuer}/api/mcp`)).toBe(true);
+    });
+  });
+
+  it("accepts the origin the request actually arrived on", () => {
+    withIssuer(() => {
+      // What the preview's own discovery document advertises.
+      expect(validMcpResource(`${preview}/mcp`, `${preview}/api/oauth/authorize?x=1`)).toBe(true);
+      expect(validMcpResource(`${preview}/api/mcp`, `${preview}/api/oauth/token`)).toBe(true);
+    });
+  });
+
+  it("still rejects a resource belonging to neither", () => {
+    withIssuer(() => {
+      expect(validMcpResource("https://attacker.example/mcp", `${preview}/api/oauth/authorize`)).toBe(false);
+      // A different path on a valid origin is not the MCP resource.
+      expect(validMcpResource(`${issuer}/admin`)).toBe(false);
+      // Without a request URL, only the configured issuer counts.
+      expect(validMcpResource(`${preview}/mcp`)).toBe(false);
+    });
+  });
+
+  it("treats an absent resource indicator as valid, per RFC 8707", () => {
+    withIssuer(() => {
+      expect(validMcpResource(undefined)).toBe(true);
+      expect(validMcpResource(null)).toBe(true);
+      expect(validMcpResource("")).toBe(true);
     });
   });
 });
