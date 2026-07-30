@@ -265,7 +265,9 @@
 
 .build-console-resizer {
   flex: 0 0 auto;
-  height: var(--s-2);
+  /* The grip stays a hairline; the grab area is 12px. An 8px target is a
+     coin-toss with a trackpad, and this one resizes the console. */
+  height: 12px;
   cursor: row-resize;
   touch-action: none;
 }

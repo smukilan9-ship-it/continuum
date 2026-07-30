@@ -1,0 +1,68 @@
+/* ==========================================================================
+   Sidebar — how the nav survives a short viewport.
+
+   Co-located out of globals.css under the §19.10 ceiling. Loaded from the root
+   layout *after* globals.css and the kit, which is the same position in the
+   cascade these rules held when they lived at the bottom of globals — so the
+   overrides below still win exactly what they won before.
+
+   The problem this file solves: the sidebar carries ten destinations, three
+   group labels, a command hint, a profile card, and the user's goals. On a 13"
+   laptop that is roughly 170px more than the space it has, and when the whole
+   nav was one scroller it was Review and Settings that went over the edge —
+   navigation lost to a convenience list.
+   ========================================================================== */
+
+/* The nav no longer scrolls. It is a column, and the goal list is the one row
+   in it allowed to absorb the shortfall. */
+.main-nav { display: flex; flex-direction: column; }
+.nav-group-goals { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+/* `min-height: 0` so this can be squeezed to nothing before it ever pushes a
+   nav item off screen — the destinations outrank the shortcuts. */
+.nav-goal-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  align-content: start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  /* A goal used to be sliced clean in half at the scroll boundary — title and
+     progress bar guillotined, reading as a broken layout rather than as more
+     content below. The box is always at least its flex share tall, so this
+     fade is invisible when the list fits and appears exactly when it scrolls:
+     scroll state, with no JS and nothing to keep in sync.
+
+     A gradient mask is read for its alpha, not its colour, so the stops here
+     mean "opaque" and "clear" — currentColor is the honest way to say the
+     paint is irrelevant. */
+  --nav-fade: 18px;
+  -webkit-mask-image: linear-gradient(to bottom, currentColor calc(100% - var(--nav-fade)), transparent 100%);
+  mask-image: linear-gradient(to bottom, currentColor calc(100% - var(--nav-fade)), transparent 100%);
+}
+
+/* Ten destinations at 36px plus three group labels use the whole nav on a 13"
+   screen, leaving the goal list zero. This buys back ~60px from rhythm alone —
+   the difference between a heading over an empty box and a list that visibly
+   scrolls. */
+@media (max-height: 830px) and (min-width: 841px) {
+  .main-nav { gap: 7px; margin-top: 14px; }
+  .nav-item { min-height: 32px; }
+  .nav-group-primary .nav-item { min-height: 38px; }
+  .nav-group > p { margin-bottom: 0; letter-spacing: .12em; }
+  .nav-group + .nav-group { margin-top: var(--s-1); }
+  .nav-group-utility { margin-top: var(--s-2) !important; padding-top: var(--s-2); }
+  .nav-goal { min-height: 34px; }
+}
+
+/* Below this the ten destinations use the whole column and the goal list is
+   squeezed to nothing — leaving a "Your goals" heading over empty space, which
+   reads as a list that failed to load. Drop the group rather than its contents;
+   goals stay one click away on Plan, Home, and ⌘K. */
+@media (max-height: 680px) and (min-width: 841px) {
+  .nav-group-goals { display: none; }
+}

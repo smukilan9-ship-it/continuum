@@ -1096,7 +1096,16 @@
 .scholarly-bookmark { width: 32px; height: 32px; display: grid; place-items: center; color: var(--ink-2); background: transparent; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; transition: color var(--d-fast) ease-out, border-color var(--d-fast) ease-out; }
 .scholarly-bookmark:hover { color: var(--ink); border-color: var(--line-strong); }
 .scholarly-bookmark.saved { color: var(--accent-hover); background: var(--accent-quiet); border-color: var(--accent); }
-.scholarly-detail > .data-region > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-3); }
+/* Title on the left, save on the right — but the save button must never be the
+   thing that gives. `.scholarly-detail * { min-width: 0 }` (needed so long DOIs
+   and author lists wrap instead of pushing the panel wide) also let this button
+   shrink below its own label, so "Save to Just my library" rendered as "ave to
+   Just my librar" — a clipped primary action on the panel's only save path.
+   The button now holds its intrinsic width and wraps to its own line when the
+   panel is too narrow to seat it beside the title. */
+.scholarly-detail > .data-region > header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--s-3); }
+.scholarly-detail > .data-region > header > div { flex: 1 1 15rem; min-width: 0; }
+.scholarly-detail > .data-region > header > .button { flex: 0 0 auto; }
 .scholarly-detail h2 { margin: var(--s-1) 0 0; font-size: var(--t-h2); line-height: 1.3; }
 .scholarly-detail h3 { margin: 0 0 var(--s-2); font-size: var(--t-small); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
 .scholarly-detail section { display: grid; gap: var(--s-2); }

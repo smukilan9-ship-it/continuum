@@ -17,11 +17,11 @@
 /* ==========================================================================
    Design tokens.
 
-   One theme, built properly, rather than two half-tuned ones. The palette is
-   the Stripe family: a saturated indigo that only ever carries action, deep
-   navy ink that reads as considered rather than harsh, and a cool off-white
-   canvas that makes white cards float. Nothing here is a hue "because the
-   brand is green" — every value is picked against the surface it sits on.
+   One theme, built properly, rather than two half-tuned ones: a deep jade that
+   only ever carries action, deep navy ink that reads as considered rather than
+   harsh, and a cool off-white canvas that makes white cards float. Every value
+   is picked against the surface it sits on — the jade is a token, so the one
+   place it changes is here.
    ========================================================================== */
 
 /* ==========================================================================
@@ -38,24 +38,40 @@
    ========================================================================== */
 
 :root {
-  --brand:             #0e8a6e;
-  --brand-strong:      #0a6b55;
-  --brand-hover:       #12a081;
+  /* The jade ramp, ordered by luminance so a name never lies about direction.
+     `--brand` carries white text on every primary button and the active nav
+     pill, so it is pinned to 4.5:1 against white — #0e8a6e measured 4.30 and
+     failed it everywhere the product asks someone to click.
+
+     `--brand-hover` used to be #12a081, *lighter* than the rest state: hovering
+     a filled button dropped its white label from 4.30:1 to 3.30:1, so the most
+     important control got harder to read exactly as you reached for it. Hover
+     now darkens. The lighter jade kept its job and its own name, `--brand-lift`,
+     which is what gradients and blooms want. */
+  --brand:             #0c8168;  /* white on this: 4.82:1 */
+  --brand-hover:       #0a7660;  /* white on this: 5.57:1 */
+  --brand-strong:      #0a6b55;  /* white on this: 6.47:1 */
+  --brand-lift:        #12a081;  /* lighter than brand — fills and glows only, never behind text */
   --brand-deep:        #07332b;
   --brand-soft:        #e4f5ef;
   --brand-line:        #b6e3d4;
-  --brand-glow:        rgba(14, 138, 110, .34);
+  --brand-glow:        rgba(12, 129, 104, .34);
 
   --amber:             #e08704;
   --amber-lift:        #f5a623;
-  --amber-strong:      #b86c02;
+  --amber-strong:      #8f5602;  /* on --amber-soft: 5.37:1 — #b86c02 measured 3.62 and carries the streak count */
   --amber-soft:        #fdf1dc;
   --amber-line:        #f6d9a3;
   --amber-glow:        rgba(224, 135, 4, .30);
 
   --ink:               #0b1f1a;
   --ink-2:             #415a54;
-  --ink-3:             #64807a;
+  /* Secondary ink. #64807a read as a tasteful grey and failed AA on every
+     surface it was used on — 4.28:1 on white, 3.95 on raised, 3.70 on sunken —
+     which covers nearly every caption, timestamp and helper line in the app.
+     Pinned to 4.5:1 against `--surface-sunken`, the darkest ground it sits on,
+     so it passes on all four rather than only on the lightest. */
+  --ink-3:             #56726b;
 
   --canvas:            #f7faf8;
   --surface:           #ffffff;
@@ -70,7 +86,7 @@
   --danger:  #b3261e; --danger-surface:  #fdecea; --danger-line:  #f5c4c0;
   --danger-hover: #8f1d17;
   --info:    #0b6b8f; --info-surface:    #e6f3f9; --info-line:    #b3ddef;
-  --focus:   #0e8a6e;
+  --focus:   var(--brand);
 
   --on-brand: #ffffff;
   /* Ink and marks drawn on a saturated jade field. */
@@ -107,7 +123,7 @@
   --glow:       var(--press);
   --glow-lg:    var(--press-hover);
 
-  --gradient-brand: linear-gradient(122deg, #0e8a6e 0%, #12a081 46%, #4cc0a0 100%);
+  --gradient-brand: linear-gradient(122deg, var(--brand) 0%, var(--brand-lift) 46%, #4cc0a0 100%);
   --gradient-field: linear-gradient(155deg, #0a4a3c 0%, #07332b 52%, #052620 100%);
   --gradient-amber: linear-gradient(122deg, var(--amber) 0%, var(--amber-lift) 100%);
   --gradient-ink: var(--gradient-field);
@@ -119,8 +135,10 @@
   /* A fine grain so a large dark field is a surface, not a flat fill. */
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
 
+  /* Six hues for six goals on Plan. `--goal-4` was #7a5cc0 — the last live
+     purple in the product, handed to anyone with a fourth goal. Now a rose. */
   --goal-1: #0e8a6e; --goal-2: #0b6b8f; --goal-3: #e08704;
-  --goal-4: #7a5cc0; --goal-5: #0f7b55; --goal-6: #b3261e;
+  --goal-4: #9c3363; --goal-5: #0f7b55; --goal-6: #b3261e;
 
   /* Legacy accent names still referenced by per-screen CSS. */
   --accent: var(--brand);
@@ -132,7 +150,6 @@
   --on-accent-mark: var(--on-brand);
   --on-accent-mark-2: rgba(255, 255, 255, .82);
   --cyan: #0abc90;
-  --violet: #4fd8b0;
 }
 
 /* A status tint needs a border a step stronger than its surface but far weaker
@@ -465,6 +482,7 @@ body {
 .sidebar { width: 248px; position: fixed; inset: 0 auto 0 0; z-index: 40; display: flex; flex-direction: column; padding: 22px 16px 16px; color: var(--ink); background: var(--surface); border-right: 1px solid var(--line); box-shadow: 1px 0 0 rgba(10,37,64,.02), 4px 0 24px -12px rgba(10,37,64,.10); height: 100dvh; max-height: 100dvh; overflow: hidden; }
 
 .main-nav { display: grid; gap: 20px; margin-top: 34px; min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 0 3px 12px 0; scrollbar-color: var(--line-strong) transparent; scrollbar-width: thin; }
+/* Sidebar column + goal-list scrolling: components/shell/sidebar.css */
 
 .sidebar-spacer { flex: 1; display: none; }
 

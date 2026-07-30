@@ -47,7 +47,10 @@
   width: 420px;
   height: 420px;
   z-index: -1;
-  background: radial-gradient(circle, rgba(99, 91, 255, .40), transparent 62%);
+  /* Brand bloom, not a leftover. This was a hardcoded rgba(99,91,255) — the
+     indigo of an abandoned palette — which survived the rebrand and made the
+     one accented surface on Home the only purple object in the product. */
+  background: radial-gradient(circle, color-mix(in srgb, var(--brand-lift) 42%, transparent), transparent 62%);
   pointer-events: none;
 }
 .next-action .eyebrow { color: var(--cyan); }
@@ -67,6 +70,9 @@
 .home-section-head h2 { margin: 0; font-size: var(--t-h3); font-weight: 600; }
 
 .home-link {
+  /* A 13px label is a ~20px box. The extra 4px is hit area, not visual weight:
+     the text stays where it was, the target clears the 24px minimum. */
+  min-height: 24px;
   display: inline-flex; align-items: center; gap: var(--s-1);
   padding: 0; color: var(--ink-2); background: none; border: 0; cursor: pointer;
   font-size: var(--t-small);
@@ -89,6 +95,50 @@
 .resume-copy small { color: var(--ink-3); font-size: var(--t-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .week-summary { margin: 0; color: var(--ink-2); font-size: var(--t-small); font-variant-numeric: tabular-nums; }
+
+/* Seven columns, one per weekday, sized to the busiest day of the week. Not
+   interactive: a day cell that looked like a button but only opened the same
+   plan the header link already opens would be a control that earns nothing. */
+.week-strip {
+  margin: 0 0 var(--s-2);
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--s-2);
+  align-items: end;
+}
+.week-day { display: grid; justify-items: center; gap: 6px; }
+.week-day-label { color: var(--ink-3); font-size: var(--t-micro); font-weight: 700; letter-spacing: .06em; }
+.week-day-track {
+  width: 100%;
+  max-width: 34px;
+  height: 46px;
+  display: flex;
+  align-items: flex-end;
+  background: var(--surface-sunken);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.week-day-fill {
+  width: 100%;
+  min-block-size: 3px;
+  background: var(--accent-line);
+  border-radius: var(--r-sm);
+  /* Grows on load rather than appearing at full height, which is what makes a
+     bar read as a measurement rather than as decoration. Height, not scaleY:
+     a scaled bar would smear its own rounded cap. */
+  animation: week-day-rise var(--d-slow) var(--e-out) both;
+}
+.week-day.is-empty .week-day-fill { background: var(--line); }
+.week-day-date { color: var(--ink-3); font-size: var(--t-micro); font-variant-numeric: tabular-nums; }
+.week-day.is-today .week-day-label,
+.week-day.is-today .week-day-date { color: var(--ink); font-weight: 700; }
+.week-day.is-today .week-day-fill { background: var(--accent); }
+.week-day.is-today .week-day-track { box-shadow: inset 0 0 0 1px var(--accent-line); }
+
+@keyframes week-day-rise { from { block-size: 0; } }
+@media (prefers-reduced-motion: reduce) { .week-day-fill { animation: none; } }
 
 .day-agenda { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); }
 .agenda-block {

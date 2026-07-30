@@ -102,7 +102,10 @@ export function ConversationList({ onCollapse, onRename, onDelete }: {
       </div>
       <label className="assistant-history-search">
         <Search size={14} />
-        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search conversations" />
+        {/* The wrapping label holds an icon and no text, so a placeholder was
+            this field's only name — and a placeholder disappears the moment you
+            type into it. */}
+        <input aria-label="Search conversations" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search conversations" />
       </label>
       <nav>
         {pinned.length ? <><small className="assistant-history-label">Pinned</small>{pinned.map(row)}</> : null}

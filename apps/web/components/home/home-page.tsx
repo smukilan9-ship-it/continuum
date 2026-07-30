@@ -38,6 +38,9 @@ function blockState(block: Row, now: number): BlockState {
   return Number.isFinite(end) && end <= now ? "missed" : "upcoming";
 }
 
+const WEEKDAY_INITIALS = ["M", "T", "W", "T", "F", "S", "S"] as const;
+const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+
 const STATE_LABEL: Record<BlockState, string> = { done: "Done", now: "Now", upcoming: "Queued", missed: "Missed" };
 const STATE_TONE = { done: "success", now: "info", upcoming: "neutral", missed: "warning" } as const;
 
@@ -120,6 +123,55 @@ export function HomePage({
   const doneCount = dayBlocks.filter((block) => blockState(block, now) === "done").length;
   const plannedMinutes = dayBlocks.reduce((total, block) => total + (durationMinutes(block) ?? 0), 0);
   const taskBlock = dayBlocks.find((block) => text(block, "taskId") === text(nextTask, "id"));
+
+  /**
+   * The seven days of the current calendar week, Monday first.
+   *
+   * This section is headed "This week" and used to report today's numbers —
+   * a heading promising one span and a body delivering another. The schedule
+   * this reads from always held the whole week; only the summary was narrow.
+   *
+   * Day keys are built in UTC from the already-zone-resolved `today` key, so
+   * the arithmetic never crosses a DST boundary in the user's zone.
+   */
+  const weekDays = useMemo(() => {
+    const [year, month, day] = today.split("-").map(Number);
+    if (!year || !month || !day) return [];
+    const anchor = Date.UTC(year, month - 1, day);
+    const mondayOffset = (new Date(anchor).getUTCDay() + 6) % 7;
+    const monday = anchor - mondayOffset * 86_400_000;
+
+    const byDay = new Map<string, Row[]>();
+    for (const block of state.schedule) {
+      const start = blockStart(block);
+      if (!start) continue;
+      const key = dayKey(start, timeZone);
+      const bucket = byDay.get(key);
+      if (bucket) bucket.push(block);
+      else byDay.set(key, [block]);
+    }
+
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(monday + index * 86_400_000);
+      const key = date.toISOString().slice(0, 10);
+      const blocks = byDay.get(key) ?? [];
+      return {
+        key,
+        label: WEEKDAY_INITIALS[index]!,
+        dayOfMonth: date.getUTCDate(),
+        minutes: blocks.reduce((total, block) => total + (durationMinutes(block) ?? 0), 0),
+        done: blocks.filter((block) => blockState(block, now) === "done").length,
+        total: blocks.length,
+        isToday: key === today,
+      };
+    });
+  }, [state.schedule, timeZone, today, now]);
+
+  const weekMinutes = weekDays.reduce((total, day) => total + day.minutes, 0);
+  const weekDone = weekDays.reduce((total, day) => total + day.done, 0);
+  const weekBlocks = weekDays.reduce((total, day) => total + day.total, 0);
+  /** Never let a single short block fill the column — 90 min is a full bar. */
+  const weekPeak = Math.max(90, ...weekDays.map((day) => day.minutes));
 
   const activeGoals = useMemo(
     () => state.goals
@@ -243,8 +295,27 @@ export function HomePage({
               <h2 id="week-heading">This week</h2>
               <button type="button" className="home-link" onClick={() => onNavigate("goals")}>Open plan<ArrowRight size={13} /></button>
             </div>
+            {weekBlocks ? (
+              <ol className="week-strip">
+                {weekDays.map((day, index) => (
+                  <li
+                    key={day.key}
+                    className={`week-day${day.isToday ? " is-today" : ""}${day.total ? "" : " is-empty"}`}
+                    title={`${WEEKDAY_NAMES[index]} ${day.dayOfMonth} — ${day.total ? `${Math.round(day.minutes / 6) / 10}h, ${day.done} of ${day.total} done` : "nothing scheduled"}`}
+                  >
+                    <span className="week-day-label">{day.label}</span>
+                    <span className="week-day-track">
+                      <span className="week-day-fill" style={{ blockSize: `${Math.round((day.minutes / weekPeak) * 100)}%` }} />
+                    </span>
+                    <span className="week-day-date">{day.dayOfMonth}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
             <p className="week-summary">
-              {Math.round(plannedMinutes / 6) / 10}h scheduled today · {doneCount} of {dayBlocks.length} done
+              {weekBlocks
+                ? <>{Math.round(weekMinutes / 6) / 10}h scheduled this week · {weekDone} of {weekBlocks} done · {Math.round(plannedMinutes / 6) / 10}h today</>
+                : <>Nothing scheduled this week yet.</>}
             </p>
           </section>
         </div>

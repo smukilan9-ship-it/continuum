@@ -350,6 +350,13 @@ export function ContinuumApp({ user, initialState, shell, view, goalId, projectI
           {sidebarGoals.length ? (
             <div className="nav-group nav-group-goals">
               <p>Your goals</p>
+              {/* The rows scroll inside their own box rather than pushing the
+                  nav into one. On a 760px laptop the sidebar is ~170px taller
+                  than the space it has, and when the whole nav scrolled it was
+                  Settings and Review that went over the edge — navigation lost
+                  to a convenience list. Now the goals absorb the shortfall and
+                  every destination stays on screen. */}
+              <div className="nav-goal-list">
               {sidebarGoals.map((goal) => {
                 const id = String(goal.id ?? "");
                 const progress = Math.round(Number(goal.progress ?? 0) * 100);
@@ -369,6 +376,7 @@ export function ContinuumApp({ user, initialState, shell, view, goalId, projectI
                   </Link>
                 );
               })}
+              </div>
             </div>
           ) : null}
         </nav>

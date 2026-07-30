@@ -165,7 +165,7 @@
 
 .assistant-message-actions { display: flex; gap: 2px; margin-top: var(--s-2); opacity: 0; transition: opacity var(--d-fast) var(--e-out); }
 .assistant-message:hover .assistant-message-actions, .assistant-message:focus-within .assistant-message-actions { opacity: 1; }
-.assistant-message-actions button { display: inline-flex; align-items: center; gap: var(--s-1); padding: 3px var(--s-2); border: 0; border-radius: var(--r-sm); color: var(--ink-3); background: transparent; font-size: var(--t-micro); cursor: pointer; }
+.assistant-message-actions button { min-height: 24px; display: inline-flex; align-items: center; gap: var(--s-1); padding: 3px var(--s-2); border: 0; border-radius: var(--r-sm); color: var(--ink-3); background: transparent; font-size: var(--t-micro); cursor: pointer; }
 .assistant-message-actions button:hover { color: var(--ink); background: var(--surface-raised); }
 
 .assistant-thinking, .assistant-loading { display: flex; gap: var(--s-2); align-items: center; color: var(--ink-3); }
@@ -414,8 +414,10 @@
 
 .assistant-chip-add {
   display: grid;
-  width: 22px;
-  height: 22px;
+  /* 24px is the WCAG 2.2 floor for a pointer target, and this one adds context
+     to a question — a fiddly hit here costs the answer its grounding. */
+  width: 24px;
+  height: 24px;
   place-items: center;
   border: 1px dashed var(--line-strong);
   border-radius: 999px;

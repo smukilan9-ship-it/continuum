@@ -53,7 +53,7 @@ export function classifyScholarlyFailure(input: FailureInput): ScholarlyFailure 
     }
     return {
       title: "That query wasn't understood",
-      body: "That query wasn't understood — try fewer operators.",
+      body: "Try fewer operators, or drop the quotes and search the plain phrase.",
       retryable: false,
       detail,
     };
@@ -70,7 +70,7 @@ export function classifyScholarlyFailure(input: FailureInput): ScholarlyFailure 
   if (status === 429) {
     return {
       title: "OpenAlex is rate-limiting",
-      body: "OpenAlex is rate-limiting. Retry in a moment, or add your own key in Settings.",
+      body: "Retry in a moment, or add your own OpenAlex key in Settings to raise the limit.",
       retryable: true,
       hint: "Settings › Connections › OpenAlex",
       detail,
@@ -82,7 +82,7 @@ export function classifyScholarlyFailure(input: FailureInput): ScholarlyFailure 
   if (code === "openalex_upstream" && detail && queryComplaint.test(detail)) {
     return {
       title: "That query wasn't understood",
-      body: "That query wasn't understood — try fewer operators.",
+      body: "Try fewer operators, or drop the quotes and search the plain phrase.",
       retryable: false,
       detail,
     };
@@ -90,7 +90,7 @@ export function classifyScholarlyFailure(input: FailureInput): ScholarlyFailure 
 
   return {
     title: "OpenAlex is unavailable",
-    body: "OpenAlex is unavailable. Your saved sources still work.",
+    body: "Discover is offline for now. Everything already in your library still works.",
     retryable: true,
     detail: detail ?? (status ? undefined : message),
   };
@@ -119,17 +119,20 @@ export function classifyZoteroFailure(status: number, message: string | undefine
     return { title: "Zotero isn't connected", body: "Connect a read-only Zotero key to browse your libraries here.", action: "reconnect" };
   }
   if (text.includes("no longer be decrypted") || text.includes("invalid key") || text.includes("http 403") || text.includes("forbidden")) {
-    return { title: "Your Zotero key no longer works", body: "Your Zotero key no longer works. Reconnect.", action: "reconnect" };
+    // The body carries what the title cannot: what to do, and what it costs.
+    // Restating the heading in the paragraph under it spends a line saying
+    // nothing.
+    return { title: "Your Zotero key no longer works", body: "Create a new read-only Zotero API key and reconnect. Sources you already imported are unaffected.", action: "reconnect" };
   }
   if (status === 403 || text.includes("permission") || text.includes("cannot access")) {
     return {
       title: "This key can't read group libraries",
-      body: "This key can't read group libraries. Create one with group access.",
+      body: "Your personal library still works. To include groups, create a key with group read access and reconnect.",
       action: "reconnect",
     };
   }
   if (status === 429 || text.includes("rate limit")) {
-    return { title: "Zotero is rate-limiting", body: "Zotero is rate-limiting. Continuum will retry automatically in 60s.", action: "retry" };
+    return { title: "Zotero is rate-limiting", body: "Continuum retries automatically in about 60 seconds. Nothing is lost.", action: "retry" };
   }
   if (text.includes("no longer exists") || status === 404) {
     return { title: "That Zotero item is gone", body: "It was removed in Zotero. Refresh the list to see what is still there.", action: "retry" };

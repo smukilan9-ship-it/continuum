@@ -146,9 +146,31 @@ describe("the rest of Home", () => {
     expect(within(agenda as HTMLElement).getByText("Now")).toBeInTheDocument();
   });
 
-  it("summarises the day in hours planned and blocks done", () => {
+  it("summarises the week it is headed, and still reports today", () => {
     mount();
-    expect(screen.getByText("2h scheduled today · 1 of 2 done")).toBeInTheDocument();
+    // The heading is "This week"; it used to report only today's numbers under
+    // it. Both spans are now stated, and both are derived from the schedule.
+    expect(screen.getByText("2h scheduled this week · 1 of 2 done · 2h today")).toBeInTheDocument();
+  });
+
+  it("draws one bar per weekday, sized from real scheduled minutes", () => {
+    mount();
+    const days = document.querySelectorAll(".week-day");
+    expect(days).toHaveLength(7);
+    // NOW is Monday 1 June 2026, and both fixture blocks sit on it.
+    const monday = days[0] as HTMLElement;
+    expect(monday).toHaveClass("is-today");
+    expect(monday.querySelector(".week-day-date")).toHaveTextContent("1");
+    expect(monday.title).toBe("Monday 1 — 2h, 1 of 2 done");
+    // A day with nothing scheduled says so rather than showing a phantom bar.
+    expect((days[3] as HTMLElement).title).toBe("Thursday 4 — nothing scheduled");
+    expect(days[3]).toHaveClass("is-empty");
+  });
+
+  it("says the week is empty rather than drawing seven zero bars", () => {
+    mount({ schedule: [] });
+    expect(document.querySelectorAll(".week-day")).toHaveLength(0);
+    expect(screen.getByText("Nothing scheduled this week yet.")).toBeInTheDocument();
   });
 
   it("falls back to the single empty-state pattern when the day is unscheduled", () => {

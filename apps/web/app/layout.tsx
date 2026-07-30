@@ -5,6 +5,9 @@ import "./globals.css";
 // After globals.css: the kit is the source of truth for the classes it owns,
 // and per-screen selectors are migrated onto it rather than the reverse.
 import "../components/ui/kit.css";
+// After both: these are overrides of the sidebar rules in globals.css, and they
+// hold the position in the cascade they had when they lived at its bottom.
+import "../components/shell/sidebar.css";
 
 // §15.4. Serif is scoped to reading surfaces (lesson bodies, source passages,
 // assistant answers) — it is the editorial signal, not a second UI face.
