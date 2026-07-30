@@ -51,6 +51,47 @@ const BANNED_HEADING_LINE =
 const INTERNAL_ID =
   /\b(?:goal|task|project|activity|receipt|block|concept|event|record|mchunk|memory|source|chunk|proposal|session|claim|decision|note|paper|milestone|attempt|asession|amsg|user|rec|learning|curriculum|cnode|assessment|misc|resource|route|cal|oauth)_[a-z0-9][a-z0-9_]{2,}\b/gi;
 
+/**
+ * Structural narration detection.
+ *
+ * BANNED_OPENER is a blocklist, and a blocklist only catches the openers
+ * somebody thought of. A live answer in production opened "Analyze the
+ * Workspace Data (Goals & Progress & Uncertainties):" and then dumped a
+ * labelled list — a shape no wordlist would have had.
+ *
+ * These two look at the shape instead:
+ *
+ * - `looksLikeScaffold` — three or more `Label: value` lines in the opening,
+ *   with little prose between them. That is a worksheet, not an answer.
+ * - `quotesInstructions` — the reply contains a long verbatim run from the
+ *   prompt we sent it. A model echoing its own constraints back at the user is
+ *   the single most damaging thing this filter exists to stop, and it is exact
+ *   rather than heuristic, so it can be caught with certainty.
+ */
+const SCAFFOLD_LINE = /^\s*(?:\*{0,2}|#{1,6}\s*)[A-Z][A-Za-z0-9 ()&/'-]{2,48}:\s*\S/;
+
+export function looksLikeScaffold(text: string): boolean {
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 8);
+  if (lines.length < 3) return false;
+  const labelled = lines.filter((line) => SCAFFOLD_LINE.test(line)).length;
+  // A sentence ending in a full stop is prose; a label line is not.
+  const prose = lines.filter((line) => /[.!?]["')\]]?$/.test(line) && line.length > 60).length;
+  return labelled >= 3 && labelled > prose;
+}
+
+/** Longest verbatim run, in words, shared between the reply and the prompt. */
+export function quotesInstructions(text: string, instructions: string | undefined, minWords = 8): boolean {
+  if (!instructions) return false;
+  const normalise = (value: string) => value.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  const haystack = normalise(instructions);
+  const words = normalise(text).split(" ").filter(Boolean);
+  if (words.length < minWords) return false;
+  for (let index = 0; index + minWords <= words.length; index += 1) {
+    if (haystack.includes(words.slice(index, index + minWords).join(" "))) return true;
+  }
+  return false;
+}
+
 const OPEN_TAG = /^\s*<(think|thinking|reasoning|scratchpad)>/i;
 const CLOSE_TAG = /<\/(think|thinking|reasoning|scratchpad)>/i;
 
@@ -61,6 +102,11 @@ const GUARD_CHARS = 200;
 export const EMPTY_AFTER_FILTER = "";
 
 export interface OutputFilterOptions {
+  /**
+   * The prompt this reply is answering. Any long verbatim run from it appearing
+   * in the reply means the model is reciting its instructions at the user.
+   */
+  instructions?: string;
   /**
    * Maps an internal id to a human label, so a leaked `goal_demo_sat` becomes
    * "Raise SAT score from 1520 to 1570+" rather than vanishing mid-sentence.
@@ -166,7 +212,16 @@ function isNarrationParagraph(paragraph: string, afterNarration: boolean): boole
   if (BANNED_HEADING_LINE.test(paragraph.split("\n")[0] ?? "")) return true;
   // A short colon-terminated label followed by a list is a plan, not an answer.
   if (/^\s*[^\n]{0,60}:\s*$/.test(paragraph)) return true;
-  return afterNarration && SCRATCHPAD_LINE.test(paragraph.split("\n")[0] ?? "");
+  const first = paragraph.split("\n")[0] ?? "";
+  // What separates a scratchpad label from a sentence is the length of the text
+  // before the colon, not what follows it. "User asks:", "Goal:", "Constraint:"
+  // are labels; "Your biggest risk is the SQL goal:" is a clause. The pattern
+  // allowed 45 characters, so it also matched the clause — and once narration
+  // had been seen at the top of a reply, the real answer underneath it was
+  // deleted and the user was told nothing could be produced.
+  const label = first.trim().match(/^(?:[-*]\s*)?\*{0,2}([A-Za-z][^.!?:\n]{0,44}):/);
+  const isLabel = Boolean(label) && label![1]!.trim().length <= 24;
+  return afterNarration && isLabel && SCRATCHPAD_LINE.test(first);
 }
 
 /**
@@ -178,7 +233,7 @@ function isNarrationParagraph(paragraph: string, afterNarration: boolean): boole
  * narration behind it. Only paragraphs known to be complete are considered
  * until `isFinal`.
  */
-function findAnswerStart(buffer: string, isFinal: boolean): number {
+function findAnswerStart(buffer: string, isFinal: boolean, instructions?: string): number {
   const paragraphs = buffer.split(/\n\s*\n/);
   const judgeable = isFinal ? paragraphs.length : paragraphs.length - 1;
   let consumed = 0;
@@ -186,7 +241,10 @@ function findAnswerStart(buffer: string, isFinal: boolean): number {
     const paragraph = paragraphs[index]!;
     // The first paragraph is what proves narration; later ones inherit that
     // context and are held to the wider scratchpad rule.
-    if (!isNarrationParagraph(paragraph, index > 0)) return consumed;
+    const narration = isNarrationParagraph(paragraph, index > 0)
+      || looksLikeScaffold(paragraph)
+      || quotesInstructions(paragraph, instructions);
+    if (!narration) return consumed;
     consumed += paragraph.length + 2;
   }
   return -1;
@@ -210,6 +268,7 @@ function splitAtSafeBoundary(text: string): [emit: string, retain: string] {
 
 export function createOutputFilter(options: OutputFilterOptions = {}) {
   const labels = options.labels;
+  const instructions = options.instructions;
 
   let buffer = "";
   let inTag = false;
@@ -261,9 +320,9 @@ export function createOutputFilter(options: OutputFilterOptions = {}) {
       // A partial "<th…" might still become an opening tag.
       if (buffer.length < GUARD_CHARS && /^\s*<[a-z]*$/i.test(buffer)) return "";
 
-      if (BANNED_OPENER.test(buffer)) {
+      if (BANNED_OPENER.test(buffer) || looksLikeScaffold(buffer) || quotesInstructions(buffer, instructions)) {
         sawNarration = true;
-        const start = findAnswerStart(buffer, false);
+        const start = findAnswerStart(buffer, false, instructions);
         if (start < 0) {
           // Still narrating. Keep buffering, but do not grow without bound.
           if (buffer.length > GUARD_CHARS * 40) buffer = buffer.slice(-GUARD_CHARS * 10);
@@ -295,8 +354,8 @@ export function createOutputFilter(options: OutputFilterOptions = {}) {
       // Anything still held at the end was never confirmed as an answer. Emit it
       // only if it does not open with narration — otherwise the whole response
       // was reasoning and the caller decides what to do.
-      if (!released && BANNED_OPENER.test(remaining)) {
-        const start = findAnswerStart(remaining, true);
+      if (!released && (BANNED_OPENER.test(remaining) || looksLikeScaffold(remaining) || quotesInstructions(remaining, instructions))) {
+        const start = findAnswerStart(remaining, true, instructions);
         released = true;
         return start < 0 ? EMPTY_AFTER_FILTER : emit(remaining.slice(start));
       }

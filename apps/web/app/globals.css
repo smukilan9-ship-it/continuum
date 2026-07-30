@@ -24,79 +24,98 @@
    brand is green" — every value is picked against the surface it sits on.
    ========================================================================== */
 
+/* ==========================================================================
+   Design tokens.
+
+   Jade carries action; amber carries momentum. Two accents, two jobs — a jade
+   button is something you press, an amber mark is something moving (a streak, a
+   card due today, the block you are in right now). Keeping them separate is
+   what stops the interface from shouting in one colour.
+
+   Ink is near-black with green in it, canvas is warm off-white. The dark
+   surfaces are a deep jade-black rather than grey, so a console or a hero field
+   still belongs to the same family.
+   ========================================================================== */
+
 :root {
-  /* Action. --brand fills the one primary control per screen; --brand-strong
-     is its pressed and hover state; --brand-soft is the tint behind a selected
-     row or an informational panel. */
-  --brand:             #635bff;
-  --brand-strong:      #4b45d1;
-  --brand-hover:       #7a73ff;
-  --brand-soft:        #f0efff;
-  --brand-line:        #d7d4ff;
-  --brand-glow:        rgba(99, 91, 255, .38);
+  --brand:             #0e8a6e;
+  --brand-strong:      #0a6b55;
+  --brand-hover:       #12a081;
+  --brand-deep:        #07332b;
+  --brand-soft:        #e4f5ef;
+  --brand-line:        #b6e3d4;
+  --brand-glow:        rgba(14, 138, 110, .34);
 
-  /* A second accent, used only for gradients and small marks. */
-  --cyan:              #00d4ff;
-  --violet:            #9b6dff;
+  --amber:             #e08704;
+  --amber-lift:        #f5a623;
+  --amber-strong:      #b86c02;
+  --amber-soft:        #fdf1dc;
+  --amber-line:        #f6d9a3;
+  --amber-glow:        rgba(224, 135, 4, .30);
 
-  /* Ink. Navy rather than black: at 15px on a white card, #0a2540 reads as
-     deliberate and #000 reads as a default. */
-  --ink:               #0a2540;
-  --ink-2:             #425466;
-  --ink-3:             #5b6b7f;
+  --ink:               #0b1f1a;
+  --ink-2:             #415a54;
+  --ink-3:             #64807a;
 
-  --canvas:            #f6f9fc;
+  --canvas:            #f7faf8;
   --surface:           #ffffff;
-  --surface-raised:    #f6f9fc;
-  --surface-sunken:    #eef3f8;
+  --surface-raised:    #f2f7f5;
+  --surface-sunken:    #e9f0ed;
 
-  --line:              #e3e8ee;
-  --line-strong:       #cfd7e0;
+  --line:              #dfe8e4;
+  --line-strong:       #c3d2cd;
 
-  --success: #0f7b55; --success-surface: #e7f8f1; --success-line: #b6e6d3;
-  --warning: #9a5b06; --warning-surface: #fff4e5; --warning-line: #f6d9ac;
+  --success: #0f7b55; --success-surface: #e4f6ed; --success-line: #aee0c8;
+  --warning: #94590a; --warning-surface: #fdf1dc; --warning-line: #f6d9a3;
   --danger:  #b3261e; --danger-surface:  #fdecea; --danger-line:  #f5c4c0;
   --danger-hover: #8f1d17;
-  --info:    #0b6fb8; --info-surface:    #e8f4fd; --info-line:    #b9dcf5;
-  --focus:   #635bff;
+  --info:    #0b6b8f; --info-surface:    #e6f3f9; --info-line:    #b3ddef;
+  --focus:   #0e8a6e;
 
   --on-brand: #ffffff;
+  --on-amber: #2b1a00;
 
-  /* Deliberately dark surfaces: console output and code blocks, which stay
-     dark on a light page because that is what code looks like everywhere. */
-  --surface-inverse:        #0a2540;
-  --surface-inverse-raised: #123255;
+  /* Deliberately dark in a light page: console output, code, the hero field. */
+  --surface-inverse:        #07332b;
+  --surface-inverse-raised: #0d4438;
   --surface-inverse-danger: #3d1512;
-  --ink-inverse:            #e6edf5;
-  --ink-inverse-2:          #b3c2d3;
-  --ink-inverse-3:          #8797a9;
+  --ink-inverse:            #e8f4f0;
+  --ink-inverse-2:          #a9c8bf;
+  --ink-inverse-3:          #7ea79b;
   --ink-inverse-danger:     #ffc9c4;
 
   --syntax-string: #b3261e;
 
-  /* Stripe's shadow language: two layers, one tight and one wide, both tinted
-     with the ink rather than pure black, so a card lifts without dirtying the
-     canvas. */
-  --shadow-1: 0 1px 2px rgba(10, 37, 64, .06), 0 1px 3px rgba(10, 37, 64, .04);
-  --shadow-2: 0 2px 5px -1px rgba(50, 50, 93, .10), 0 1px 3px -1px rgba(10, 37, 64, .08);
-  --shadow-3: 0 13px 27px -5px rgba(50, 50, 93, .18), 0 8px 16px -8px rgba(10, 37, 64, .20);
-  --shadow-4: 0 30px 60px -12px rgba(50, 50, 93, .22), 0 18px 36px -18px rgba(10, 37, 64, .26);
-  --glow:     0 0 0 1px var(--brand-strong), 0 2px 5px -1px rgba(50, 50, 93, .18), 0 8px 24px -6px var(--brand-glow);
-  --glow-lg:  0 0 0 1px var(--brand-strong), 0 4px 10px -2px rgba(50, 50, 93, .20), 0 14px 40px -8px var(--brand-glow);
+  /* Two layers, tinted with the ink, so a card lifts without dirtying the page. */
+  --shadow-1: 0 1px 2px rgba(11, 31, 26, .06), 0 1px 3px rgba(11, 31, 26, .04);
+  --shadow-2: 0 2px 5px -1px rgba(11, 31, 26, .10), 0 1px 3px -1px rgba(11, 31, 26, .08);
+  --shadow-3: 0 13px 27px -5px rgba(11, 31, 26, .16), 0 8px 16px -8px rgba(11, 31, 26, .18);
+  --shadow-4: 0 30px 60px -12px rgba(11, 31, 26, .20), 0 18px 36px -18px rgba(11, 31, 26, .24);
 
-  --gradient-brand: linear-gradient(101deg, var(--cyan) 0%, var(--brand) 48%, var(--violet) 100%);
-  /* The marketing hero's wash: a brand bloom over a cool white-to-blue field. */
+  /* The chunky offset a primary control sits on. It is a solid edge, not a
+     blur — the button reads as a physical key you can press. */
+  --press:      0 2px 0 var(--brand-strong), 0 6px 18px -6px var(--brand-glow);
+  --press-hover:0 4px 0 var(--brand-strong), 0 12px 26px -8px var(--brand-glow);
+  --press-amber:0 2px 0 var(--amber-strong), 0 6px 18px -6px var(--amber-glow);
+  --glow:       var(--press);
+  --glow-lg:    var(--press-hover);
+
+  --gradient-brand: linear-gradient(122deg, #0e8a6e 0%, #12a081 46%, #4cc0a0 100%);
+  --gradient-field: linear-gradient(155deg, #0a4a3c 0%, #07332b 52%, #052620 100%);
+  --gradient-amber: linear-gradient(122deg, var(--amber) 0%, var(--amber-lift) 100%);
+  --gradient-ink: var(--gradient-field);
   --gradient-wash:
-    radial-gradient(60% 55% at 78% 18%, rgba(99, 91, 255, .16), transparent 68%),
-    radial-gradient(45% 45% at 96% 4%, rgba(0, 212, 255, .14), transparent 70%),
-    linear-gradient(168deg, #ffffff 0%, #f6f9fc 58%, #eef2fb 100%);
-  --gradient-ink:   linear-gradient(160deg, #0a2540 0%, #163a5f 60%, #1d4c7c 100%);
+    radial-gradient(58% 52% at 76% 16%, rgba(14, 138, 110, .16), transparent 68%),
+    radial-gradient(44% 44% at 96% 6%, rgba(224, 135, 4, .13), transparent 70%),
+    linear-gradient(168deg, #ffffff 0%, #f7faf8 58%, #eaf3ef 100%);
 
-  /* Goal identity: assigned by hash, rendered only as a 3px edge bar. */
-  --goal-1: #635bff; --goal-2: #0b6fb8; --goal-3: #9a5b06;
-  --goal-4: #9b6dff; --goal-5: #0f7b55; --goal-6: #b3261e;
+  /* A fine grain so a large dark field is a surface, not a flat fill. */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
 
-  /* Aliases kept so the legacy accent names in per-screen CSS resolve. */
+  --goal-1: #0e8a6e; --goal-2: #0b6b8f; --goal-3: #e08704;
+  --goal-4: #7a5cc0; --goal-5: #0f7b55; --goal-6: #b3261e;
+
+  /* Legacy accent names still referenced by per-screen CSS. */
   --accent: var(--brand);
   --accent-hover: var(--brand-strong);
   --accent-quiet: var(--brand-soft);
@@ -105,6 +124,8 @@
   --on-accent: var(--on-brand);
   --on-accent-mark: var(--on-brand);
   --on-accent-mark-2: rgba(255, 255, 255, .82);
+  --cyan: #12a081;
+  --violet: #4cc0a0;
 }
 
 /* A status tint needs a border a step stronger than its surface but far weaker

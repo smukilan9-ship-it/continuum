@@ -325,3 +325,75 @@ describe("identifiers and internal field names found in production", () => {
     expect(safe).toContain("Raise SAT score");
   });
 });
+
+/**
+ * The second production leak, read off the live deployment.
+ *
+ * A blocklist only catches the openers somebody thought of. This reply opened
+ * "Analyze the Workspace Data (Goals & Progress & Uncertainties):" and then
+ * dumped a labelled list, and — worse — quoted our own output contract back at
+ * the user: "Constraint: 'Answer in calm, plain Markdown… Never output a
+ * plan…'". Both are caught by shape now, not by vocabulary.
+ */
+describe("the second production leak (structural)", () => {
+  const CONTRACT = [
+    "Answer in calm, plain Markdown, beginning with the first sentence of the answer itself.",
+    "Never output a plan, outline, or analysis of the request.",
+    "Refer to any record by its title. Never write an internal identifier.",
+  ].join(" ");
+
+  const LEAK = [
+    "Analyze the Request:",
+    'User asks: "Across all four of my goals, what is the biggest risk?"',
+    'Constraint: "Answer in calm, plain Markdown, beginning with the first sentence of the answer itself. Never output a plan, outline, or analysis of the request."',
+    "Analyze the Workspace Data (Goals & Progress & Uncertainties):",
+    'Goal 1: "Raise SAT score from 1520 to 1570+"',
+    "Progress: 0.42",
+    "Uncertain: mockScoreVariance",
+  ].join("\n");
+
+  const run = (text: string, instructions?: string) => {
+    const filter = createOutputFilter({ instructions });
+    let out = "";
+    for (const chunk of text.split(/(?<=\n)/)) out += filter.push(chunk) ?? "";
+    out += filter.flush() ?? "";
+    return { out, suppressed: filter.suppressedNarration };
+  };
+
+  it("suppresses the leak verbatim", () => {
+    const { out, suppressed } = run(LEAK, CONTRACT);
+    expect(out.trim()).toBe("");
+    expect(suppressed).toBe(true);
+  });
+
+  it("catches a labelled dump even with an opener nobody listed", () => {
+    const novel = ["Survey the Landscape:", "Item one: a value", "Item two: a value", "Item three: a value"].join("\n");
+    expect(run(novel).out.trim()).toBe("");
+  });
+
+  it("catches the model reciting our instructions back", () => {
+    const echo = "Beginning with the first sentence of the answer itself, never output a plan, outline, or analysis of the request.";
+    expect(run(echo, CONTRACT).out.trim()).toBe("");
+  });
+
+  it("leaves a real answer that happens to use a colon alone", () => {
+    const real = "Your nearest deadline is the SQL goal on 6 September, and the evidence is in your last two practice results.\n\nThe risk: you have four goals and only one of them has a block this week.";
+    const { out } = run(real, CONTRACT);
+    expect(out).toContain("Your nearest deadline is the SQL goal");
+    expect(out).toContain("The risk:");
+  });
+
+  it("leaves a short answer with a labelled line alone", () => {
+    // Two labels is a formatted answer; three with no prose is a worksheet.
+    const real = "Due today: the timed drill.\nDue tomorrow: the SQL practice.\n\nBoth are on the SAT goal.";
+    expect(run(real).out).toContain("Due today");
+  });
+
+  it("finds the answer after a scaffold and keeps it", () => {
+    const mixed = `${LEAK}\n\nYour biggest risk is the SQL goal: it is due first and is the least practised.`;
+    const { out } = run(mixed, CONTRACT);
+    expect(out).toContain("Your biggest risk is the SQL goal");
+    expect(out).not.toContain("mockScoreVariance");
+    expect(out).not.toContain("Analyze the Request");
+  });
+});

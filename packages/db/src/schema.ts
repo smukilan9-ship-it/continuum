@@ -64,7 +64,30 @@ export const scheduleBlocks = pgTable("schedule_blocks", { id: text("id").primar
 export const curricula = pgTable("curricula", { id: text("id").primaryKey(), authority: text("authority").notNull(), title: text("title").notNull(), sourceVersion: text("source_version").notNull(), humanReviewed: boolean("human_reviewed").default(false).notNull(), ...editable });
 export const curriculumNodes = pgTable("curriculum_nodes", { id: text("id").primaryKey(), curriculumId: text("curriculum_id").references(() => curricula.id).notNull(), topic: text("topic").notNull(), outcomes: text("outcomes").array().default([]).notNull(), prerequisiteIds: text("prerequisite_ids").array().default([]).notNull(), sourceIds: text("source_ids").array().default([]).notNull(), ...editable });
 export const concepts = pgTable("concepts", { id: text("id").primaryKey(), curriculumNodeId: text("curriculum_node_id").references(() => curriculumNodes.id), title: text("title").notNull(), description: text("description").notNull(), prerequisiteIds: text("prerequisite_ids").array().default([]).notNull(), ...editable });
-export const learningStates = pgTable("learning_states", { id: text("id").primaryKey(), userId: text("user_id").references(() => users.id).notNull(), conceptId: text("concept_id").references(() => concepts.id).notNull(), exposure: real("exposure").default(0).notNull(), understanding: real("understanding").default(0).notNull(), transfer: real("transfer").default(0).notNull(), retention: real("retention").default(0).notNull(), confidence: real("confidence").default(0).notNull(), status: text("status").notNull(), evidenceIds: text("evidence_ids").array().default([]).notNull(), explanation: text("explanation").notNull(), lastPracticedAt: timestamp("last_practiced_at", { withTimezone: true }), ...editable }, (table) => [uniqueIndex("learning_states_user_concept_idx").on(table.userId, table.conceptId)]);
+export const learningStates = pgTable("learning_states", { id: text("id").primaryKey(), userId: text("user_id").references(() => users.id).notNull(), conceptId: text("concept_id").references(() => concepts.id).notNull(), exposure: real("exposure").default(0).notNull(), understanding: real("understanding").default(0).notNull(), transfer: real("transfer").default(0).notNull(), retention: real("retention").default(0).notNull(), confidence: real("confidence").default(0).notNull(), status: text("status").notNull(), evidenceIds: text("evidence_ids").array().default([]).notNull(), explanation: text("explanation").notNull(), lastPracticedAt: timestamp("last_practiced_at", { withTimezone: true }), dueAt: timestamp("due_at", { withTimezone: true }), intervalDays: real("interval_days").default(0).notNull(), ease: real("ease").default(2.5).notNull(), reps: integer("reps").default(0).notNull(), lapses: integer("lapses").default(0).notNull(), ...editable }, (table) => [uniqueIndex("learning_states_user_concept_idx").on(table.userId, table.conceptId), index("learning_states_due_idx").on(table.userId, table.dueAt)]);
+/**
+ * An explain-back attempt (the Feynman check).
+ *
+ * Recognition is not understanding, and a multiple-choice score cannot tell the
+ * difference. Here the student writes the idea in their own words and it is
+ * graded against the passage it came from — what they got right, what they left
+ * out, and what they said that the source contradicts.
+ */
+export const explanations = pgTable("explanations", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").references(() => users.id).notNull(),
+  conceptId: text("concept_id").references(() => concepts.id).notNull(),
+  sourceChunkId: text("source_chunk_id"),
+  prompt: text("prompt").notNull(),
+  answer: text("answer").notNull(),
+  score: real("score").notNull(),
+  verdict: text("verdict").notNull(),
+  missing: text("missing").array().default([]).notNull(),
+  wrong: text("wrong").array().default([]).notNull(),
+  feedback: text("feedback").notNull(),
+  ...editable,
+}, (table) => [index("explanations_user_concept_idx").on(table.userId, table.conceptId)]);
+
 export const assessments = pgTable("assessments", { id: text("id").primaryKey(), conceptId: text("concept_id").references(() => concepts.id).notNull(), kind: text("kind").notNull(), items: jsonb("items").$type<unknown[]>().notNull(), model: text("model"), promptVersion: text("prompt_version"), ...editable });
 export const assessmentAttempts = pgTable("assessment_attempts", { id: text("id").primaryKey(), assessmentId: text("assessment_id").references(() => assessments.id).notNull(), userId: text("user_id").references(() => users.id).notNull(), answers: jsonb("answers").$type<unknown[]>().notNull(), score: real("score").notNull(), unseen: boolean("unseen").default(false).notNull(), ...timestamps });
 export const misconceptions = pgTable("misconceptions", { id: text("id").primaryKey(), userId: text("user_id").references(() => users.id).notNull(), conceptId: text("concept_id").references(() => concepts.id).notNull(), attemptId: text("attempt_id").references(() => assessmentAttempts.id).notNull(), label: text("label").notNull(), status: text("status").notNull(), confidence: real("confidence").notNull(), ...editable });

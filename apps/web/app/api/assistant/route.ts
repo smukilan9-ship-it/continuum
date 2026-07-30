@@ -411,7 +411,10 @@ export async function POST(request: Request) {
     const responseStream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          const filter = createOutputFilter({ labels: contextLabels });
+          // The prompt is handed to the filter so a reply that recites our own output
+          // contract back at the user is caught exactly rather than by keyword.
+          const filter = createOutputFilter({ labels: contextLabels, instructions: `${prompt.system}
+${prompt.prompt}` });
           for await (const part of streamed.result.textStream) {
             const visible = filter.push(part);
             if (visible) {

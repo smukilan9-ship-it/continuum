@@ -7,3 +7,4 @@ export * from "./scheduler";
 export * from "./obsidian-sync";
 export * from "./resources";
 export * from "./onboarding";
+export * from "./review-schedule";

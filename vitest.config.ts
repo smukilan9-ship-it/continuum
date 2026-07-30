@@ -16,6 +16,9 @@ const alias = {
   // drizzle-orm is a dependency of @continuum/db, so it is not hoisted to the
   // workspace root where the test files live.
   "drizzle-orm": resolvePath("./packages/db/node_modules/drizzle-orm"),
+  // Workspace packages are consumed by source in tests, so the scheduler and
+  // the rest of the domain resolve without a build step.
+  "@continuum/domain": resolvePath("./packages/domain/src/index.ts"),
 };
 
 /**

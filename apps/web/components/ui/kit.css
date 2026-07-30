@@ -38,32 +38,45 @@
 /* The one primary action per screen. It carries the brand fill, a hairline of
    its own darker edge, and a coloured lift — the glow is the brand's shadow,
    not a neon ring, so it reads as depth rather than decoration. */
+/* The one primary action per screen. It sits on a solid offset edge rather
+   than a blur, so it reads as a physical key: pressing it moves the cap down
+   onto the edge. */
 .button-primary {
   color: var(--on-brand);
   background: var(--brand);
   border-color: transparent;
-  box-shadow: var(--glow);
+  box-shadow: var(--press);
 }
 .button-primary:hover:not(:disabled) {
   background: var(--brand-hover);
-  box-shadow: var(--glow-lg);
-  transform: translateY(-1px);
+  box-shadow: var(--press-hover);
+  transform: translateY(-2px);
 }
-.button-primary:active:not(:disabled) { background: var(--brand-strong); box-shadow: var(--glow); transform: translateY(0) scale(.995); }
+.button-primary:active:not(:disabled) {
+  background: var(--brand-strong);
+  box-shadow: 0 0 0 var(--brand-strong);
+  transform: translateY(2px);
+}
 
-/* A gradient variant for the single hero action on a marketing or empty state. */
+/* Momentum, not action: "start the block that is running now", "keep the
+   streak". Amber never appears on a destructive or a neutral control. */
+.button-amber {
+  color: var(--on-amber);
+  background: var(--amber);
+  border-color: transparent;
+  box-shadow: var(--press-amber);
+}
+.button-amber:hover:not(:disabled) { background: var(--amber-lift); transform: translateY(-2px); box-shadow: 0 4px 0 var(--amber-strong), 0 12px 26px -8px var(--amber-glow); }
+.button-amber:active:not(:disabled) { box-shadow: 0 0 0 var(--amber-strong); transform: translateY(2px); }
+
 .button-gradient {
   color: var(--on-brand);
   background: var(--gradient-brand);
   background-size: 160% 160%;
   border-color: transparent;
-  box-shadow: var(--glow);
+  box-shadow: var(--press);
 }
-.button-gradient:hover:not(:disabled) {
-  background-position: 100% 0;
-  box-shadow: var(--glow-lg);
-  transform: translateY(-1px);
-}
+.button-gradient:hover:not(:disabled) { background-position: 100% 0; box-shadow: var(--press-hover); transform: translateY(-2px); }
 
 .button-secondary {
   color: var(--ink);
@@ -710,3 +723,67 @@
 @media (prefers-reduced-motion: reduce) {
   .spotlight::before { display: none; }
 }
+
+/* --- Dark fields ---------------------------------------------------------- */
+
+/* A large flat fill reads as a hole in the page. The grain gives it a surface,
+   and the bloom gives it a light source. Both are decorative and never take a
+   pointer event. */
+.field-dark {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: var(--ink-inverse);
+  background: var(--gradient-field);
+}
+.field-dark::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image: var(--grain);
+  opacity: .16;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+.field-dark::after {
+  content: "";
+  position: absolute;
+  inset: -45% -20% auto auto;
+  width: 460px;
+  height: 460px;
+  z-index: 0;
+  background: radial-gradient(circle, rgba(18, 160, 129, .38), transparent 62%);
+  pointer-events: none;
+}
+.field-dark > * { position: relative; z-index: 1; }
+
+/* --- Momentum ------------------------------------------------------------- */
+
+.streak {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-3);
+  color: var(--amber-strong);
+  background: var(--amber-soft);
+  border: 1px solid var(--amber-line);
+  border-radius: var(--r-full);
+  font-size: var(--t-small);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.streak svg { color: var(--amber); }
+.streak-flame { animation: streak-pulse 2.4s var(--e-move) infinite; transform-origin: 50% 80%; }
+@keyframes streak-pulse {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  40% { transform: scale(1.14) rotate(-4deg); }
+  70% { transform: scale(1.04) rotate(3deg); }
+}
+@media (prefers-reduced-motion: reduce) { .streak-flame { animation: none; } }
+
+/* A meter that shows a target as well as a value. */
+.meter { height: 8px; position: relative; overflow: hidden; background: var(--surface-sunken); border-radius: var(--r-full); }
+.meter > i { display: block; height: 100%; border-radius: inherit; background: var(--gradient-brand); transition: width var(--d-slow) var(--e-out); }
+.meter-amber > i { background: var(--gradient-amber); }
+.meter-target { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink-3); border-radius: 2px; }
