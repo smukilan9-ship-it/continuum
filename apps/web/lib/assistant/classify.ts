@@ -183,6 +183,19 @@ export function retrievalPlan(classification: Classification) {
     useMemory:
       classification.requestClass === "about_my_work" ||
       classification.requestClass === "broad_search",
+    /**
+     * The user's own indexed passages.
+     *
+     * Same classes as the workspace, because "what did I decide about X" and
+     * "why can't X claim Y" are the same kind of question — one is answered by
+     * a record and the other by a passage, and the user does not know or care
+     * which. Leaving this off is why the product's headline claim failed: the
+     * documents it is built to know were the one store nothing searched.
+     */
+    useSources:
+      classification.requestClass === "about_my_work" ||
+      classification.requestClass === "about_this_page" ||
+      classification.requestClass === "broad_search",
     useAttachments:
       classification.requestClass === "about_a_document",
     /** Hard ceiling on records assembled into the prompt. */

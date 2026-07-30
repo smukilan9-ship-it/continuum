@@ -12,10 +12,10 @@ import type { Store } from "../apps/web/lib/store";
  * inspecting the returned context.
  */
 
-type Calls = { read: string[]; searchMemory: number; listSources: number; listSourceChunks: number };
+type Calls = { read: string[]; searchMemory: number; listSources: number; listSourceChunks: number; searchSourcePassages: number };
 
 function fakeStore(overrides: Partial<Record<keyof Store, unknown>> = {}) {
-  const calls: Calls = { read: [], searchMemory: 0, listSources: 0, listSourceChunks: 0 };
+  const calls: Calls = { read: [], searchMemory: 0, listSources: 0, listSourceChunks: 0, searchSourcePassages: 0 };
   const store = {
     kind: "memory" as const,
     userId: "user_maya",
@@ -38,6 +38,10 @@ function fakeStore(overrides: Partial<Record<keyof Store, unknown>> = {}) {
       return [
         { id: "mchunk_1", kind: "project_decision", content: "Decided on cross-marker association.", occurredAt: new Date().toISOString(), importance: 0.8, tokenEstimate: 20, sourceEventIds: [], metadata: {}, score: 0.82 },
       ];
+    },
+    async searchSourcePassages() {
+      calls.searchSourcePassages += 1;
+      return [{ id: "chunk_1", sourceId: "source_1", sourceTitle: "Stack et al. 2014", passage: 3, text: "Serial sections are different physical slices, so the two markers can never be the same cell.", contentHash: "h", sourceVersion: 1, deleted: false, reference: "Stack et al. 2014 · passage 3" }];
     },
     async listSources() { calls.listSources += 1; return [{ id: "source_1", title: "Stack et al. 2014" }]; },
     async listSourceChunks() { calls.listSourceChunks += 1; return [{ id: "chunk_1", sourceId: "source_1", sourceTitle: "Stack et al. 2014", passage: 3, text: "Multiplexed staining permits…", contentHash: "h", sourceVersion: 1, deleted: false, reference: "Stack et al. 2014 · passage 3" }]; },
@@ -222,5 +226,60 @@ describe("provenance destinations", () => {
     const result = await orchestrate({ store, message: "summarise this", attachmentIds: ["source_1"], history: [] });
     const attachment = result.usedContext.find((entry) => entry.type === "attachment");
     expect(attachment?.href).toBe("/library?tab=sources&source=source_1");
+  });
+});
+
+/**
+ * The headline claim.
+ *
+ * Found by asking production a question whose answer is a near-verbatim
+ * restatement of an indexed passage: "Why can't OASIS claim single-cell
+ * co-expression?" The workspace holds a source that says exactly why. The
+ * assistant replied that OASIS "is a database that provides information on the
+ * co-expression of genes across multiple cells" — a different OASIS, invented —
+ * and disclosed "Answered from general knowledge — nothing in your workspace
+ * matched."
+ *
+ * The disclosure was honest. The retrieval was not there at all: the orchestrator
+ * searched workspace records, memory chunks, and files the user had explicitly
+ * attached, and never the indexed passages. On a product whose one-line promise
+ * is that the AI actually knows your work, the documents were the single store
+ * nothing looked in.
+ */
+describe("the user's own passages are retrieved", () => {
+  it("searches indexed sources for a question about the user's work", async () => {
+    const { store, calls } = fakeStore();
+    const result = await orchestrate({
+      store,
+      message: "Why can't OASIS claim single-cell co-expression?",
+      attachmentIds: [],
+      history: [],
+    });
+    expect(calls.searchSourcePassages).toBe(1);
+    expect(result.context.sourcePassages).toBeDefined();
+  });
+
+  it("cites the source it retrieved, so the answer is checkable", () => {
+    return orchestrate({ store: fakeStore().store, message: "Why can't OASIS claim single-cell co-expression?", attachmentIds: [], history: [] })
+      .then((result) => {
+        const cited = result.usedContext.find((entry) => entry.type === "source");
+        expect(cited).toBeDefined();
+        expect(cited!.id).toBe("source_1");
+        // The chip has to open something, or provenance is decoration.
+        expect(cited!.href).toContain("source_1");
+      });
+  });
+
+  it("passes the passage text through, with its reference, for citation", async () => {
+    const result = await orchestrate({ store: fakeStore().store, message: "What did the source say about serial sections?", attachmentIds: [], history: [] });
+    const passages = result.context.sourcePassages as Array<{ reference: string; text: string }>;
+    expect(passages[0]!.reference).toContain("passage 3");
+    expect(passages[0]!.text).toContain("Serial sections");
+  });
+
+  it("does not search sources for a greeting", async () => {
+    const { store, calls } = fakeStore();
+    await orchestrate({ store, message: "hi", attachmentIds: [], history: [] });
+    expect(calls.searchSourcePassages).toBe(0);
   });
 });

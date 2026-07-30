@@ -123,6 +123,35 @@ export function fromAttachments(
   return entries;
 }
 
+/**
+ * Passages retrieved from the user's own indexed sources.
+ *
+ * These are the records the product is named for. Until now nothing in the Ask
+ * flow searched them: retrieval covered workspace records, memory chunks, and
+ * files the user explicitly attached, so a question whose answer sat in an
+ * indexed passage returned "nothing in your workspace matched" and the model
+ * answered from general knowledge instead.
+ */
+export function fromSourcePassages(chunks: Array<Record<string, unknown>>): UsedContextEntry[] {
+  const seen = new Set<string>();
+  const entries: UsedContextEntry[] = [];
+  for (const chunk of chunks) {
+    const sourceId = str(chunk, "sourceId");
+    // One entry per source: five passages from one document is one citation
+    // chip, not five, or the strip becomes a list of the same title.
+    if (!sourceId || seen.has(sourceId)) continue;
+    seen.add(sourceId);
+    entries.push({
+      type: "source",
+      id: sourceId,
+      label: trimLabel(firstString(chunk, ["sourceTitle", "reference"]) || "A source"),
+      href: hrefFor("source", sourceId),
+      snippet: str(chunk, "text").slice(0, 400),
+    });
+  }
+  return entries;
+}
+
 /** Builds provenance entries from the structured current-state pack. */
 export function fromWorkspaceContext(context: unknown): UsedContextEntry[] {
   if (!context || typeof context !== "object") return [];

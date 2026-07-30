@@ -107,6 +107,15 @@ export interface Store {
   /** The stored original, including the storage path listings deliberately strip. */
   getSourceOriginal(sourceId: string): Promise<{ id: string; title: string; mimeType: string; storagePath?: string } | undefined>;
   vectorSearch(embedding: number[], limit: number): Promise<StoredSourceChunk[]>;
+  /**
+   * The user's indexed passages, searched by meaning with a lexical fallback.
+   *
+   * `vectorSearch` has existed since the beginning and had exactly one caller,
+   * an internal retrieval endpoint. Nothing in the Ask flow used it, so the
+   * documents the product is built to know were never searched when a user
+   * asked a question about them.
+   */
+  searchSourcePassages(query: string, limit?: number): Promise<StoredSourceChunk[]>;
   searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }): Promise<StoredMemoryChunk[]>;
   searchWorkspace(input: { query: string; kinds?: string[]; limit?: number }): Promise<WorkspaceSearchHit[]>;
   /** §9.9 AC-CX3 — permanently excludes one remembered record from retrieval. */
@@ -658,6 +667,10 @@ class MemoryStore implements Store {
     return source ? { id: source.id, title: source.title, mimeType: source.mimeType, ...(source.storagePath ? { storagePath: source.storagePath } : {}) } : undefined;
   }
   async vectorSearch() { return []; }
+  async searchSourcePassages(query: string, limit = 6) {
+    const needle = query.toLowerCase().slice(0, 200);
+    return demoStore.chunks.filter((chunk) => chunk.text.toLowerCase().includes(needle)).slice(0, limit);
+  }
   async searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }) {
     const query = input.query.toLowerCase();
     return demoStore.memoryChunks.filter((chunk) => current(chunk) && (!input.goalId || chunk.goalId === input.goalId) && (!input.projectId || chunk.projectId === input.projectId) && (!input.types?.length || input.types.includes(chunk.kind)) && chunk.content.toLowerCase().includes(query)).slice(0, input.limit ?? 8);
@@ -976,6 +989,23 @@ class NeonStore implements Store {
   async assignSourceToProject(sourceId: string, projectId: string | null) { return this.repo.assignSourceToProject(sourceId, this.userId, projectId); }
   async getSourceOriginal(sourceId: string) { const source = await this.repo.getSourceOriginal(sourceId, this.userId); return source ? { id: source.id, title: source.title, mimeType: source.mimeType, ...(source.storagePath ? { storagePath: source.storagePath } : {}) } : undefined; }
   async vectorSearch(embedding: number[], limit: number) { return this.repo.vectorSearch(embedding, limit, this.userId); }
+  async searchSourcePassages(query: string, limit = 6) {
+    const trimmed = query.trim().slice(0, 500);
+    if (!trimmed) return [];
+    if (embeddingConfiguration()) {
+      try {
+        const hits = await this.repo.vectorSearch(await embedQuery(trimmed), limit, this.userId);
+        if (hits.length) return hits;
+      } catch { /* Fall through to lexical, same as memory retrieval. */ }
+    }
+    // Lexical fallback. Not a substitute for meaning, but it keeps a
+    // deployment with no embedding key from silently having no source
+    // retrieval at all — which is the state this method was written to end.
+    const lexical = await this.repo.searchResearch(this.userId, trimmed, limit * 2);
+    return lexical
+      .filter((row): row is typeof row & { kind: "source_passage" } => (row as { kind?: string }).kind === "source_passage")
+      .slice(0, limit) as unknown as StoredSourceChunk[];
+  }
   async searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }) {
     let embedding: number[] | undefined;
     if (embeddingConfiguration()) { try { embedding = await embedQuery(input.query); } catch { /* Hybrid retrieval falls back to lexical/current state. */ } }

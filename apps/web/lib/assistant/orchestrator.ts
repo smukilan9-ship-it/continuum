@@ -24,7 +24,7 @@
 
 import type { Store } from "@/lib/store";
 import { classifyHeuristic, isAnsweredByConversation, retrievalPlan, type Classification } from "./classify";
-import { fromAttachments, fromMemoryChunks, fromWorkspaceContext, labelMap, mergeProvenance, type UsedContextEntry } from "./provenance";
+import { fromAttachments, fromMemoryChunks, fromSourcePassages, fromWorkspaceContext, labelMap, mergeProvenance, type UsedContextEntry } from "./provenance";
 
 /** The route-derived chip (§8.5). One of these is attached on panel open. */
 export type PageContextKind = "goal" | "project" | "concept" | "build" | "source" | "week";
@@ -272,7 +272,7 @@ export async function orchestrate(input: OrchestrateInput & { mode?: "auto" | "f
 
   // Step 3 runs concurrently with steps 4 and 5 — none of them depend on each
   // other, and serialising them was dead time in front of the first token.
-  const [page, workspace, memory, attachments] = await Promise.all([
+  const [page, workspace, memory, attachments, passages] = await Promise.all([
     resolvePageContext(input.store, input.pageContext, degraded),
     // Step 4 — one targeted pass.
     plan.useWorkspace
@@ -284,6 +284,16 @@ export async function orchestrate(input: OrchestrateInput & { mode?: "auto" | "f
       : Promise.resolve([]),
     // Attachment passages are already indexed; this is a lookup, not a search.
     input.attachmentIds.length ? loadAttachments(input.store, input.attachmentIds) : Promise.resolve({ sources: [], chunks: [], context: [] }),
+    // Step 4b — the user's own indexed passages.
+    //
+    // This leg did not exist. Retrieval covered workspace records, memory
+    // chunks, and files the user had explicitly attached to the message, so a
+    // question whose answer sat in an indexed document returned "nothing in
+    // your workspace matched" and the model answered from general knowledge —
+    // on a product whose headline is that the AI actually knows your work.
+    plan.useSources
+      ? withDeadline("source retrieval", DEADLINES.retrieval, input.store.searchSourcePassages(input.message.slice(0, 500), 6), [], degraded)
+      : Promise.resolve([]),
   ]);
 
   const rankedMemory = capContext(rankMemory(memory as unknown as Array<Record<string, unknown>>, excluded));
@@ -298,9 +308,11 @@ export async function orchestrate(input: OrchestrateInput & { mode?: "auto" | "f
   // meant the filter had no title for the rest and deleted them, leaving
   // "That decision belongs to  and it is…" — a sentence with a hole in it,
   // which is worse than the identifier it removed.
+  const sourcePassages = (passages as Array<Record<string, unknown>>).filter((chunk) => !excluded.has(String(chunk.sourceId ?? "")));
   const candidates = mergeProvenance([
     fromAttachments(attachments.sources, attachments.chunks),
     page.provenance,
+    fromSourcePassages(sourcePassages),
     fromMemoryChunks(rankedMemory),
     fromWorkspaceContext(workspace),
   ], Number.MAX_SAFE_INTEGER).filter((entry) => !excluded.has(entry.id));
@@ -311,6 +323,19 @@ export async function orchestrate(input: OrchestrateInput & { mode?: "auto" | "f
     ...(workspace ? { workspace } : {}),
     ...(rankedMemory.length ? { relevantMemory: rankedMemory } : {}),
     ...(attachments.context.length ? { selectedFiles: attachments.context } : {}),
+    // Named `sourcePassages` so the prompt's citation instruction — "cite using
+    // the supplied [Source: title · passage N] reference" — has something to
+    // point at.
+    ...(sourcePassages.length
+      ? {
+        sourcePassages: sourcePassages.slice(0, 5).map((chunk) => ({
+          reference: String(chunk.reference ?? `${String(chunk.sourceTitle ?? "Source")} · passage ${String(chunk.passage ?? "")}`),
+          title: String(chunk.sourceTitle ?? ""),
+          passage: chunk.passage,
+          text: String(chunk.text ?? "").slice(0, 1_200),
+        })),
+      }
+      : {}),
   };
 
   // Step 11 — depth is offered, never assumed. Only when the answer is thin.
