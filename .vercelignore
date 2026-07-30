@@ -19,3 +19,9 @@ apps/video/assets
 docs/audit-screenshots
 docs/screenshots
 docs/hackathon
+
+# Agent worktrees. `.gitignore` already excludes them, but `.vercelignore`
+# replaces `.gitignore` for upload filtering — and an agent writing Playwright
+# artifacts into one mid-upload makes the deploy fail with ENOENT on a file
+# that existed when the file list was built.
+.claude
