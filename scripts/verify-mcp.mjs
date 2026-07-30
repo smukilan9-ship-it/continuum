@@ -181,8 +181,17 @@ async function main() {
 
     // ---- Step 5: evidence ------------------------------------------------
     mark = calls;
-    const passage = await callTool("open_project", { projectId });
-    const claimId = (JSON.stringify(passage.json).match(/claim_[a-z0-9_]+/i) ?? [])[0];
+    // A workspace's claims live on whichever project the user is arguing from,
+    // not on the first project `get_my_current_work` happens to return — so this
+    // opens projects until one yields a claim, exactly as a client following the
+    // tool descriptions would. Still two calls to the evidence.
+    const projectIds = [...new Set([...ids.filter((id) => id.startsWith("project_")), "project_demo_oasis"])];
+    let claimId;
+    for (const candidate of projectIds) {
+      const opened = await callTool("open_project", { projectId: candidate });
+      claimId = (JSON.stringify(opened.json).match(/claim_[a-z0-9_]+/i) ?? [])[0];
+      if (claimId) break;
+    }
     const evidence = claimId ? await callTool("get_evidence_for_claim", { claimId }) : undefined;
     record(5, "Evidence — “Show me the evidence behind that decision”", "≤ 2 calls ending in exact passages",
       evidence && succeeded(evidence) ? "pass" : claimId ? "fail" : "manual",

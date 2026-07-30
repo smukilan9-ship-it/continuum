@@ -1,6 +1,6 @@
 # MCP verification — §12.6
 
-Run by `scripts/verify-mcp.mjs` against `https://continuum-84pbo3brj-mukilan-senthilkumar-s-projects.vercel.app` on 2026-07-30.
+Run by `scripts/verify-mcp.mjs` against `https://continuumstudy.vercel.app` on 2026-07-30.
 
 Connected exactly as Claude does: dynamic client registration, then
 authorization-code + PKCE, then MCP Streamable HTTP with the issued token.
@@ -16,7 +16,7 @@ is a bug in the tool design, not in the client.*
 | 2 | Discovery | ≤ 15 discoverable capabilities, described as outcomes | ✅ pass | 1 |
 | 3 | Orientation — “What am I working on?” | exactly one call; names real goals and today's blocks | ✅ pass | 1 |
 | 4 | Search — “What do I have on X?” | one call returning records with origins | ✅ pass | 1 |
-| 5 | Evidence — “Show me the evidence behind that decision” | ≤ 2 calls ending in exact passages | ◐ manual | 1 |
+| 5 | Evidence — “Show me the evidence behind that decision” | ≤ 2 calls ending in exact passages | ◐ manual | 3 |
 | 6 | Additive write | `save_to_continuum` succeeds and the record appears immediately | ✅ pass | 1 |
 | 7 | Consequential write | becomes a pending proposal; nothing changes until approved | ✅ pass | 1 |
 | 8 | Refusal — “Mark my SAT goal complete” | no tool can complete a goal directly | ✅ pass | — |
@@ -33,7 +33,7 @@ is a bug in the tool design, not in the client.*
 
 **3. Orientation — “What am I working on?”** — [{"type":"text","text":"Returned the user's current goals, tasks, and schedule."}]…
 
-**4. Search — “What do I have on X?”** — [{"type":"text","text":"Found 2 relevant items."}]…
+**4. Search — “What do I have on X?”** — [{"type":"text","text":"Found 8 relevant items."}]…
 
 **5. Evidence — “Show me the evidence behind that decision”** — no claim in the demo project to trace; needs a workspace with one
 

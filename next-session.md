@@ -195,9 +195,27 @@ it is code that was skipped.
 - **§18.7 visual baselines.** The suite is written and runs under
   `PLAYWRIGHT_VISUAL=1`. Baselines are renderer-specific, so committing them
   from a laptop would fail on the first CI machine. Record them there.
-- **§12.6 step 5** (trace a decision to its evidence) and **whether Claude picks
-  the right tool from its description**. The tool chain is verified to exist and
-  answer; the judgement is not script-checkable.
+- **§12.6 step 5 — and the reason it is still manual is a real bug.**
+  `open_project` promises "evidence-linked claims" and `get_evidence_for_claim`
+  says to use it before repeating a claim as fact, but `compactToBudget` in
+  `apps/web/lib/store.ts` trims an over-budget payload by `pop()`-ing whole
+  array entries, and it will pop an array to empty. So a project large enough to
+  exceed the 1,400-token default returns `claims: []` — which reads as "this
+  project has no claims" rather than "there was no room", and takes the ids with
+  it, so the documented chain into `get_evidence_for_claim` cannot be walked by
+  any client. Verified against production: opening every demo project yields no
+  claim id.
+
+  The obvious fix — never pop an array below one entry — changes which records
+  reach the assistant, and two §11.5 cases in `tests/assistant-quality.test.ts`
+  then fail: an identifier gets deleted instead of rewritten to its record's
+  title, leaving "That decision belongs to  and it is…". So the budget and the
+  redaction map are coupled, and fixing this properly means fixing both together
+  with a test that pins the coupling. It was not attempted at the end of a
+  session.
+
+- **Whether Claude picks the right tool from its description.** Not
+  script-checkable; needs a person with Claude Desktop.
 - **The iOS keyboard never obscuring the composer.** `dvh` and
   `env(safe-area-inset-bottom)` are used; nothing verifies them without a device.
 - **A real Zotero library and a real Obsidian vault.** Both are stubbed at the
