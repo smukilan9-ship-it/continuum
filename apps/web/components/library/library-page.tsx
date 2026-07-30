@@ -23,7 +23,6 @@ import {
   type LibrarySource,
   type LibraryTab,
 } from "./types";
-import { useZoteroDoiIndex } from "./use-zotero-doi-index";
 import { ZoteroBrowser } from "./zotero-browser";
 
 const tabOptions: Array<{ value: LibraryTab; label: string }> = [
@@ -156,8 +155,6 @@ export function LibraryPage({
     return () => { cancelled = true; };
   }, []);
 
-  const zoteroIndex = useZoteroDoiIndex(zoteroConnected && tab === "discover");
-
   /**
    * `?tab=` selects the tab, `?target=` names where saves land, and a
    * `/library/{kind}/{id}` deep link is always a Discover selection.
@@ -239,6 +236,55 @@ export function LibraryPage({
       await loadSources();
     } catch (cause) {
       showToast(cause instanceof Error ? cause.message : "The source could not be removed.");
+    } finally { setBusyId(undefined); }
+  }
+
+  /**
+   * §13.2 "Send to project". `PATCH /api/sources` is the write that was missing
+   * when this action shipped disabled; the project is ownership-checked server
+   * side, so the picker cannot be used to reach someone else's work.
+   */
+  async function sendToProject(source: LibrarySource, projectId: string | null) {
+    setBusyId(source.id);
+    try {
+      const response = await fetch("/api/sources", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sourceId: source.id, projectId }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "The source could not be filed.");
+      const label = projectId ? destinations.find((entry) => entry.projectId === projectId)?.label ?? "that project" : unfiledDestination.label;
+      showToast(projectId ? `Filed into ${label}.` : "Removed from its project. It stays in your library.");
+      await loadSources();
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : "The source could not be filed.");
+    } finally { setBusyId(undefined); }
+  }
+
+  /**
+   * The stored original never has a browser-reachable URL, so the download is a
+   * same-origin request the server answers with the bytes. A failure is
+   * reported in words rather than a broken tab.
+   */
+  async function downloadSource(source: LibrarySource) {
+    setBusyId(source.id);
+    try {
+      const response = await fetch(`/api/sources/download?sourceId=${encodeURIComponent(source.id)}`, { cache: "no-store" });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(payload.error ?? "The original could not be downloaded.");
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = source.title;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : "The original could not be downloaded.");
     } finally { setBusyId(undefined); }
   }
 
@@ -334,7 +380,8 @@ export function LibraryPage({
             onAdd={() => setAddOpen(true)}
             onAsk={(source) => ask(source.title, source.id)}
             onDelete={(source) => deleteSource(source)}
-            onDownload={(source) => { if (source.externalUrl) window.open(source.externalUrl, "_blank", "noopener,noreferrer"); }}
+            onSendToProject={(source, projectId) => sendToProject(source, projectId)}
+            onDownload={(source) => void downloadSource(source)}
           />
         ) : null}
 
@@ -351,7 +398,6 @@ export function LibraryPage({
             onChangeTarget={(destination) => setTarget(destination)}
             onSaveWork={(work, destination) => saveWork(work, destination)}
             onAsk={(work) => ask(work.title)}
-            zoteroIndex={zoteroIndex}
             seed={seed}
           />
         ) : null}

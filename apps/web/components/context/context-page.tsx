@@ -1,7 +1,7 @@
 "use client";
 
-import { Clipboard, Download, FileText, Search } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Clipboard, Download, FileText, Search, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Button, DataRegion, EmptyState, Field, Input, LoadingState, StatusChip, Tabs, type RegionStatus } from "@/components/ui";
 import { contextPackMarkdown, renderPackSections, type ContextPack, type ContextPackMetadata } from "@/lib/context-packs";
@@ -31,13 +31,56 @@ function recordSummary(record: Row) {
   return text(record, "content") || text(record, "summary") || formatLabel(text(record, "type", "memory"));
 }
 
+/**
+ * Forgetting is irreversible and Continuum says so before it happens.
+ *
+ * Deliberately not a modal: §9.9 rules one out, and a dialog that interrupts
+ * the page reads as a system error rather than a choice the person is making.
+ * The row states the consequence in place and asks again — two intentional
+ * clicks, no dismissable overlay, and nothing moves until the second one.
+ *
+ * This is the permanent counterpart to the assistant's per-conversation
+ * "Don't use this again", which only skips a record for the current thread
+ * (§11.10). The copy names that difference so the two cannot be confused.
+ */
+function ForgetControl({ title, busy, onConfirm }: { title: string; busy: boolean; onConfirm: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  if (!confirming) {
+    return (
+      <Button variant="quiet" size="sm" className="context-forget" aria-label={`Forget: ${title}`} onClick={() => setConfirming(true)}>
+        <Trash2 size={13} aria-hidden="true" />
+        Forget
+      </Button>
+    );
+  }
+  return (
+    <div className="context-confirm" role="group" aria-label={`Forget ${title}?`}>
+      <p>
+        Continuum will stop using this and will not retrieve it again. It cannot be brought back.
+        To skip it in one conversation only, use “Don’t use this again” in the assistant instead.
+      </p>
+      <div>
+        <Button variant="danger" size="sm" disabled={busy} onClick={onConfirm}>{busy ? "Forgetting…" : "Forget permanently"}</Button>
+        <Button variant="secondary" size="sm" disabled={busy} onClick={() => setConfirming(false)}>Keep</Button>
+      </div>
+    </div>
+  );
+}
+
 /** Each row states where it came from — the provenance story in the user's language. */
-function ContextRow({ title, detail, origin }: { title: string; detail?: string; origin?: string }) {
+function ContextRow({ title, detail, origin, forget }: {
+  title: string;
+  detail?: string;
+  origin?: string;
+  /** Present only on rows that are themselves remembered records (§9.9). */
+  forget?: { busy: boolean; onConfirm: () => void };
+}) {
   return (
     <li className="context-row">
       <div>
         <strong>{plainCopy(title)}</strong>
         {detail ? <span>{plainCopy(detail)}</span> : null}
+        {forget ? <ForgetControl title={title} busy={forget.busy} onConfirm={forget.onConfirm} /> : null}
       </div>
       {origin ? <small>From: {origin}</small> : null}
     </li>
@@ -64,8 +107,12 @@ export function ContextPage({ state, showToast }: { state: WorkspaceState; showT
   const [packs, setPacks] = useState<ContextPackMetadata[]>([]);
   const [pack, setPack] = useState<ContextPack>();
   const [packBusy, setPackBusy] = useState(false);
+  // §9.9 *Forgetting:* the row leaves immediately; the write has already
+  // returned by then, so this is confirmation rather than optimism.
+  const [forgotten, setForgotten] = useState<Set<string>>(() => new Set());
+  const [forgetting, setForgetting] = useState<string>();
 
-  const preferences = state.memoryRecords.filter((record) => text(record, "type").includes("preference"));
+  const preferences = state.memoryRecords.filter((record) => text(record, "type").includes("preference") && !forgotten.has(text(record, "id")));
   const decisions = state.decisions.filter((decision) => ["accepted", "active", ""].includes(text(decision, "status"))).slice(0, 6);
   const learning = state.learningStates.slice(0, 6);
   const openQuestions = state.receipts.flatMap((receipt) => list(receipt, "unresolvedQuestions").map((question) => ({ question, receipt }))).slice(0, 6);
@@ -84,6 +131,28 @@ export function ContextPage({ state, showToast }: { state: WorkspaceState; showT
   }, []);
 
   const sections = useMemo(() => (pack ? renderPackSections(pack) : []), [pack]);
+
+  /**
+   * §9.9 AC-CX3. The write is permanent: `POST /api/memory {action:"forget"}`
+   * marks the record and its passages superseded and deleted, which is what
+   * every retrieval read already filters on, so the next assistant answer
+   * cannot cite it.
+   */
+  const forget = useCallback(async (recordId: string) => {
+    setForgetting(recordId);
+    try {
+      const response = await fetch("/api/memory", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "forget", recordId }) });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "That record could not be forgotten");
+      setForgotten((current) => new Set(current).add(recordId));
+      setResults((current) => current.filter((row) => text(row, "id") !== recordId));
+      showToast("Forgotten. Continuum will not retrieve it again.");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "That record could not be forgotten");
+    } finally {
+      setForgetting(undefined);
+    }
+  }, [showToast]);
 
   async function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -156,10 +225,15 @@ export function ContextPage({ state, showToast }: { state: WorkspaceState; showT
               error={<EmptyState title="That search didn't complete" body="Try again in a moment." />}
             >
               <section className="context-section">
-                <header><h2>{results.length} match{results.length === 1 ? "" : "es"}</h2><p>Ranked by how closely each one relates to your words.</p></header>
+                <header><h2>{results.length} match{results.length === 1 ? "" : "es"}</h2><p>Ranked by how closely each one relates to your words. Anything here can be forgotten for good.</p></header>
                 <ul className="context-list">
                   {results.map((result) => (
-                    <ContextRow key={text(result, "id")} title={text(result, "content")} origin={formatLabel(text(result, "kind", "your workspace"))} />
+                    <ContextRow
+                      key={text(result, "id")}
+                      title={text(result, "content")}
+                      origin={formatLabel(text(result, "kind", "your workspace"))}
+                      forget={{ busy: forgetting === text(result, "id"), onConfirm: () => void forget(text(result, "id")) }}
+                    />
                   ))}
                 </ul>
               </section>
@@ -179,8 +253,15 @@ export function ContextPage({ state, showToast }: { state: WorkspaceState; showT
               {learning.map((item) => <ContextRow key={text(item, "id") || text(item, "conceptId")} title={conceptLabel(text(item, "conceptId"))} detail={text(item, "explanation")} origin="Your practice results" />)}
             </ContextSection>
 
-            <ContextSection heading="How you like to work" description="Preferences Continuum applies without asking." empty={!preferences.length}>
-              {preferences.slice(0, 6).map((record) => <ContextRow key={text(record, "id")} title={recordSummary(record)} origin="Something you told Continuum" />)}
+            <ContextSection heading="How you like to work" description="Preferences Continuum applies without asking. Forget one and it stops applying." empty={!preferences.length}>
+              {preferences.slice(0, 6).map((record) => (
+                <ContextRow
+                  key={text(record, "id")}
+                  title={recordSummary(record)}
+                  origin="Something you told Continuum"
+                  forget={{ busy: forgetting === text(record, "id"), onConfirm: () => void forget(text(record, "id")) }}
+                />
+              ))}
             </ContextSection>
 
             <ContextSection heading="Open questions" description="Things you left unresolved." empty={!openQuestions.length}>

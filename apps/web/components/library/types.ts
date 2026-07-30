@@ -43,6 +43,12 @@ export type LibrarySource = {
   externalUrl?: string;
   updatedAt?: string;
   hasPdf: boolean;
+  /**
+   * Whether a Download can actually return a file. Pasted text, Zotero
+   * metadata, and anything ingested while the file store was unreachable have
+   * indexed passages and no original.
+   */
+  hasOriginal: boolean;
 };
 
 /** A place a newly acquired source can land. `null` project means unfiled. */
@@ -112,6 +118,7 @@ export function normalizeSourceRow(row: Record<string, unknown>): LibrarySource 
     projectId: readString(row, "projectId") ?? readString(row, "project_id"),
     updatedAt,
     hasPdf: mimeType.includes("pdf"),
+    hasOriginal: row.hasStoredOriginal === true,
   };
 }
 
@@ -144,6 +151,9 @@ export function savedWorkAsSource(entry: {
     year,
     externalUrl: `https://openalex.org/${entry.external_id}`,
     hasPdf: typeof metadata.fullTextUrl === "string",
+    // A saved work is a citation record; the PDF, when there is one, lives at
+    // the publisher, not in Continuum.
+    hasOriginal: false,
   };
 }
 

@@ -11,6 +11,7 @@ import {
   ScholarlyProviderError,
   type NormalizedScholarlyWork,
 } from "@/lib/scholarly";
+import { zoteroMatches as matchZoteroByDoi } from "@/lib/openalex";
 import { getOpenAlexApiKeyForUser } from "@/lib/provider-credentials";
 import { getStore } from "@/lib/store";
 
@@ -157,7 +158,17 @@ export async function GET(request: Request) {
     parsed.data.sort,
   );
   const providerStatuses = settled.map((entry) => ({ provider: entry.provider, status: entry.status, ...("message" in entry ? { message: entry.message } : {}) }));
-  const payload = { results, providers: providerStatuses, attribution: requested.map((provider) => provider === "openalex" ? "OpenAlex" : "Crossref"), nextCursor, total, cost, queryPlan: { mode: plan.mode, detectedYear: plan.detectedYear, expansions: plan.expansions } };
+  // AC-Z3, matching `/api/openalex`: the "In your Zotero" chip is answered
+  // server-side by an exact DOI join, so the precise-search path (title,
+  // author, DOI, +Crossref) shows the same truth as the keyword path. A Zotero
+  // outage degrades to no chips and never fails the search.
+  let zoteroMatches: Array<Record<string, unknown>> = [];
+  try {
+    zoteroMatches = await matchZoteroByDoi(user.id, results.map((work) => work.doi).filter((doi): doi is string => Boolean(doi)));
+  } catch (error) {
+    console.warn("zotero_match_failed", JSON.stringify({ userId: user.id, message: error instanceof Error ? error.name : "unknown" }));
+  }
+  const payload = { results, zoteroMatches, providers: providerStatuses, attribution: requested.map((provider) => provider === "openalex" ? "OpenAlex" : "Crossref"), nextCursor, total, cost, queryPlan: { mode: plan.mode, detectedYear: plan.detectedYear, expansions: plan.expansions } };
   if (cache.size > 100) cache.delete(cache.keys().next().value as string);
   cache.set(cacheKey, { expiresAt: Date.now() + 10 * 60_000, payload });
   return NextResponse.json(payload, { headers: { "cache-control": "private, max-age=0", "x-continuum-cache": "miss" } });

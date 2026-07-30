@@ -121,7 +121,14 @@ export async function GET(request: Request) {
       cursor: url.searchParams.get("cursor") ?? undefined,
       sort: sortParameter === "citations" ? "cited_by_count:desc" : sortParameter === "newest" ? "publication_date:desc" : undefined,
     });
-    return send({ ...result, keyless: !apiKey });
+    // AC-Z3: "In your Zotero" must be right on the first render of the results.
+    // The client used to answer it by crawling up to 500 Zotero items once per
+    // session and matching locally — expensive, and only ever approximate,
+    // because absence past the crawl limit was indistinguishable from a real
+    // miss. One indexed DOI join over the page that is actually being returned
+    // is both cheaper and exact, and `detail` and `graph` already did it.
+    const matches = await safeZoteroMatches(user.id, result.works.map((work) => work.doi).filter((doi): doi is string => Boolean(doi)));
+    return send({ ...result, zoteroMatches: matches, keyless: !apiKey });
   } catch (error) {
     // Never return `error.message` verbatim — it has leaked raw SQL, parameter
     // placeholders, and internal user ids straight into the UI.

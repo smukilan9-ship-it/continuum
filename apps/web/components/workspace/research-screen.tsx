@@ -12,7 +12,6 @@ import {
   FolderKanban,
   Lightbulb,
   Link2,
-  LoaderCircle,
   NotebookPen,
   Plus,
   Clock3,
@@ -25,17 +24,14 @@ import {
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Badge, Button, Card, ConfirmationDialog, LoadingButton, Modal, SegmentedNavigation } from "@/components/ui";
 import { formatLabel, sourceTypeLabel, statusTone } from "@/lib/labels";
-import type { NormalizedScholarlyWork, ScholarlySearchMode } from "@/lib/scholarly";
 import { workspacePath } from "@/lib/workspace-routes";
 import { PageHeader } from "./page-header";
-import { ScholarlySearch } from "./scholarly-search";
 import { formatDate, list, postState, text, type Row, type WorkspaceState } from "./types";
+import "./research-screen.css";
 
 type Toast = (message: string | null) => void;
 type Panel = "project" | "source" | "decision";
 type ResearchTab = "overview" | "discovery" | "papers" | "notes" | "claims" | "experiments" | "decisions" | "drafts";
-type ProviderStatus = { provider: "openalex" | "crossref"; status: "live" | "unconfigured" | "failed"; message?: string };
-type DiscoveryResponse = { results: NormalizedScholarlyWork[]; providers: ProviderStatus[]; nextCursor?: string; total?: number; queryPlan?: { mode: string; detectedYear?: number; expansions?: string[] }; error?: string };
 
 /**
  * The tab bar carries only destinations that do something.
@@ -47,7 +43,10 @@ type DiscoveryResponse = { results: NormalizedScholarlyWork[]; providers: Provid
  */
 const tabs: Array<{ id: ResearchTab; label: string }> = [
   { id: "overview", label: "Overview" },
-  { id: "discovery", label: "Discovery" },
+  // "Find papers", not "Discovery": the tab is now a route to the Library's one
+  // search surface, and naming it after a place that no longer exists here was
+  // half the reason two surfaces drifted apart.
+  { id: "discovery", label: "Find papers" },
   { id: "papers", label: "Library" },
   { id: "claims", label: "Claims" },
   { id: "decisions", label: "Decisions" },
@@ -64,66 +63,8 @@ function scoped(rows: Row[], projectId: string) {
   return rows.filter((row) => text(row, "projectId") === projectId);
 }
 
-function authorLine(work: NormalizedScholarlyWork) {
-  if (!work.authors.length) return "Authors unavailable";
-  return work.authors.length > 4 ? `${work.authors.slice(0, 4).join(", ")} +${work.authors.length - 4}` : work.authors.join(", ");
-}
-
 function EmptyTab({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
   return <div className="research-empty-tab"><span>{icon}</span><h3>{title}</h3><p>{body}</p></div>;
-}
-
-function PaperDiscoveryResults({
-  discovery,
-  projectPapers,
-  savingPaper,
-  searching,
-  onSave,
-  onRelated,
-  onCite,
-  onMore,
-}: {
-  discovery: DiscoveryResponse;
-  projectPapers: Row[];
-  savingPaper?: string;
-  searching: boolean;
-  onSave: (work: NormalizedScholarlyWork) => void;
-  onRelated: (work: NormalizedScholarlyWork) => void;
-  onCite: (work: NormalizedScholarlyWork) => void;
-  onMore: () => void;
-}) {
-  return <>
-    <div className="provider-status-row">
-      {discovery.providers.map((entry) => <span key={entry.provider} className={`provider-status ${entry.status}`} title={entry.message}><i />{entry.provider === "openalex" ? "OpenAlex" : "Crossref"}: {entry.status}</span>)}
-      <span className="openalex-attribution">Scholarly metadata provided by OpenAlex</span>
-    </div>
-    <div className="discovery-results">
-      <div className="discovery-result-count">{discovery.results.length}{discovery.total ? ` of ${discovery.total.toLocaleString()}` : ""} result{discovery.results.length === 1 ? "" : "s"}</div>
-      {discovery.results.map((work) => {
-        const key = `${work.sourceProvider}:${work.providerId}`;
-        const alreadySaved = projectPapers.some((paper) => (work.doi && text(paper, "doi").toLowerCase() === work.doi) || text(paper, "title").toLowerCase() === work.title.toLowerCase());
-        return <article className="paper-result" key={key}>
-          <div className="paper-result-main">
-            <div className="paper-result-badges"><Badge tone={work.openAccess ? "green" : "neutral"}>{work.openAccess ? work.openAccessStatus ? `${formatLabel(work.openAccessStatus)} access` : "Open access" : "Metadata only"}</Badge><span>{work.sourceProvider === "openalex" ? "OpenAlex" : "Crossref"}</span>{work.retracted ? <Badge tone="red">Retracted</Badge> : null}{work.type ? <span>{formatLabel(work.type)}</span> : null}</div>
-            <h4>{work.title}</h4>
-            <p className="paper-authors">{authorLine(work)}</p>
-            <p className="paper-venue">{[work.venue, work.publicationDate ?? work.year, work.citedByCount !== undefined ? `${work.citedByCount} citations` : undefined].filter(Boolean).join(" · ") || "Publication details unavailable"}</p>
-            {work.abstract ? <p className="paper-abstract">{work.abstract}</p> : <p className="paper-abstract unavailable">OpenAlex does not provide an indexed abstract for this record.</p>}
-            {work.topics.length ? <div className="paper-topics">{work.topics.slice(0, 4).map((topic) => <span key={topic}>{topic}</span>)}</div> : null}
-            <details className="paper-metadata-details"><summary>More details</summary><dl><div><dt>DOI</dt><dd>{work.doi ?? "Not provided"}</dd></div><div><dt>Language</dt><dd>{work.language ?? "Not provided"}</dd></div><div><dt>Version</dt><dd>{work.version ? formatLabel(work.version) : "Not provided"}</dd></div><div><dt>Institutions</dt><dd>{work.institutions.join(", ") || "Not provided"}</dd></div></dl>{work.metadataIncomplete ? <p>Some metadata is incomplete in OpenAlex. Continuum has not filled in missing values.</p> : null}</details>
-          </div>
-          <div className="paper-result-actions">
-            {work.fullTextUrl ? <a className="button button-secondary" href={work.fullTextUrl} target="_blank" rel="noreferrer">Full text <ArrowUpRight size={14} /></a> : work.landingPageUrl ? <a className="button button-secondary" href={work.landingPageUrl} target="_blank" rel="noreferrer">Source <ArrowUpRight size={14} /></a> : null}
-            <Button className="button-secondary" type="button" onClick={() => onCite(work)}>Cite / export</Button>
-            {work.sourceProvider === "openalex" ? <Button className="button-secondary" type="button" onClick={() => onRelated(work)}>Related papers</Button> : null}
-            <Button className="button-primary" disabled={alreadySaved || savingPaper === key} onClick={() => onSave(work)}>{savingPaper === key ? <LoaderCircle className="spin" size={14} /> : <Plus size={14} />}{alreadySaved ? "Saved" : savingPaper === key ? "Saving…" : "Save to library"}</Button>
-          </div>
-        </article>;
-      })}
-      {!discovery.results.length ? <EmptyTab icon={<Search size={22} />} title="No matching metadata" body="Try a broader phrase, remove a filter, or search by DOI." /> : null}
-      {discovery.nextCursor ? <Button className="button-secondary discovery-more" disabled={searching} onClick={onMore}>{searching ? "Loading…" : "Load more from OpenAlex"}</Button> : null}
-    </div>
-  </>;
 }
 
 export function ResearchScreen({ state, showToast, onRefresh }: { state: WorkspaceState; showToast: Toast; onRefresh: () => Promise<void> }) {
@@ -131,20 +72,8 @@ export function ResearchScreen({ state, showToast, onRefresh }: { state: Workspa
   const [busy, setBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<ResearchTab>("overview");
   const [projectId, setProjectId] = useState(() => text(state.projects[0], "id"));
-  const [query, setQuery] = useState("");
-  const [mode, setMode] = useState<ScholarlySearchMode>("keywords");
-  const [provider, setProvider] = useState<"all" | "openalex" | "crossref">("openalex");
-  const [sort, setSort] = useState<"relevance" | "citations" | "newest">("relevance");
-  const [openAccess, setOpenAccess] = useState(false);
-  const [fromYear, setFromYear] = useState("");
-  const [toYear, setToYear] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [discovery, setDiscovery] = useState<DiscoveryResponse>();
-  const [searchError, setSearchError] = useState<string>();
-  const [savingPaper, setSavingPaper] = useState<string>();
   const [sourceDirty, setSourceDirty] = useState(false);
   const [libraryView, setLibraryView] = useState<"papers" | "notes">("papers");
-  const [discoveryMode, setDiscoveryMode] = useState<"papers" | "graph">("papers");
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; title: string }>();
 
   useEffect(() => {
@@ -242,59 +171,6 @@ export function ResearchScreen({ state, showToast, onRefresh }: { state: Workspa
     finally { setBusy(false); }
   }
 
-  async function runDiscovery(event?: FormEvent<HTMLFormElement>, cursor?: string) {
-    event?.preventDefault();
-    setSearching(true);
-    setSearchError(undefined);
-    const params = new URLSearchParams({ q: query, mode, provider, sort });
-    if (openAccess) params.set("openAccess", "true");
-    if (fromYear) params.set("fromYear", fromYear);
-    if (toYear) params.set("toYear", toYear);
-    if (cursor) params.set("cursor", cursor);
-    try {
-      const response = await fetch(`/api/research/discovery?${params}`);
-      const body = await response.json() as DiscoveryResponse;
-      if (!response.ok) throw new Error(body.error ?? "Paper discovery could not be completed.");
-      setDiscovery((current) => cursor && current ? { ...body, results: [...current.results, ...body.results] } : body);
-    } catch (error) { setSearchError(error instanceof Error ? error.message : "Paper discovery could not be completed."); }
-    finally { setSearching(false); }
-  }
-
-  async function findRelated(work: NormalizedScholarlyWork) {
-    setSearching(true);
-    setSearchError(undefined);
-    try {
-      const params = new URLSearchParams({ relation: "related", workId: work.providerId });
-      const response = await fetch(`/api/research/discovery?${params}`);
-      const body = await response.json() as DiscoveryResponse;
-      if (!response.ok) throw new Error(body.error ?? "Related papers could not be loaded.");
-      setDiscovery(body);
-      setQuery(`Related to “${work.title}”`);
-      window.requestAnimationFrame(() => document.querySelector(".research-discovery")?.scrollIntoView({ behavior: "smooth", block: "start" }));
-    } catch (error) { setSearchError(error instanceof Error ? error.message : "Related papers could not be loaded."); }
-    finally { setSearching(false); }
-  }
-
-  async function copyCitation(work: NormalizedScholarlyWork) {
-    const authors = work.authors.length ? work.authors.join(", ") : "Unknown author";
-    const citation = `${authors} (${work.year ?? "n.d."}). ${work.title}.${work.venue ? ` ${work.venue}.` : ""}${work.doi ? ` https://doi.org/${work.doi}` : ""}`;
-    try { await navigator.clipboard.writeText(citation); showToast("Citation copied."); }
-    catch { showToast("Could not copy the citation. Select the paper details manually."); }
-  }
-
-  async function saveDiscoveredPaper(work: NormalizedScholarlyWork) {
-    if (!projectId) return;
-    setSavingPaper(`${work.sourceProvider}:${work.providerId}`);
-    try {
-      const response = await fetch("/api/research/discovery", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "save", projectId, work }) });
-      const body = await response.json() as { error?: string; message?: string };
-      if (!response.ok) throw new Error(body.error ?? "The paper could not be saved.");
-      showToast(body.message ?? "Paper saved.");
-      await onRefresh();
-    } catch (error) { showToast(error instanceof Error ? error.message : "The paper could not be saved."); }
-    finally { setSavingPaper(undefined); }
-  }
-
   function chooseProject(nextProjectId: string) {
     setProjectId(nextProjectId);
     setActiveTab("overview");
@@ -363,23 +239,26 @@ export function ResearchScreen({ state, showToast, onRefresh }: { state: Workspa
 
             </div> : null}
 
+            {/* §13.2 moved discovery into the Library, and AC-P3 requires paper
+                search to exist at exactly one URL. This tab used to be a second
+                copy — its own query field, its own six filters, its own result
+                row, its own error handling — which is precisely the drift the
+                single-surface rule exists to stop. It now points at the one
+                surface, with this project already chosen as the destination. */}
             {activeTab === "discovery" ? <div className="research-discovery">
               <div className="research-section-heading">
-                <div><h3>Discovery</h3><p>Everything found here is filed into <strong>{text(selectedProject, "title")}</strong>. Paper search spans OpenAlex and Crossref; the scholarly graph adds authors, institutions, sources, topics, and citation links.</p></div>
-                <SegmentedNavigation label="Discovery mode" value={discoveryMode} onChange={setDiscoveryMode} options={[{ value: "papers", label: "Papers" }, { value: "graph", label: "Scholarly graph" }]} />
+                <div><h3>Find papers</h3><p>Paper search lives in the Library, so there is one place to search and one place everything lands. Opening it from here files what you save into <strong>{text(selectedProject, "title")}</strong>.</p></div>
               </div>
-              {/* The same `<ScholarlySearch>` the Library uses, in collect mode:
-                  identical behaviour and filters, with the destination project
-                  stated above and every result carrying Save to project. */}
-              {discoveryMode === "graph" ? <ScholarlySearch mode="collect" projectId={projectId} projectTitle={text(selectedProject, "title")} onCollect={(work) => void saveDiscoveredPaper(work)} showToast={showToast} /> : null}
-              {discoveryMode === "papers" ? <>
-              <form className="discovery-form" onSubmit={runDiscovery}>
-                <label className="discovery-query"><span>Query</span><div><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} minLength={2} maxLength={500} required placeholder="Methods, title, author, or DOI" /><Button className="button-primary" disabled={searching}>{searching ? <LoaderCircle className="spin" size={16} /> : <Search size={16} />}{searching ? "Searching…" : "Search"}</Button></div></label>
-                <div className="discovery-filters"><label>Search by<select value={mode} onChange={(event) => setMode(event.target.value as ScholarlySearchMode)}><option value="keywords">Auto / keywords</option><option value="title">Exact title</option><option value="author">Author</option><option value="doi">DOI</option></select></label><label>Source<select value={provider} onChange={(event) => setProvider(event.target.value as typeof provider)}><option value="openalex">OpenAlex</option><option value="all">OpenAlex + Crossref</option><option value="crossref">Crossref only</option></select></label><label>Sort<select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="relevance">Most relevant</option><option value="citations">Most cited</option><option value="newest">Newest first</option></select></label><label>From year<input inputMode="numeric" pattern="[0-9]*" value={fromYear} onChange={(event) => setFromYear(event.target.value)} placeholder="2018" /></label><label>To year<input inputMode="numeric" pattern="[0-9]*" value={toYear} onChange={(event) => setToYear(event.target.value)} placeholder="2026" /></label><label className="discovery-check"><input type="checkbox" checked={openAccess} onChange={(event) => setOpenAccess(event.target.checked)} />Open access only</label></div>
-              </form>
-              {searchError ? <div className="research-callout error"><CircleAlert size={17} /><span>{searchError}</span></div> : null}
-              {discovery ? <PaperDiscoveryResults discovery={discovery} projectPapers={projectPapers} savingPaper={savingPaper} searching={searching} onSave={(work) => void saveDiscoveredPaper(work)} onRelated={(work) => void findRelated(work)} onCite={(work) => void copyCitation(work)} onMore={() => void runDiscovery(undefined, discovery.nextCursor)} /> : <EmptyTab icon={<BookOpen size={22} />} title="Start with a precise query" body="Search by keywords, a quoted title, author, DOI, or year. No paper is added until you choose Save." />}
-              </> : null}
+              <Card className="research-discovery-handoff">
+                <BookOpen size={22} aria-hidden="true" />
+                <div>
+                  <h4>Search 250M+ works from OpenAlex</h4>
+                  <p>Keywords, a quoted title, an author, or a DOI — plus Crossref, citation links, and the papers already in your Zotero. Nothing is added until you choose Save.</p>
+                </div>
+                <a className="button button-primary" href={`${workspacePath.library}?tab=discover&target=p:${encodeURIComponent(projectId)}`}>
+                  <Search size={15} aria-hidden="true" />Open Discover
+                </a>
+              </Card>
             </div> : null}
 
             {/* Papers and Notes are two views of one project library, switched with

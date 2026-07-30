@@ -1,23 +1,27 @@
 "use client";
 
-import { FileText, Plus, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Download, FileText, Plus, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Button,
   ConfirmationDialog,
   DataRegion,
   EmptyState,
   ErrorState,
+  Field,
   Input,
   LoadingState,
+  Modal,
   Select,
   SidePanel,
   StatusChip,
   type RegionStatus,
 } from "@/components/ui";
 import { SourceRow } from "./source-row";
-import { statusLabel, statusTone, type Destination, type LibrarySource } from "./types";
+import { statusLabel, statusTone, unfiledDestination, type Destination, type LibrarySource } from "./types";
 import { VirtualList } from "./virtual-list";
+
+type Passage = { id: string; passage: number; text: string; reference?: string };
 
 type Sort = "recent" | "title" | "year";
 type TypeFilter = "all" | "papers" | "files";
@@ -52,8 +56,8 @@ export function SourcesTab({
   onAdd: () => void;
   onAsk: (source: LibrarySource) => void;
   onDelete: (source: LibrarySource) => Promise<void> | void;
-  /** Omitted while no write exists to re-file an indexed source; the menu says so. */
-  onSendToProject?: (source: LibrarySource) => void;
+  /** Re-files an indexed source; resolves once the write has been applied. */
+  onSendToProject: (source: LibrarySource, projectId: string | null) => Promise<void> | void;
   onDownload: (source: LibrarySource) => void;
   busyId?: string;
 }) {
@@ -66,6 +70,11 @@ export function SourcesTab({
   const [sort, setSort] = useState<Sort>("recent");
   const [open, setOpen] = useState<LibrarySource>();
   const [confirming, setConfirming] = useState<LibrarySource>();
+  const [filing, setFiling] = useState<LibrarySource>();
+  const [destinationId, setDestinationId] = useState(unfiledDestination.id);
+  const [filingBusy, setFilingBusy] = useState(false);
+  const [passages, setPassages] = useState<Passage[]>([]);
+  const [passageStatus, setPassageStatus] = useState<RegionStatus>("idle");
 
   const projectLabels = useMemo(() => {
     const map = new Map<string, string>();
@@ -100,6 +109,46 @@ export function SourcesTab({
 
   const filtersActive = typeFilter !== "all" || statusFilter !== "all" || projectFilter !== "all" || hasPdf;
   const regionStatus: RegionStatus = status === "ready" && !filtered.length ? "empty" : status;
+
+  /**
+   * §13.3 source detail: the numbered passages Continuum indexed. Until this
+   * existed the panel described a source without ever showing what was actually
+   * extracted from it — the one thing that decides whether retrieval can cite
+   * it. Metadata-only records have none by definition and say so.
+   */
+  const loadPassages = useCallback(async (source: LibrarySource) => {
+    if (source.metadataOnly || source.id.startsWith("saved:")) { setPassages([]); setPassageStatus("empty"); return; }
+    setPassageStatus("loading");
+    try {
+      const response = await fetch(`/api/sources?sourceId=${encodeURIComponent(source.id)}&include=passages`, { cache: "no-store" });
+      const payload = await response.json() as { passages?: Passage[]; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Passages are unavailable.");
+      setPassages(payload.passages ?? []);
+      setPassageStatus((payload.passages ?? []).length ? "ready" : "empty");
+    } catch {
+      setPassages([]);
+      setPassageStatus("error");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) { setPassages([]); setPassageStatus("idle"); return; }
+    void loadPassages(open);
+  }, [loadPassages, open]);
+
+  function startFiling(source: LibrarySource) {
+    setFiling(source);
+    setDestinationId(destinations.find((entry) => entry.projectId === source.projectId)?.id ?? unfiledDestination.id);
+  }
+
+  async function confirmFiling() {
+    if (!filing) return;
+    setFilingBusy(true);
+    try {
+      await onSendToProject(filing, destinationId === unfiledDestination.id ? null : destinationId);
+      setFiling(undefined);
+    } finally { setFilingBusy(false); }
+  }
 
   return (
     <div className="library-sources">
@@ -208,7 +257,7 @@ export function SourcesTab({
               actions={{
                 onOpen: setOpen,
                 onAsk,
-                onSendToProject,
+                onSendToProject: startFiling,
                 onDownload,
                 onDelete: setConfirming,
               }}
@@ -242,14 +291,77 @@ export function SourcesTab({
                 Continuum holds this record&apos;s citation metadata, not its text. It can be cited and opened, and it will not appear in passage search.
               </p>
             ) : null}
+
+            {/* §13.3: what Continuum actually extracted, numbered as it will be
+                cited. This is the difference between "we have this file" and
+                "we can quote this file". */}
+            {!open.metadataOnly ? (
+              <section className="library-passages" aria-label={`Passages in ${open.title}`}>
+                <h3>{passageStatus === "ready" ? `${passages.length} passage${passages.length === 1 ? "" : "s"}` : "Passages"}</h3>
+                <DataRegion
+                  status={passageStatus === "idle" ? "loading" : passageStatus}
+                  loading={<LoadingState rows={3} label="Loading passages" />}
+                  error={<p className="library-source-note">The passage list didn&apos;t load. The source itself is unaffected.</p>}
+                  empty={(
+                    <p className="library-source-note">
+                      {open.processingState === "ready"
+                        ? "No indexed passages. Nothing in this source can be cited yet."
+                        : "Passages appear once processing finishes."}
+                    </p>
+                  )}
+                >
+                  <ol className="library-passage-list">
+                    {passages.map((entry) => (
+                      <li key={entry.id}>
+                        <span className="library-passage-number">Passage {entry.passage}</span>
+                        <p>{entry.text.length > 480 ? `${entry.text.slice(0, 480)}…` : entry.text}</p>
+                      </li>
+                    ))}
+                  </ol>
+                </DataRegion>
+              </section>
+            ) : null}
+
             <div className="library-detail-actions">
               <Button variant="secondary" size="sm" onClick={() => onAsk(open)}>Ask about this</Button>
+              {open.origin !== "OpenAlex" ? <Button variant="secondary" size="sm" onClick={() => { const target = open; setOpen(undefined); startFiling(target); }}>Send to project</Button> : null}
+              {open.hasOriginal ? <Button variant="secondary" size="sm" onClick={() => onDownload(open)}><Download size={14} aria-hidden="true" />Download original</Button> : null}
               {open.externalUrl ? <a className="button button-secondary button-sm" href={open.externalUrl} target="_blank" rel="noreferrer">Open full text</a> : null}
               <Button variant="danger" size="sm" onClick={() => { setConfirming(open); setOpen(undefined); }}>Delete</Button>
             </div>
           </div>
         ) : null}
       </SidePanel>
+
+      {/* §13.2 "Send to project". The destination is named before the write,
+          and unfiling is one of the choices — a source can leave a project as
+          well as join one. */}
+      <Modal
+        open={Boolean(filing)}
+        onOpenChange={(next) => { if (!next && !filingBusy) setFiling(undefined); }}
+        title={filing ? `Send “${filing.title}” to a project` : ""}
+        description="The source keeps its passages and its history. Only where it is filed changes."
+        size="sm"
+        footer={(
+          <>
+            <Button variant="secondary" size="sm" disabled={filingBusy} onClick={() => setFiling(undefined)}>Cancel</Button>
+            <Button variant="primary" size="sm" disabled={filingBusy} onClick={() => void confirmFiling()}>{filingBusy ? "Filing…" : "Send"}</Button>
+          </>
+        )}
+      >
+        <Field label="Project" hint={destinations.length > 1 ? undefined : "You have no research projects yet, so the only destination is your library."}>
+          {({ id }) => (
+            <Select id={id} value={destinationId} onChange={(event) => setDestinationId(event.target.value)}>
+              <option value={unfiledDestination.id}>{unfiledDestination.label}</option>
+              {destinations.filter((destination) => destination.projectId).map((destination) => (
+                <option key={destination.id} value={destination.id}>
+                  {destination.goalTitle ? `${destination.label} · ${destination.goalTitle}` : destination.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      </Modal>
 
       <ConfirmationDialog
         open={Boolean(confirming)}

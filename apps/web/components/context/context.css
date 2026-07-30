@@ -31,6 +31,17 @@
 .context-row > div > span { color: var(--ink-2); font-size: var(--t-small); }
 .context-row small { flex: none; color: var(--ink-3); font-size: var(--t-micro); }
 
+/* Forget (§9.9 AC-CX3). Quiet until hovered or focused, because the row is for
+   reading; the confirmation that follows is the loud part. */
+.context-forget { justify-self: start; margin-top: var(--s-1); padding-inline: 0; opacity: 0; color: var(--ink-3); }
+.context-row:hover .context-forget,
+.context-forget:focus-visible { opacity: 1; }
+@media (hover: none) { .context-forget { opacity: 1; } }
+
+.context-confirm { margin-top: var(--s-2); padding: var(--s-3); background: var(--surface-sunken); border: 1px solid var(--line-strong); border-radius: var(--r-md); display: grid; gap: var(--s-2); }
+.context-confirm p { margin: 0; max-width: 56ch; color: var(--ink-2); font-size: var(--t-small); line-height: 1.5; }
+.context-confirm > div { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+
 .pack-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: var(--s-6); align-items: start; }
 .pack-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }
 .pack-intro { margin: 0 0 var(--s-2); color: var(--ink-2); font-size: var(--t-small); }
