@@ -133,3 +133,141 @@ describe("no animation can hide a screen", () => {
     expect(reduced).toMatch(/\.screen\s*>\s*\*[^{]*\{[^}]*animation:\s*none/);
   });
 });
+
+/**
+ * A component must import the stylesheet its classes live in.
+ *
+ * The Research overview grid is styled by eleven classes that live in
+ * `project/project.css`, and `research-screen.tsx` imported only its own
+ * `research-screen.css`. So the flagship research screen rendered its overview
+ * as unstyled stacked text in production — kickers, headings and metadata
+ * running together with no card — while every test passed, because nothing
+ * checks that a class has a rule.
+ */
+describe("every screen imports the CSS its classes need", () => {
+  const screens = [
+    { tsx: "components/workspace/research-screen.tsx", classes: ["research-overview-grid", "research-focus-card", "research-card-kicker", "research-status-card"] },
+    { tsx: "components/study/study-view.tsx", classes: ["study-section", "study-section-heading", "study-material-grid"] },
+    { tsx: "components/library/library-page.tsx", classes: ["library-screen"] },
+  ];
+
+  /** The CSS a component pulls in, following one level of relative import. */
+  function importedCss(tsxPath: string): string {
+    const source = read(tsxPath);
+    const dir = tsxPath.slice(0, tsxPath.lastIndexOf("/"));
+    return [...source.matchAll(/import\s+"([^"]+\.css)"/g)]
+      .map((match) => {
+        const target = match[1]!;
+        const resolved = target.startsWith("./")
+          ? `${dir}/${target.slice(2)}`
+          : target.startsWith("../")
+            ? `${dir.slice(0, dir.lastIndexOf("/"))}/${target.slice(3)}`
+            : target;
+        try { return read(resolved); } catch { return ""; }
+      })
+      .join("\n");
+  }
+
+  for (const screen of screens) {
+    it(`${screen.tsx.split("/").pop()} has a rule for every class it leans on`, () => {
+      const css = importedCss(screen.tsx);
+      const missing = screen.classes.filter((name) => !css.includes(`.${name}`));
+      expect(missing, `no rule imported for: ${missing.join(", ")}`).toEqual([]);
+    });
+  }
+});
+
+/**
+ * The mark is jade and amber, like everything else.
+ *
+ * It shipped as a purple gradient left over from an abandoned palette, and the
+ * favicon shipped as lime from the palette before that — so the tab icon, the
+ * in-app logo and the product used three different colour systems at once. A
+ * literal in an SVG cannot follow a token, so the only defence is a test.
+ */
+describe("the brand mark", () => {
+  const files = ["components/brand-mark.tsx", "app/icon.svg"];
+  const retired = ["635bff", "4b45d1", "9b6dff", "d9ff2f", "6f7a2e"];
+
+  for (const file of files) {
+    it(`${file} carries no retired palette`, () => {
+      const source = read(file).toLowerCase();
+      const found = retired.filter((hex) => source.includes(hex));
+      expect(found, `retired colours still in the mark: ${found.join(", ")}`).toEqual([]);
+    });
+
+    it(`${file} uses the jade field and the amber trace`, () => {
+      const source = read(file).toLowerCase();
+      expect(source).toContain("05a37c");
+      expect(source).toContain("ffb020");
+    });
+  }
+});
+
+/**
+ * The motion layer obeys one rule: no animation may decide whether content is
+ * visible. It has been broken twice — once by GSAP stranding a screen at a
+ * third of its opacity, once by `animation-fill-mode: both` holding an
+ * `opacity: 0` from-state — so it is asserted rather than remembered.
+ */
+describe("no animation can hide content", () => {
+  const kit = read("components/ui/kit.css");
+
+  /** Every `@keyframes name { … }` in the kit, body matched by walking braces. */
+  const keyframes: Array<{ name: string; body: string }> = [];
+  for (const match of kit.matchAll(/@keyframes\s+([\w-]+)\s*\{/g)) {
+    let depth = 0;
+    let index = match.index! + match[0].length - 1;
+    const open = index;
+    for (; index < kit.length; index += 1) {
+      if (kit[index] === "{") depth += 1;
+      else if (kit[index] === "}") { depth -= 1; if (depth === 0) break; }
+    }
+    keyframes.push({ name: match[1]!, body: kit.slice(open + 1, index) });
+  }
+
+  it("finds the keyframes", () => {
+    expect(keyframes.length).toBeGreaterThan(2);
+    expect(keyframes.map((frame) => frame.name)).toContain("rise-in");
+  });
+
+  for (const frame of keyframes) {
+    it(`@keyframes ${frame.name} cannot leave content unreachable`, () => {
+      // Never animatable: these remove the element from the page outright, and
+      // an interrupted animation leaves it removed.
+      for (const property of ["visibility", "display", "clip-path", "content-visibility"]) {
+        expect(frame.body, `${frame.name} animates ${property}`)
+          .not.toMatch(new RegExp(`(^|[;{\\s])${property}\\s*:`));
+      }
+
+      // Opacity is allowed only when the animation *ends* visible, so the
+      // resting state of the element is legible whatever happens mid-flight.
+      // This is the rule the entrance broke twice: GSAP stranded a screen at a
+      // third of its opacity, then `fill-mode: both` held an opacity-0 from-state
+      // through the delay and left the screen blank.
+      if (/opacity/.test(frame.body)) {
+        const to = frame.body.slice(frame.body.lastIndexOf("to"));
+        expect(to, `${frame.name} does not end at full opacity`).toMatch(/opacity:\s*1\b/);
+      }
+    });
+  }
+
+  it("keeps the sheen on an empty pseudo-element, never the button itself", () => {
+    // If the sheen animated the button it would animate the label with it.
+    expect(kit).toMatch(/\.button-primary::after[\s\S]{0,400}?content:\s*""/);
+  });
+
+  it("grows the meter with a transform, not a width", () => {
+    // Width carries the value. Animating it would animate the data.
+    const meter = keyframes.find((frame) => frame.name === "meter-grow")!;
+    expect(meter.body).toMatch(/scaleX/);
+    expect(meter.body).not.toMatch(/width/);
+  });
+
+  it("stands down entirely under prefers-reduced-motion", () => {
+    const reduced = kit.slice(kit.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
+    for (const selector of ["button-primary::after", "meter", "data-changed"]) {
+      expect(reduced, `${selector} is not disabled under reduced motion`).toContain(selector);
+    }
+  });
+});

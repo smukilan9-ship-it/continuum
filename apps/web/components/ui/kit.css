@@ -827,3 +827,62 @@
 @media (prefers-reduced-motion: reduce) {
   .screen > *, .stagger > * { animation: none; }
 }
+
+/* --- Motion layer ---------------------------------------------------------
+   Everything here obeys one rule: no animation may decide whether content is
+   visible. Each effect below either animates `transform` only, or animates a
+   decorative pseudo-element that carries no content. A stalled, disabled or
+   never-started animation leaves the interface complete.
+   ------------------------------------------------------------------------ */
+
+/* A sheen that crosses a primary button once on hover. The ::after is empty and
+   clipped, so it is pure light — nothing to lose if it never runs. */
+.button-primary, .button-amber, .button-gradient { position: relative; overflow: hidden; isolation: isolate; }
+.button-primary::after,
+.button-amber::after,
+.button-gradient::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, .38) 50%, transparent 62%);
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+.button-primary:hover:not(:disabled)::after,
+.button-amber:hover:not(:disabled)::after,
+.button-gradient:hover:not(:disabled)::after { animation: sheen .62s var(--e-out); }
+@keyframes sheen { to { transform: translateX(120%); } }
+
+/* Rows settle rather than snap: the leading mark eases across on hover, which
+   reads as the row acknowledging the pointer. */
+.row-hit { transition: background-color var(--d-fast) var(--e-out); }
+.row-interactive:hover .row-title { transform: translateX(2px); }
+.row-title { transition: transform var(--d-fast) var(--e-out); }
+
+/* A status chip that has just changed value gets one pulse. Applied by the
+   caller adding `data-changed`; absent it, nothing happens. */
+[data-changed="true"] { animation: chip-settle .5s var(--e-out); }
+@keyframes chip-settle {
+  0% { transform: scale(.94); }
+  60% { transform: scale(1.03); }
+  100% { transform: none; }
+}
+
+/* The meter fill grows from the left on first paint. Width is set inline from
+   real data, so this animates `transform` on a wrapper instead — the number is
+   correct before, during and after. */
+.meter > span { transform-origin: left center; animation: meter-grow .7s var(--e-out) both; }
+@keyframes meter-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* Focus rings arrive rather than blink. */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  transition: box-shadow var(--d-fast) var(--e-out), outline-color var(--d-fast) var(--e-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button-primary::after, .button-amber::after, .button-gradient::after { display: none; }
+  .row-interactive:hover .row-title { transform: none; }
+  [data-changed="true"] { animation: none; }
+  .meter > span { animation: none; }
+}

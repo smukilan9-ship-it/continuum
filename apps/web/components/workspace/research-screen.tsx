@@ -27,6 +27,12 @@ import { formatLabel, sourceTypeLabel, statusTone } from "@/lib/labels";
 import { workspacePath } from "@/lib/workspace-routes";
 import { PageHeader } from "./page-header";
 import { formatDate, list, postState, text, type Row, type WorkspaceState } from "./types";
+import "../project/project.css";
+// The Research overview grid shares its markup — and therefore its classes —
+// with the project screen, where the styles live. Without this import the whole
+// overview rendered as unstyled stacked text in production: kickers, headings
+// and metadata running together with no card, on the flagship research screen.
+
 import "./research-screen.css";
 
 type Toast = (message: string | null) => void;

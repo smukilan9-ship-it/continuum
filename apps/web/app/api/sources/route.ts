@@ -2,8 +2,6 @@ import { contentHash, sanitizeUntrustedContent, chunkDocument } from "@continuum
 import { embedDocuments, embeddingConfiguration } from "@continuum/ai";
 import { createHash } from "node:crypto";
 import { del, put } from "@vercel/blob";
-import { extractText } from "unpdf";
-import mammoth from "mammoth";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getStore } from "@/lib/store";
@@ -11,6 +9,28 @@ import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { detectQuestionImageType, extractContextFromImages, normalizeQuestionDocument } from "@/lib/image-question-extraction";
 
 export const runtime = "nodejs";
+
+/**
+ * The document parsers load on demand, inside the upload path.
+ *
+ * They used to be static imports, so every request to this file — including the
+ * GET that Library calls to list what you already have — paid for initialising
+ * a PDF engine and a DOCX parser. On Vercel that initialisation failed, and
+ * because it happens at module scope the whole route returned a 500 HTML page:
+ * Library showed "We couldn't load your sources" for a workspace with three
+ * indexed sources in it, while the same request served 200 locally.
+ *
+ * A read endpoint must not be able to fail because a parser it never uses
+ * cannot start.
+ */
+const pdfText = async (bytes: Uint8Array) => {
+  const { extractText } = await import("unpdf");
+  return (await extractText(bytes, { mergePages: true })).text;
+};
+const docxText = async (bytes: Uint8Array) => {
+  const mammoth = (await import("mammoth")).default;
+  return (await mammoth.extractRawText({ buffer: Buffer.from(bytes) })).value;
+};
 const maxSourceBytes = 10 * 1024 * 1024;
 const maxIndexedCharacters = 500_000;
 
@@ -134,9 +154,9 @@ export async function POST(request: Request) {
       injectionDetected = extracted.injectionDetected;
     } else {
       rawText = isPdf
-        ? (await extractText(bytes, { mergePages: true })).text
+        ? await pdfText(bytes)
         : isDocx
-          ? (await mammoth.extractRawText({ buffer: Buffer.from(bytes) })).value
+          ? await docxText(bytes)
           : new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     }
   } catch {
