@@ -29,6 +29,7 @@ import type { AssistantSession, PageContext } from "@/components/assistant/types
 import { BrandMark } from "@/components/brand-mark";
 import { CommandPalette, type PaletteAction } from "@/components/shell/command-palette";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SKIP_ONBOARDING_KEY } from "@/components/start/start-screen";
 import { normalizeWorkspaceState, WorkspaceScreens, type WorkspaceState } from "@/components/workspace-screens";
 import { canonicalView, workspaceMeta, workspacePath, type WorkspaceView } from "@/lib/workspace-routes";
 
@@ -102,7 +103,6 @@ function initials(name: string) {
   return name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
 }
 
-const SKIP_ONBOARDING_KEY = "continuum.onboarding.skipped.v1";
 
 /**
  * §8.5: the panel attaches the page it was opened from as a removable chip.

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getServerUser } from "@/lib/auth";
 import { getStore } from "@/lib/store";
-import { WelcomeScreen } from "@/components/welcome-screen";
+import { StartScreen } from "@/components/start/start-screen";
 
 export const dynamic = "force-dynamic";
 export const metadata = { robots: { index: false, follow: false } };
@@ -20,5 +20,5 @@ export default async function StartPage() {
   if (!user) redirect("/login?returnTo=%2Fstart");
   const shell = await getStore(user.id).shellData();
   if (shell.goals.length) redirect("/home");
-  return <WelcomeScreen userName={user.displayName.split(/\s+/)[0] ?? user.displayName} />;
+  return <StartScreen userName={user.displayName.split(/\s+/)[0] ?? user.displayName} />;
 }
