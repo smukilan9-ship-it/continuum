@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
@@ -202,4 +202,96 @@ describe("every endpoint has a caller, every control has an endpoint", () => {
       .not.toMatch(/AI help in Code/);
     expect(card).toMatch(/embeddings|OLLAMA_BASE_URL/);
   });
+});
+
+/**
+ * A component that renders classes must import the stylesheet that defines
+ * them. `concept-map.tsx` imported none: its `.concept-*` rules live in
+ * `study.css`, so the map was styled on /learn and /study — where some sibling
+ * happens to pull that file in — and rendered as bare inline text on
+ * /g/[goalId], the screen it was built for. The same defect had already been
+ * found once, on research-screen.tsx.
+ */
+describe("a component carries its own stylesheet", () => {
+  const componentDir = new URL("../apps/web/components/", import.meta.url).pathname;
+  const componentRoot = componentDir.replace(/\/$/, "");
+
+  /** Every class literal a .tsx file puts in a className. */
+  const classesIn = (source: string) => {
+    const found = new Set<string>();
+    for (const match of source.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\}|\{"([^"]*)"\})/g)) {
+      const raw = `${match[1] ?? ""} ${match[2] ?? ""} ${match[3] ?? ""}`;
+      for (const token of raw.split(/[\s{}$?:()|&'"]+/)) {
+        if (/^[a-z][a-z0-9-]{3,}$/.test(token) && token.includes("-")) found.add(token);
+      }
+    }
+    return found;
+  };
+
+  const cssFiles = () => {
+    const out: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith(".css")) out.push(full);
+      }
+    };
+    walk(componentRoot);
+    return out;
+  };
+
+  const definedIn = (file: string) => {
+    const css = readFileSync(file, "utf8");
+    const set = new Set<string>();
+    for (const match of css.matchAll(/\.([a-z][a-z0-9-]*)/g)) set.add(match[1]!);
+    return set;
+  };
+
+  const cssIndex = new Map<string, Set<string>>();
+  for (const file of cssFiles()) cssIndex.set(file, definedIn(file));
+
+  /** Loaded by app/layout.tsx on every route, so always in the cascade. */
+  const alwaysLoaded = new Set<string>([
+    ...definedIn(new URL("../apps/web/app/globals.css", import.meta.url).pathname),
+    ...definedIn(`${componentDir}ui/kit.css`),
+    ...definedIn(`${componentDir}shell/sidebar.css`),
+  ]);
+
+  /**
+   * Components whose classes are declared somewhere, checked against what the
+   * component itself imports. Only components that render a distinctive,
+   * namespaced family are worth asserting — generic kit classes are global.
+   */
+  const OWNERS: Array<{ component: string; prefix: string }> = [
+    { component: "workspace/concept-map.tsx", prefix: "concept-" },
+    { component: "workspace/research-screen.tsx", prefix: "research-" },
+    { component: "workspace/scholarly-search.tsx", prefix: "scholarly-" },
+  ];
+
+  for (const { component, prefix } of OWNERS) {
+    it(`${component} imports the stylesheet defining its ${prefix}* classes`, () => {
+      const source = readFileSync(`${componentDir}${component}`, "utf8");
+      const used = [...classesIn(source)].filter((name) => name.startsWith(prefix));
+      expect(used.length).toBeGreaterThan(0);
+
+      const imported = [...source.matchAll(/import\s+"([^"]+\.css)"/g)].map((match) => match[1]!);
+      expect(imported.length).toBeGreaterThan(0);
+
+      // Resolve each import against the component's own directory, honouring
+      // the `@/` alias. globals.css and the kit load from the root layout on
+      // every route, so anything they define is always reachable.
+      const dir = `${componentDir}${component}`.replace(/\/[^/]+$/, "");
+      const reachable = new Set<string>(alwaysLoaded);
+      for (const spec of imported) {
+        const resolved = spec.startsWith("@/components/")
+          ? `${componentDir}${spec.slice("@/components/".length)}`
+          : new URL(spec, `file://${dir}/`).pathname;
+        for (const name of cssIndex.get(resolved) ?? []) reachable.add(name);
+      }
+
+      const orphans = used.filter((name) => !reachable.has(name));
+      expect(orphans, `${component} renders these with no rule in any stylesheet it imports`).toEqual([]);
+    });
+  }
 });

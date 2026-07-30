@@ -4,6 +4,12 @@ import { BookOpen, BrainCircuit, CheckCircle2, ChevronRight, GitBranch, HelpCirc
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button, Card } from "@/components/ui";
 import { formatDate, list, number, text, type Row, type WorkspaceState } from "./types";
+// Every .concept-* rule lives in study.css, and this component imported no
+// stylesheet at all — so the map was styled on /learn and /study, where some
+// other component happens to pull that file in, and rendered as bare inline
+// text on /g/[goalId], which is the screen it was built for. A component owns
+// its styles; it cannot rely on a sibling to have loaded them.
+import "../study/study.css";
 
 type ConceptNode = {
   id: string;
