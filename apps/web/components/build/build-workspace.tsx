@@ -63,10 +63,10 @@ export function BuildWorkspace({
   showToast: Toast;
   /**
    * Opens the global ⌘J assistant panel with this file, the last run, and the
-   * error attached (§8.5). Not supplied yet — the panel is Phase 3 UI that has
-   * not shipped — so Ask explains itself rather than opening a second chat.
+   * error attached (§8.5). §14.3 deliberately removed the third-tab coach so
+   * there is exactly one assistant across the product.
    */
-  onAskAssistant?: (context: AskContext) => void;
+  onAskAssistant: (context: AskContext) => void;
 }) {
   const { session, update, pushRuntimeAttempt, reset } = useCodeSession(user.id, {
     language: "python",
@@ -257,8 +257,7 @@ export function BuildWorkspace({
         : ["Explain this error", "Improve my code"]
       : ["Explain my code", "Suggest test cases"];
     const context: AskContext = { fileName, language, code, result: runtimeResult, error, suggestions: [intent, ...suggestions.filter((item) => item !== intent)] };
-    if (onAskAssistant) { onAskAssistant(context); return; }
-    showToast("Ask opens the assistant with this file and the last run attached. The assistant panel is not built yet.");
+    onAskAssistant(context);
   }
 
   async function saveCheckpoint(form: HTMLFormElement) {

@@ -148,14 +148,9 @@ export function ConsolePanel({
         </div>
 
         <div className="build-console-controls">
-          {/*
-            TODO(§8.5): wire this to the global ⌘J assistant panel once
-            `components/assistant/assistant-panel.tsx` exists. The panel opens
-            with the current file, the last run's result, and the error attached
-            as context chips, and renders the contextual starters as suggestion
-            chips. Deliberately no chat UI here — §14.3 removes the third-tab
-            coach precisely so there is one assistant across the product.
-          */}
+          {/* Opens the global ⌘J panel with this file and the last run
+              attached. Deliberately no chat UI here — §14.3 removes the
+              third-tab coach precisely so there is one assistant. */}
           <Button variant="quiet" size="sm" className="build-ask" onClick={() => onAsk("Review my code")}>
             <Sparkles size={14} aria-hidden="true" />Ask
           </Button>

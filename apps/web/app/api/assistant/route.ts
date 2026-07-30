@@ -9,19 +9,30 @@ import { assistantMemoryMarkdown, assistantMemoryVaultPath } from "@/lib/assista
 import { assistantMemorySyncStatuses, enqueueContinuumRecord, type RecordSyncStatus } from "@/lib/obsidian-sync-engine";
 import { publicErrorMessage } from "@/lib/api-errors";
 import { createOutputFilter, redactContextValue } from "@/lib/assistant/output-filter";
-import { classifyHeuristic, retrievalPlan } from "@/lib/assistant/classify";
-import { fromAttachments, fromMemoryChunks, fromWorkspaceContext, labelMap, mergeProvenance } from "@/lib/assistant/provenance";
+import { AttachmentAccessError, orchestrate } from "@/lib/assistant/orchestrator";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const sessionIdSchema = z.string().min(8).max(200).regex(/^[a-zA-Z0-9_-]+$/);
+/** §11.7 reduced the user-facing modes to three. `coding` and `document` are
+ *  still accepted so conversations saved before the reduction keep working. */
 const assistantModeSchema = z.enum(["auto", "fast", "deep", "coding", "document"]);
+/** §11.6 replaced the ten scope checkboxes with chips the classifier drives.
+ *  The field stays accepted — and can still only *narrow* — so an older client
+ *  that still sends it is not broken by the change. */
 const contextScopeSchema = z.enum([
   "conversation", "selected_files", "current_project", "current_learning",
   "research_library", "zotero", "obsidian", "approved_memory", "code_workspace", "workspace",
 ]);
+/** The route-derived chip the panel and page attach (§8.5, §11.3 step 3). */
+const pageContextSchema = z.object({
+  kind: z.enum(["goal", "project", "concept", "build", "source", "week"]),
+  id: z.string().min(3).max(200).regex(/^[a-zA-Z0-9_-]+$/).optional(),
+  label: z.string().trim().min(1).max(160),
+  detail: z.string().trim().max(2_000).optional(),
+});
 const memoryFields = {
   summary: z.string().trim().min(3).max(4_000),
   decisions: z.array(z.string().trim().min(1).max(500)).max(20).default([]),
@@ -41,6 +52,11 @@ const writeSchema = z.discriminatedUnion("action", [
     mode: assistantModeSchema.default("auto"),
     contextScopes: z.array(contextScopeSchema).max(10).default(["approved_memory"]),
     attachmentIds: z.array(z.string().min(3).max(200).regex(/^[a-zA-Z0-9_-]+$/)).max(12).default([]),
+    pageContext: pageContextSchema.optional(),
+    /** How the user answered the broad-search confirmation (§11.3 step 6). */
+    broadSearch: z.enum(["everything", "current"]).optional(),
+    /** Records marked "Don't use this again" in this conversation (§11.6). */
+    excludedRecordIds: z.array(z.string().min(3).max(200)).max(50).default([]),
   }),
   z.object({
     action: z.literal("update_session"),
@@ -289,74 +305,45 @@ export async function POST(request: Request) {
   const attachmentIds = parsed.data.attachmentIds;
   const assistantMode = parsed.data.mode;
   const userMessage = parsed.data.message;
-  // What the message needs is inferred from the message, not configured by the
-  // user. The scope checkboxes remain accepted for backwards compatibility, but
-  // they now only *narrow* an inferred plan — they can never widen it, so a
-  // stale default can no longer starve a workspace question of its context.
-  const classification = classifyHeuristic({
-    message: userMessage,
-    hasAttachments: attachmentIds.length > 0,
-    hasPageContext: false,
-    conversationEntities: messages.slice(-6).flatMap((message) => {
-      const used = (message.metadata as { usedContext?: Array<{ label?: string }> } | undefined)?.usedContext ?? [];
-      return used.map((entry) => String(entry.label ?? ""));
-    }).filter(Boolean),
-  });
-  const plan = retrievalPlan(classification);
   const scopeOptedOut = requestedScopes.length === 1 && requestedScopes[0] === "conversation";
 
-  /**
-   * The model is chosen from what the message actually is, not from a mode the
-   * user may never have touched. An explicit Deep or Coding selection still
-   * wins — that is the user asking for the slower, stronger route on purpose.
-   */
-  const taskClass = assistantMode === "deep"
-    ? "research_synthesis" as const
-    : assistantMode === "coding"
-      ? "code_reasoning" as const
-      : assistantMode === "document" || classification.requestClass === "about_a_document"
-        ? "document_understanding" as const
-        : classification.requestClass === "broad_search"
-          ? "research_synthesis" as const
-          : "conversational_support" as const;
-
-  const useWorkspace = plan.useWorkspace && !scopeOptedOut;
-  const useMemory = plan.useMemory && !scopeOptedOut;
-
-  // Everything needed before the model call is independent, so it runs
-  // concurrently. Serialising these was up to five DB round-trips of dead time
-  // in front of the first streamed token.
-  const [sourceRows, context, relevantMemory] = await Promise.all([
-    attachmentIds.length ? store.listSources() as Promise<Array<Record<string, unknown>>> : Promise.resolve([]),
-    useWorkspace ? store.read("load_context", { focus: userMessage.slice(0, 500), maxTokens: plan.maxTokens }, "continuum-assistant") : undefined,
-    useMemory ? store.searchMemory({ query: userMessage.slice(0, 500), limit: Math.min(8, plan.maxRecords) }) : [],
-  ]);
-
-  const selectedSources = sourceRows.filter((source) => attachmentIds.includes(String(source.id)));
-  if (selectedSources.length !== attachmentIds.length) {
-    return NextResponse.json({ error: "One or more attachments are unavailable or belong to another account" }, { status: 404 });
+  // What the message needs is decided by §11.3's contract, not configured by
+  // the user. `orchestrator.ts` owns all eleven steps; this route owns request
+  // validation, persistence, and the stream.
+  let plan;
+  try {
+    plan = await orchestrate({
+      store,
+      message: userMessage,
+      attachmentIds,
+      mode: assistantMode === "coding" || assistantMode === "document" ? "auto" : assistantMode,
+      history: messages.map((message) => ({
+        role: String(message.role),
+        content: String(message.content ?? ""),
+        usedContext: (message.metadata as { usedContext?: Array<{ id?: string; label?: string }> } | undefined)?.usedContext,
+      })),
+      ...(parsed.data.pageContext ? { pageContext: parsed.data.pageContext } : {}),
+      ...(parsed.data.broadSearch ? { broadSearch: parsed.data.broadSearch } : {}),
+      excludedRecordIds: parsed.data.excludedRecordIds,
+    });
+  } catch (error) {
+    if (error instanceof AttachmentAccessError) return NextResponse.json({ error: error.message }, { status: 404 });
+    throw error;
   }
-  const selectedSourceIds = new Set(selectedSources.map((source) => String(source.id)));
-  const sourceChunks = selectedSources.length
-    ? (await store.listSourceChunks()).filter((chunk) => selectedSourceIds.has(String(chunk.sourceId))).slice(0, 36)
-    : [];
-  const attachmentContext = sourceChunks.map((chunk) => ({
-    sourceId: chunk.sourceId,
-    source: chunk.sourceTitle,
-    passage: chunk.passage,
-    reference: chunk.reference,
-    text: chunk.text.slice(0, 4_000),
-  }));
-  // Provenance is the records that were actually retrieved, not the scopes the
-  // user ticked. The previous version reported scope names, so a reply that
-  // retrieved nothing still claimed "Answered using 2 records from your
-  // workspace" — the 2 counted checkboxes.
-  const usedContext = mergeProvenance([
-    fromAttachments(selectedSources, sourceChunks as unknown as Array<Record<string, unknown>>),
-    fromMemoryChunks(relevantMemory as unknown as Array<Record<string, unknown>>),
-    fromWorkspaceContext(context),
-  ]);
-  const contextLabels = labelMap(usedContext);
+
+  // §11.3 step 6: a wide search stops here and asks. Nothing has been retrieved
+  // and no message has been persisted, so answering the confirmation re-sends
+  // the same turn rather than resuming a half-finished one.
+  if (plan.confirmation) {
+    return NextResponse.json({ confirmation: plan.confirmation, requestClass: plan.classification.requestClass }, { status: 200, headers: { "cache-control": "private, no-store" } });
+  }
+
+  const taskClass = assistantMode === "coding" ? "code_reasoning" as const : assistantMode === "document" ? "document_understanding" as const : plan.taskClass;
+  // The legacy "this conversation only" scope is the one narrowing a stale
+  // client can still express, and narrowing is all it may ever do.
+  const context = scopeOptedOut ? {} : plan.context;
+  const usedContext = scopeOptedOut ? [] : plan.usedContext;
+  const contextLabels = scopeOptedOut ? new Map<string, string>() : plan.labels;
   await Promise.all([
     store.appendAssistantMessage({
       id: id("assistant_message"),
@@ -376,10 +363,7 @@ export async function POST(request: Request) {
   // Identifiers are stripped from the context before the model ever sees them.
   // Filtering only the output is not enough: a model that never receives
   // `goal_demo_sat` cannot echo it, and the labels remain readable.
-  const safeContext = redactContextValue(
-    { workspace: context, relevantMemory, selectedFiles: attachmentContext },
-    contextLabels,
-  );
+  const safeContext = redactContextValue(context, contextLabels);
 
   const prompt = buildAcademicPrompt({
     surface: "assistant",
@@ -394,7 +378,11 @@ export async function POST(request: Request) {
       "Never restate the question before answering, and never describe what you are about to do.",
       "Refer to any record by its title. Never write an internal identifier.",
       "Use only relevant supplied context. Cite selected files using their supplied [Source: title · passage N] reference when making source-grounded claims.",
-      "Clearly distinguish saved facts from suggestions. Do not claim to change workspace records.",
+      // AC-A6: an answer with no workspace grounding must say so rather than
+      // let the citation chips' absence be read as "nothing to cite".
+      usedContext.length
+        ? "Clearly distinguish saved facts from suggestions. Do not claim to change workspace records."
+        : "Nothing in the user's workspace matched this question. Answer from general knowledge and do not imply you consulted their material.",
     ].join(" "),
   });
   try {
@@ -442,7 +430,17 @@ export async function POST(request: Request) {
               content: answer.slice(0, 50_000),
               provider: credentialMode === "user" ? `byok:${streamed.decision.route}` : streamed.decision.route,
               model: streamed.decision.model,
-              metadata: { usedContext, mode: assistantMode },
+              // The chips, the inspector, and the "answered from general
+              // knowledge" line are all rendered from this, so it is persisted
+              // with the message rather than only streamed alongside it.
+              metadata: {
+                usedContext,
+                mode: assistantMode,
+                requestClass: plan.classification.requestClass,
+                grounded: usedContext.length > 0,
+                ...(plan.depthOffer ? { depthOffer: plan.depthOffer } : {}),
+                ...(plan.degraded.length ? { degraded: plan.degraded } : {}),
+              },
             });
           }
           controller.close();
@@ -458,6 +456,12 @@ export async function POST(request: Request) {
         "x-continuum-mode": credentialMode === "user"
           ? "My API key"
           : ({ auto: "Continuum Auto", fast: "Fast", deep: "Deep Reasoning", coding: "Coding", document: "Document Analysis" } as const)[assistantMode],
+        // §11.9: the composer names the step it is on rather than showing an
+        // unexplained spinner, so it needs the plan before the stream lands.
+        "x-continuum-status": plan.statusLabel,
+        "x-continuum-class": plan.classification.requestClass,
+        "x-continuum-records": String(usedContext.length),
+        ...(plan.degraded.length ? { "x-continuum-degraded": plan.degraded.join(",") } : {}),
       },
     });
   } catch (error) {

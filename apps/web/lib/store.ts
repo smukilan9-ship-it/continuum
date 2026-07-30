@@ -11,6 +11,7 @@ import {
   type SourceWrite,
   type StoredMemoryChunk,
   type StoredSourceChunk,
+  type WorkspaceSearchHit,
 } from "@continuum/db";
 import { assertScheduleCommitAllowed, curatedResourceRegistry, recommendBestResource, updateMastery, type ResourceNeed } from "@continuum/domain";
 import { contentHash } from "@continuum/retrieval";
@@ -74,13 +75,15 @@ export interface Store {
   deleteAssistantSession(sessionId: string): Promise<boolean>;
   findSourceByHash(hash: string): Promise<{ id: string; title: string } | undefined>;
   saveSource(source: SourceWrite): Promise<void>;
-  listSources(): Promise<unknown[]>;
+  /** `all` includes session-only attachments (§11.4); the Library uses the default. */
+  listSources(scope?: "library" | "all"): Promise<unknown[]>;
   savePaper(paper: PaperWrite): Promise<{ paper: unknown; duplicate: boolean }>;
   listPapers(projectId?: string): Promise<unknown[]>;
   listSourceChunks(): Promise<StoredSourceChunk[]>;
   deleteSource(sourceId: string): Promise<{ id: string; title: string; storagePath?: string } | undefined>;
   vectorSearch(embedding: number[], limit: number): Promise<StoredSourceChunk[]>;
   searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }): Promise<StoredMemoryChunk[]>;
+  searchWorkspace(input: { query: string; kinds?: string[]; limit?: number }): Promise<WorkspaceSearchHit[]>;
   saveReceipt(receipt: OutcomeReceipt, clientId?: string): Promise<void>;
   listReceipts(limit?: number): Promise<unknown[]>;
   createMilestone(input: { id: string; goalId: string; title: string; order: number; dueAt?: string }, now: string): Promise<void>;
@@ -467,15 +470,17 @@ class MemoryStore implements Store {
   }
   async findSourceByHash(hash: string) { const source = demoStore.sources.find((item) => item.contentHash === hash); return source ? { id: source.id, title: source.title } : undefined; }
   async saveSource(source: SourceWrite) {
-    demoStore.sources.unshift({ id: source.id, userId: this.userId, ...(source.projectId ? { projectId: source.projectId } : {}), title: source.title, mimeType: source.mimeType, ...(source.storagePath ? { storagePath: source.storagePath } : {}), contentHash: source.contentHash, sourceVersion: source.sourceVersion, parserVersion: source.parserVersion, createdAt: new Date().toISOString() });
+    demoStore.sources.unshift({ id: source.id, userId: this.userId, ...(source.projectId ? { projectId: source.projectId } : {}), title: source.title, mimeType: source.mimeType, ...(source.storagePath ? { storagePath: source.storagePath } : {}), contentHash: source.contentHash, sourceVersion: source.sourceVersion, parserVersion: source.parserVersion, retention: source.retention ?? "library", createdAt: new Date().toISOString() });
     demoStore.chunks.push(...source.chunks.map((chunk) => ({ id: chunk.id, sourceId: source.id, sourceTitle: source.title, passage: chunk.passage, text: chunk.content, contentHash: chunk.contentHash, sourceVersion: source.sourceVersion, deleted: false, reference: `${source.title} · passage ${chunk.passage}` })));
   }
-  async listSources() {
-    return demoStore.sources.map((item) => {
-      const { storagePath, ...metadata } = item;
-      void storagePath;
-      return metadata;
-    });
+  async listSources(scope: "library" | "all" = "library") {
+    return demoStore.sources
+      .filter((item) => scope === "all" || (item.retention ?? "library") === "library")
+      .map((item) => {
+        const { storagePath, ...metadata } = item;
+        void storagePath;
+        return metadata;
+      });
   }
   async savePaper(paper: PaperWrite) {
     const existing = demoStore.papers.find((item) => item.projectId === paper.projectId && ((paper.doi && String(item.doi ?? "").toLowerCase() === paper.doi.toLowerCase()) || String(item.title ?? "").toLowerCase() === paper.title.toLowerCase()));
@@ -491,6 +496,44 @@ class MemoryStore implements Store {
   async searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }) {
     const query = input.query.toLowerCase();
     return demoStore.memoryChunks.filter((chunk) => (!input.goalId || chunk.goalId === input.goalId) && (!input.projectId || chunk.projectId === input.projectId) && (!input.types?.length || input.types.includes(chunk.kind)) && chunk.content.toLowerCase().includes(query)).slice(0, input.limit ?? 8);
+  }
+  /**
+   * The local-development mirror of `repo.searchWorkspace` (§8.4). It searches
+   * the same nine kinds over the in-memory store so the palette behaves
+   * identically without a database — the dual implementation §16.8 requires.
+   */
+  async searchWorkspace(input: { query: string; kinds?: string[]; limit?: number }) {
+    const trimmed = input.query.trim().slice(0, 200);
+    if (trimmed.length < 2) return [];
+    const needle = trimmed.toLowerCase();
+    const bounded = Math.max(1, Math.min(input.limit ?? 20, 50));
+    const wanted = (kind: string) => !input.kinds?.length || input.kinds.includes(kind);
+    const matches = (...values: Array<unknown>) => values.some((value) => typeof value === "string" && value.toLowerCase().includes(needle));
+    const snippet = (value: unknown) => {
+      const flat = String(value ?? "").replace(/\s+/g, " ").trim();
+      const at = flat.toLowerCase().indexOf(needle);
+      if (at < 0) return flat.slice(0, 160);
+      const from = Math.max(0, at - 40);
+      return `${from > 0 ? "…" : ""}${flat.slice(from, from + 160)}${from + 160 < flat.length ? "…" : ""}`;
+    };
+    const stamp = (row: Record<string, unknown>) => String(row.updatedAt ?? row.createdAt ?? row.occurredAt ?? new Date(0).toISOString());
+    const hits: WorkspaceSearchHit[] = [];
+    const goalTitle = (goalId: unknown) => String(demoStore.goals.find((goal) => goal.id === goalId)?.title ?? "Goal");
+    const projectTitle = (projectId: unknown) => String(demoStore.projects.find((project) => project.id === projectId)?.title ?? "Research project");
+    if (wanted("goal")) for (const goal of demoStore.goals) if (matches(goal.title, goal.outcome)) hits.push({ kind: "goal", id: String(goal.id), title: String(goal.title ?? "Untitled goal"), snippet: snippet(goal.outcome), context: "Goal", updatedAt: stamp(goal) });
+    if (wanted("task")) for (const task of demoStore.tasks) if (matches(task.title)) hits.push({ kind: "task", id: String(task.id), title: String(task.title ?? "Untitled task"), snippet: snippet(task.description), context: goalTitle(task.goalId), parentId: task.goalId ? String(task.goalId) : undefined, updatedAt: stamp(task) });
+    if (wanted("project")) for (const project of demoStore.projects) if (matches(project.title, project.purpose)) hits.push({ kind: "project", id: String(project.id), title: String(project.title ?? "Untitled project"), snippet: snippet(project.purpose), context: "Research project", parentId: project.goalId ? String(project.goalId) : undefined, updatedAt: stamp(project) });
+    if (wanted("source")) for (const source of demoStore.sources) if (matches(source.title)) hits.push({ kind: "source", id: source.id, title: source.title, snippet: "", context: "Source", updatedAt: source.createdAt });
+    if (wanted("paper")) for (const paper of demoStore.papers) if (matches(paper.title, paper.doi)) hits.push({ kind: "paper", id: String(paper.id), title: String(paper.title ?? "Untitled paper"), snippet: [Array.isArray(paper.authors) ? paper.authors.slice(0, 3).join(", ") : "", paper.year].filter(Boolean).join(" · "), context: projectTitle(paper.projectId), parentId: paper.projectId ? String(paper.projectId) : undefined, updatedAt: stamp(paper) });
+    if (wanted("conversation")) for (const session of demoStore.assistantSessions) if (matches(session.title, session.summary)) hits.push({ kind: "conversation", id: String(session.id), title: String(session.title ?? "Conversation"), snippet: snippet(session.summary), context: "Conversation", updatedAt: String(session.lastMessageAt ?? stamp(session)) });
+    if (wanted("note")) for (const note of demoStore.notes) if (matches(note.text)) hits.push({ kind: "note", id: String(note.id), title: snippet(note.text).slice(0, 80), snippet: snippet(note.text), context: projectTitle(note.projectId), parentId: note.projectId ? String(note.projectId) : undefined, updatedAt: stamp(note) });
+    if (wanted("memory")) for (const chunk of demoStore.memoryChunks) if (matches(chunk.content)) hits.push({ kind: "memory", id: chunk.id, title: snippet(chunk.content).slice(0, 80), snippet: snippet(chunk.content), context: `Remembered · ${chunk.kind.replaceAll("_", " ")}`, updatedAt: chunk.occurredAt });
+    return hits
+      .sort((left, right) => {
+        const rank = (hit: WorkspaceSearchHit) => (hit.title.toLowerCase().startsWith(needle) ? 0 : hit.title.toLowerCase().includes(needle) ? 1 : 2);
+        return rank(left) - rank(right) || right.updatedAt.localeCompare(left.updatedAt);
+      })
+      .slice(0, bounded);
   }
   async saveReceipt(receipt: OutcomeReceipt) { demoStore.receipts.unshift(receipt as unknown as Record<string, unknown>); }
   async listReceipts(limit = 10) { return demoStore.receipts.slice(0, limit); }
@@ -732,7 +775,7 @@ class NeonStore implements Store {
   async deleteAssistantSession(sessionId: string) { return this.repo.deleteAssistantSession(sessionId, this.userId); }
   async findSourceByHash(hash: string) { const source = await this.repo.findSourceByHash(hash, this.userId); return source ? { id: source.id, title: source.title } : undefined; }
   async saveSource(source: SourceWrite) { await this.repo.saveSource({ ...source, userId: this.userId }); }
-  async listSources() { return this.repo.listSources(this.userId); }
+  async listSources(scope: "library" | "all" = "library") { return this.repo.listSources(this.userId, scope); }
   async savePaper(paper: PaperWrite) { return this.repo.savePaper({ ...paper, userId: this.userId }); }
   async listPapers(projectId?: string) { return this.repo.listPapers(this.userId, projectId); }
   async listSourceChunks() { return this.repo.listSourceChunks(this.userId); }
@@ -743,6 +786,7 @@ class NeonStore implements Store {
     if (embeddingConfiguration()) { try { embedding = await embedQuery(input.query); } catch { /* Hybrid retrieval falls back to lexical/current state. */ } }
     return this.repo.searchMemory({ ...input, embedding }, this.userId);
   }
+  async searchWorkspace(input: { query: string; kinds?: string[]; limit?: number }) { return this.repo.searchWorkspace(this.userId, input.query, input.kinds, input.limit); }
   async saveReceipt(receipt: OutcomeReceipt, clientId?: string) { await this.repo.saveSessionReceipt(receipt, clientId); }
   async listReceipts(limit = 10) { return this.repo.listSessionReceipts(this.userId, limit); }
   async createMilestone(input: { id: string; goalId: string; title: string; order: number; dueAt?: string }, now: string) { await this.repo.createMilestone(input, now, this.userId); }

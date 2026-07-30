@@ -111,6 +111,11 @@ export type SourceWrite = {
   contentHash: string;
   sourceVersion: number;
   parserVersion: string;
+  /**
+   * §11.4 / §13.3. `session` material is used by the conversation that attached
+   * it and is never listed in the Library; `library` is the durable default.
+   */
+  retention?: "library" | "session";
   chunks: SourceChunkWrite[];
 };
 
@@ -226,6 +231,19 @@ export type StoredMemoryChunk = {
   sourceEventIds: string[];
   score?: number;
   metadata: Record<string, unknown>;
+};
+
+/** One row in the cross-object search (§8.4). `parentId` is the owning goal or
+ *  project where one exists, so the caller can build a deep link without a
+ *  second read. */
+export type WorkspaceSearchHit = {
+  kind: "goal" | "task" | "project" | "source" | "paper" | "conversation" | "concept" | "note" | "memory";
+  id: string;
+  title: string;
+  snippet: string;
+  context: string;
+  parentId?: string;
+  updatedAt: string;
 };
 
 export type AuthUser = { id: string; username: string; displayName: string; timezone: string; educationLevel?: string };
@@ -1160,6 +1178,7 @@ export class NeonRepository {
       contentHash: input.contentHash,
       sourceVersion: input.sourceVersion,
       parserVersion: input.parserVersion,
+      retention: input.retention ?? "library",
       deleted: false,
       updatedAt: new Date(),
     };
@@ -1181,9 +1200,23 @@ export class NeonRepository {
     }
   }
 
-  async listSources(userId = DEMO_USER_ID) {
+  /**
+   * §11.4: material attached with "use in this message only" is retrievable by
+   * the conversation that attached it but is never listed in the Library, so a
+   * one-off upload does not silently become part of someone's collection (S12).
+   * `scope: "all"` is what the assistant uses to resolve its own attachments.
+   */
+  async listSources(userId = DEMO_USER_ID, scope: "library" | "all" = "library") {
     await this.ensureDemoSeed();
-    const rows = await this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).orderBy(desc(sources.createdAt));
+    const rows = await this.db
+      .select()
+      .from(sources)
+      .where(and(
+        eq(sources.userId, userId),
+        eq(sources.deleted, false),
+        ...(scope === "library" ? [eq(sources.retention, "library")] : []),
+      ))
+      .orderBy(desc(sources.createdAt));
     return rows.map(publicSourceMetadata);
   }
 
@@ -1280,6 +1313,68 @@ export class NeonRepository {
       ...noteRows.map(({ note, projectTitle }) => ({ kind: "note", id: note.id, projectId: note.projectId, projectTitle, text: note.text, sourceId: note.sourceId, chunkId: note.chunkId, updatedAt: note.updatedAt.toISOString() })),
       ...passageRows.map(({ chunk, source }) => ({ kind: "source_passage", id: chunk.id, sourceId: source.id, projectId: source.projectId, sourceTitle: source.title, passage: chunk.passage, text: chunk.content.slice(0, 4000), contentHash: chunk.contentHash, sourceVersion: source.sourceVersion, updatedAt: chunk.updatedAt.toISOString() })),
     ].slice(0, bounded);
+  }
+
+  /**
+   * One user-scoped lexical pass across every object the command palette and the
+   * Library can land on (§8.4). The palette previously searched four entity types
+   * held in the client's snapshot, so a source, a paper, a conversation, or a
+   * concept could not be found at all (C13) — the objects a student actually
+   * looks for by name.
+   *
+   * Concepts carry no owner column; they are reachable only through the user's
+   * own `learning_states`, which is what scopes them here. Every other branch
+   * filters on `user_id` directly or through the owning project.
+   */
+  async searchWorkspace(userId: string, query: string, kinds?: string[], limit = 20): Promise<WorkspaceSearchHit[]> {
+    const trimmed = query.trim().slice(0, 200);
+    if (trimmed.length < 2) return [];
+    const bounded = Math.max(1, Math.min(limit, 50));
+    // Per-kind cap keeps one prolific kind from crowding out the rest; the
+    // palette shows at most five rows per section anyway.
+    const perKind = Math.max(3, Math.min(bounded, 8));
+    const pattern = `%${trimmed.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+    const wanted = (kind: string) => !kinds?.length || kinds.includes(kind);
+    const snippet = (value: string) => {
+      const flat = value.replace(/\s+/g, " ").trim();
+      const at = flat.toLowerCase().indexOf(trimmed.toLowerCase());
+      if (at < 0) return flat.slice(0, 160);
+      const from = Math.max(0, at - 40);
+      return `${from > 0 ? "…" : ""}${flat.slice(from, from + 160)}${from + 160 < flat.length ? "…" : ""}`;
+    };
+
+    const [goalRows, taskRows, projectRows, sourceRows, paperRows, sessionRows, conceptRows, noteRows, chunkRows] = await Promise.all([
+      wanted("goal") ? this.db.select().from(goals).where(and(eq(goals.userId, userId), eq(goals.deleted, false), or(ilike(goals.title, pattern), ilike(goals.outcome, pattern)))).orderBy(asc(goals.targetDate)).limit(perKind) : [],
+      wanted("task") ? this.db.select({ task: tasks, goalTitle: goals.title }).from(tasks).innerJoin(goals, eq(tasks.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(goals.deleted, false), eq(tasks.deleted, false), ilike(tasks.title, pattern))).orderBy(desc(tasks.updatedAt)).limit(perKind) : [],
+      wanted("project") ? this.db.select().from(projects).where(and(eq(projects.userId, userId), eq(projects.deleted, false), or(ilike(projects.title, pattern), ilike(projects.purpose, pattern)))).orderBy(desc(projects.updatedAt)).limit(perKind) : [],
+      wanted("source") ? this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false), ilike(sources.title, pattern))).orderBy(desc(sources.updatedAt)).limit(perKind) : [],
+      wanted("paper") ? this.db.select({ paper: papers, projectTitle: projects.title }).from(papers).innerJoin(projects, eq(papers.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(projects.deleted, false), eq(papers.deleted, false), or(ilike(papers.title, pattern), ilike(papers.doi, pattern)))).orderBy(desc(papers.updatedAt)).limit(perKind) : [],
+      wanted("conversation") ? this.db.select().from(assistantSessions).where(and(eq(assistantSessions.userId, userId), eq(assistantSessions.deleted, false), or(ilike(assistantSessions.title, pattern), ilike(assistantSessions.summary, pattern)))).orderBy(desc(assistantSessions.lastMessageAt)).limit(perKind) : [],
+      wanted("concept") ? this.db.select({ concept: concepts, state: learningStates }).from(concepts).innerJoin(learningStates, eq(learningStates.conceptId, concepts.id)).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false), eq(concepts.deleted, false), or(ilike(concepts.title, pattern), ilike(concepts.description, pattern)))).orderBy(desc(learningStates.updatedAt)).limit(perKind) : [],
+      wanted("note") ? this.db.select({ note: researchNotes, projectTitle: projects.title }).from(researchNotes).innerJoin(projects, eq(researchNotes.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(projects.deleted, false), eq(researchNotes.deleted, false), ilike(researchNotes.text, pattern))).orderBy(desc(researchNotes.updatedAt)).limit(perKind) : [],
+      wanted("memory") ? this.db.select().from(memoryChunks).where(and(eq(memoryChunks.userId, userId), eq(memoryChunks.deleted, false), eq(memoryChunks.superseded, false), ilike(memoryChunks.content, pattern))).orderBy(desc(memoryChunks.occurredAt)).limit(perKind) : [],
+    ]);
+
+    const hits: WorkspaceSearchHit[] = [
+      ...goalRows.map((goal) => ({ kind: "goal" as const, id: goal.id, title: goal.title, snippet: snippet(goal.outcome), context: "Goal", updatedAt: goal.updatedAt.toISOString() })),
+      ...taskRows.map(({ task, goalTitle }) => ({ kind: "task" as const, id: task.id, title: task.title, snippet: snippet(task.description ?? ""), context: goalTitle, parentId: task.goalId, updatedAt: task.updatedAt.toISOString() })),
+      ...projectRows.map((project) => ({ kind: "project" as const, id: project.id, title: project.title, snippet: snippet(project.purpose), context: "Research project", parentId: project.goalId ?? undefined, updatedAt: project.updatedAt.toISOString() })),
+      ...sourceRows.map((source) => ({ kind: "source" as const, id: source.id, title: source.title, snippet: source.processingState === "ready" ? "" : `Processing: ${source.processingState}`, context: "Source", updatedAt: source.updatedAt.toISOString() })),
+      ...paperRows.map(({ paper, projectTitle }) => ({ kind: "paper" as const, id: paper.id, title: paper.title, snippet: [paper.authors.slice(0, 3).join(", "), paper.year].filter(Boolean).join(" · "), context: projectTitle, parentId: paper.projectId, updatedAt: paper.updatedAt.toISOString() })),
+      ...sessionRows.map((session) => ({ kind: "conversation" as const, id: session.id, title: session.title, snippet: snippet(session.summary ?? ""), context: "Conversation", updatedAt: (session.lastMessageAt ?? session.updatedAt).toISOString() })),
+      ...conceptRows.map(({ concept, state }) => ({ kind: "concept" as const, id: concept.id, title: concept.title, snippet: snippet(concept.description), context: `Concept · ${state.status.replaceAll("_", " ")}`, updatedAt: state.updatedAt.toISOString() })),
+      ...noteRows.map(({ note, projectTitle }) => ({ kind: "note" as const, id: note.id, title: snippet(note.text).slice(0, 80), snippet: snippet(note.text), context: projectTitle, parentId: note.projectId, updatedAt: note.updatedAt.toISOString() })),
+      ...chunkRows.map((chunk) => ({ kind: "memory" as const, id: chunk.id, title: snippet(chunk.content).slice(0, 80), snippet: snippet(chunk.content), context: `Remembered · ${chunk.kind.replaceAll("_", " ")}`, updatedAt: chunk.occurredAt.toISOString() })),
+    ];
+
+    // A title match is what the user typed a name to find; body matches follow.
+    const needle = trimmed.toLowerCase();
+    return hits
+      .sort((left, right) => {
+        const rank = (hit: WorkspaceSearchHit) => (hit.title.toLowerCase().startsWith(needle) ? 0 : hit.title.toLowerCase().includes(needle) ? 1 : 2);
+        return rank(left) - rank(right) || right.updatedAt.localeCompare(left.updatedAt);
+      })
+      .slice(0, bounded);
   }
 
   async getClaimEvidence(claimId: string, userId: string) {

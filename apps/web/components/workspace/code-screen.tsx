@@ -2,6 +2,7 @@
 
 import type { AuthUser } from "@continuum/db";
 
+import { useAssistant } from "@/components/assistant/use-assistant";
 import { BuildWorkspace } from "@/components/build/build-workspace";
 import type { AskContext } from "@/components/build/types";
 
@@ -21,16 +22,24 @@ export { cleanRuntimeMessage, errorLineFrom } from "@/components/build/runtime-e
 
 type Toast = (message: string | null) => void;
 
-export function CodeScreen({
-  state,
-  user,
-  showToast,
-  onAskAssistant,
-}: {
-  state: WorkspaceState;
-  user: AuthUser;
-  showToast: Toast;
-  onAskAssistant?: (context: AskContext) => void;
-}) {
-  return <BuildWorkspace state={state} user={user} showToast={showToast} onAskAssistant={onAskAssistant} />;
+export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; user: AuthUser; showToast: Toast }) {
+  const assistant = useAssistant();
+  /**
+   * §8.5: Ask opens the one global panel with this file, its language, and the
+   * last run attached as the page chip — so the assistant answers about the
+   * actual error rather than a description of it.
+   */
+  const askAssistant = (context: AskContext) => {
+    const detail = [
+      `File: ${context.fileName} (${context.language})`,
+      context.result ? `Last run: ${context.result.outcome}` : "Not run yet",
+      context.error ? `Error: ${context.error}` : "",
+      `\n${context.code.slice(0, 4_000)}`,
+    ].filter(Boolean).join("\n");
+    assistant.askFromPage({
+      page: { kind: "build", label: `File: ${context.fileName}`, detail },
+      prompt: context.suggestions[0] ?? "Explain my code",
+    });
+  };
+  return <BuildWorkspace state={state} user={user} showToast={showToast} onAskAssistant={askAssistant} />;
 }

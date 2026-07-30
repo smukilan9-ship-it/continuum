@@ -1,0 +1,51 @@
+/* ==========================================================================
+   Shell — the §8.4 command palette.
+
+   Co-located and token-only (§15.9). The base `.command-*` layout still lives
+   in globals.css; these are the rules the sectioned, keyboard-driven palette
+   added.
+   ========================================================================== */
+
+.command-section + .command-section { margin-top: var(--s-2); }
+.command-section > p {
+  margin: var(--s-1) var(--s-2) var(--s-1);
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+/* Hover and keyboard selection are the same state — a palette where the mouse
+   and the arrow keys highlight different rows is unusable with both. */
+.command-results button.active { background: var(--surface-raised); }
+.command-results button em { color: var(--ink-3); font-style: normal; }
+
+/* §8.4: a 2px indeterminate bar while remote results are in flight, so local
+   results stay on screen instead of being replaced by a spinner. */
+.command-progress {
+  height: 2px;
+  overflow: hidden;
+  background: var(--surface-sunken);
+}
+.command-progress::after {
+  content: "";
+  display: block;
+  width: 40%;
+  height: 100%;
+  background: var(--accent);
+  animation: command-progress 1.1s linear infinite;
+}
+@keyframes command-progress {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(350%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .command-progress::after { width: 100%; animation: none; opacity: .4; }
+}
+
+.command-degraded {
+  margin: var(--s-2);
+  color: var(--ink-3);
+  font-size: var(--t-micro);
+}

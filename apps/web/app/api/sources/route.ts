@@ -51,6 +51,11 @@ export async function POST(request: Request) {
   if (!form) return NextResponse.json({ error: "Invalid source upload form" }, { status: 400 });
   const file = form.get("file");
   const projectId = typeof form.get("projectId") === "string" && String(form.get("projectId")).trim() ? String(form.get("projectId")).trim() : undefined;
+  // §11.4: the composer states the destination before the file is read, so
+  // nothing joins the Library by accident (S12). Anything that does not say
+  // "session" is a deliberate Library add, which keeps every existing caller
+  // (the Add-source dialog, Zotero import) on the durable default.
+  const retention = form.get("retention") === "session" ? "session" as const : "library" as const;
   if (!(file instanceof File)) return NextResponse.json({ error: "A PDF, DOCX, text file, or image is required" }, { status: 400 });
   if (projectId && projectId.length > 200) return NextResponse.json({ error: "Invalid projectId" }, { status: 400 });
   if (!file.size) return NextResponse.json({ error: "The source file is empty" }, { status: 400 });
@@ -158,6 +163,7 @@ export async function POST(request: Request) {
       contentHash: hash,
       sourceVersion: 1,
       parserVersion: isPdf ? "unpdf-1.6.2" : isDocx ? "mammoth-1.11" : detectedImageType ? "gemini-image-context-v1" : "utf8-v1",
+      retention,
       chunks: chunks.map((chunk, index) => ({
         id: chunk.id,
         sourceId: id,

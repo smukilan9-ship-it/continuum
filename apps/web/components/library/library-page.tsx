@@ -3,6 +3,7 @@
 import { ExternalLink, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Tabs, type RegionStatus } from "@/components/ui";
+import { useAssistant } from "@/components/assistant/use-assistant";
 import { PageHeader } from "@/components/workspace/page-header";
 import { text, type WorkspaceState } from "@/components/workspace/types";
 import type { SavedEntity, ScholarlyKind } from "@/components/workspace/scholarly-search";
@@ -52,6 +53,7 @@ export function LibraryPage({
   state?: WorkspaceState;
   onNavigate: (view: WorkspaceView) => void;
 }) {
+  const assistant = useAssistant();
   const [tab, setTab] = useState<LibraryTab>(initialTab ?? "sources");
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [sourceStatus, setSourceStatus] = useState<RegionStatus>("loading");
@@ -211,20 +213,15 @@ export function LibraryPage({
   }, [saved, sources]);
 
   /**
-   * "Ask about this" is specified as the ⌘J panel with the source attached.
-   * That panel is Phase 3 UI and does not exist yet, so this does the honest
-   * version of the same job: the question is composed here, put on the
-   * clipboard, and the user lands in Ask ready to paste it.
+   * §8.5: "Ask about this" opens the ⌘J panel with the source attached as the
+   * page chip, so the assistant retrieves that source's passages rather than
+   * searching the whole library for a title the user just clicked.
    */
-  async function ask(subject: string) {
-    const question = `About “${subject}”: `;
-    let copied = false;
-    try {
-      await navigator.clipboard.writeText(question);
-      copied = true;
-    } catch { copied = false; }
-    showToast(copied ? "Question copied — paste it into Ask." : `Ask about: ${subject}`);
-    onNavigate("assistant");
+  function ask(subject: string, sourceId?: string) {
+    assistant.askFromPage({
+      page: { kind: "source", ...(sourceId && !sourceId.startsWith("saved:") ? { id: sourceId } : {}), label: `Source: ${subject}` },
+      prompt: `About “${subject}”: `,
+    });
   }
 
   async function deleteSource(source: LibrarySource) {
@@ -335,7 +332,7 @@ export function LibraryPage({
             busyId={busyId}
             onReload={() => void loadSources()}
             onAdd={() => setAddOpen(true)}
-            onAsk={(source) => void ask(source.title)}
+            onAsk={(source) => ask(source.title, source.id)}
             onDelete={(source) => deleteSource(source)}
             onDownload={(source) => { if (source.externalUrl) window.open(source.externalUrl, "_blank", "noopener,noreferrer"); }}
           />
@@ -353,7 +350,7 @@ export function LibraryPage({
             target={target}
             onChangeTarget={(destination) => setTarget(destination)}
             onSaveWork={(work, destination) => saveWork(work, destination)}
-            onAsk={(work) => void ask(work.title)}
+            onAsk={(work) => ask(work.title)}
             zoteroIndex={zoteroIndex}
             seed={seed}
           />

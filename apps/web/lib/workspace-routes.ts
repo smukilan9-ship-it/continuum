@@ -63,6 +63,56 @@ export const settingsDestinations: ReadonlyArray<{ segment: string; label: strin
 ];
 
 /**
+ * The nine object kinds `GET /api/search` can return (§8.4), and the single
+ * place that decides where each one opens. Both the palette and the Library
+ * read a hit's `href` from here rather than each building its own mapping.
+ */
+export const searchKinds = ["goal", "task", "project", "source", "paper", "conversation", "concept", "note", "memory"] as const;
+
+export type SearchKind = (typeof searchKinds)[number];
+
+export type SearchHit = {
+  kind: SearchKind;
+  id: string;
+  title: string;
+  snippet: string;
+  context: string;
+  parentId?: string;
+  updatedAt: string;
+  href?: string;
+};
+
+/** Palette section headings, in the §8.4 order. */
+export const searchKindSection: Record<SearchKind, string> = {
+  goal: "Goals",
+  task: "Tasks",
+  project: "Projects",
+  source: "Sources & papers",
+  paper: "Sources & papers",
+  conversation: "Conversations",
+  concept: "Concepts",
+  note: "Notes",
+  memory: "Context",
+};
+
+export function searchHitHref(hit: { kind: SearchKind; id: string; parentId?: string }): Route {
+  const id = encodeURIComponent(hit.id);
+  switch (hit.kind) {
+    case "goal": return `/g/${id}` as Route;
+    // A task and a project are both reached through the goal that owns them;
+    // without one, the section that lists them is still the right landing.
+    case "task": return (hit.parentId ? `/g/${encodeURIComponent(hit.parentId)}?view=plan` : "/goals") as Route;
+    case "project": return (hit.parentId ? `/g/${encodeURIComponent(hit.parentId)}?view=overview` : "/research") as Route;
+    case "source": return `/library?tab=sources&source=${id}` as Route;
+    case "paper": return `/library?tab=saved&paper=${id}` as Route;
+    case "conversation": return `/assistant?conversation=${id}` as Route;
+    case "concept": return `/learn?concept=${id}` as Route;
+    case "note": return (hit.parentId ? `/research?project=${encodeURIComponent(hit.parentId)}` : "/research") as Route;
+    case "memory": return `/memory?record=${id}` as Route;
+  }
+}
+
+/**
  * Views that share a screen. `/openalex` and `/zotero` predate the merged
  * Library destination and stay reachable — every bookmark and shared deep link
  * keeps working — but they resolve to the same screen with a tab preselected.

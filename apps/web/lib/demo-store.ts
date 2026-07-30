@@ -20,6 +20,8 @@ export interface DemoSource {
   contentHash: string;
   sourceVersion: number;
   parserVersion: string;
+  /** §11.4: `session` material never appears in the Library. */
+  retention?: "library" | "session";
   createdAt: string;
 }
 

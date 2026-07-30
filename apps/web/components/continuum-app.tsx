@@ -18,17 +18,21 @@ import {
   MessageCircle,
   Search,
   ShieldCheck,
+  Sparkles,
   X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { Route } from "next";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { AssistantPanel } from "@/components/assistant/assistant-panel";
+import { AssistantProvider, useAssistantController } from "@/components/assistant/use-assistant";
+import type { AssistantSession, PageContext } from "@/components/assistant/types";
 import { BrandMark } from "@/components/brand-mark";
+import { CommandPalette, type PaletteAction } from "@/components/shell/command-palette";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { normalizeWorkspaceState, WorkspaceScreens, type WorkspaceState } from "@/components/workspace-screens";
-import { canonicalView, viewFromPath, settingsDestinations, workspaceMeta, workspacePath, type WorkspaceView } from "@/lib/workspace-routes";
+import { canonicalView, viewFromPath, workspaceMeta, workspacePath, type WorkspaceView } from "@/lib/workspace-routes";
 
 export type View = WorkspaceView;
 
@@ -99,8 +103,27 @@ const TOUR_KEY = "continuum.tour.completed.v1";
 const TOUR_STEPS = [
   { title: "Today is your next action", body: "One decided next step, with the reasoning behind it — not a blank page to plan from." },
   { title: "Plan is your week", body: "A deterministic draft you can move, resize, and edit before anything is saved." },
-  { title: "⌘K jumps anywhere", body: "Search sections, goals, tasks, projects, and receipts from any screen." },
+  { title: "⌘K finds anything, ⌘J asks about it", body: "Search every goal, source, paper, conversation, and concept — then ask Continuum without leaving the page." },
 ] as const;
+
+/**
+ * §8.5: the panel attaches the page it was opened from as a removable chip.
+ * Derived from the route rather than from each screen, so a screen cannot
+ * forget to supply it.
+ */
+function pageContextFor(view: WorkspaceView, state: WorkspaceState | undefined, goalId?: string): PageContext | undefined {
+  if (view === "goal" && goalId) {
+    const goal = state?.goals.find((row) => String(row.id) === goalId);
+    return { kind: "goal", id: goalId, label: `Goal: ${String(goal?.title ?? "this goal")}` };
+  }
+  if (view === "research") {
+    const project = state?.projects[0];
+    return project ? { kind: "project", id: String(project.id), label: `Project: ${String(project.title)}` } : undefined;
+  }
+  if (view === "code") return { kind: "build", label: "Build: current file and last run" };
+  if (view === "today" || view === "goals") return { kind: "week", label: "This week" };
+  return undefined;
+}
 
 export function ContinuumApp({ user, initialState, view, goalId, serverNow, needsOnboarding = false }: { user: AuthUser; initialState: Record<string, unknown>; view: WorkspaceView; goalId?: string; serverNow: string; needsOnboarding?: boolean }) {
   const [activeGoalId, setActiveGoalId] = useState(goalId);
@@ -182,6 +205,18 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
 
   const refreshCurrent = useCallback(() => refreshView(currentView), [refreshView, currentView]);
 
+  // One conversation, mounted twice (§8.5, AC-A9): the `/assistant` screen and
+  // the `⌘J` panel both read this controller, so switching between them never
+  // loses or forks the thread.
+  const assistant = useAssistantController({
+    initialSessions: (state?.assistantSessions ?? []) as unknown as AssistantSession[],
+    onWorkspaceChange: refreshCurrent,
+  });
+  const { setPageContext, setPanelOpen, panelOpen } = assistant;
+
+  const pageContext = useMemo(() => pageContextFor(currentView, state, activeGoalId), [currentView, state, activeGoalId]);
+  useEffect(() => { setPageContext(pageContext); }, [pageContext, setPageContext]);
+
   // Keep browser back/forward working with the client-side view switch.
   useEffect(() => {
     const onPopState = () => {
@@ -206,6 +241,13 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
         setCommandOpen((open) => !open);
         return;
       }
+      // §8.8: `⌘J` toggles the assistant from anywhere, including while typing —
+      // asking about what you are writing is the point of having it everywhere.
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
+        event.preventDefault();
+        setPanelOpen(!panelOpen);
+        return;
+      }
       // `?` opens the shortcut sheet, but never while the user is typing.
       const target = event.target as HTMLElement | null;
       const typing = target?.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target?.tagName ?? "");
@@ -216,7 +258,7 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
-  }, []);
+  }, [panelOpen, setPanelOpen]);
 
   // First run: point an un-onboarded user at /welcome unless they chose to explore.
   useEffect(() => {
@@ -283,7 +325,23 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
     else setToast("Sign out failed. Your current session is still active.");
   }
 
+  /** §8.4's minimum action set — verbs first, so the palette is a command bar
+   *  and not only a finder. */
+  const paletteActions = useMemo<PaletteAction[]>(() => [
+    { id: "ask", label: "Ask Continuum about…", hint: "Open the assistant with this page attached", run: () => assistant.askFromPage({ ...(pageContext ? { page: pageContext } : {}) }) },
+    { id: "new-goal", label: "New goal", hint: "Add an outcome with a deadline", run: () => navigate("goals") },
+    { id: "new-task", label: "New task", hint: "Add work to a goal", run: () => navigate("goals") },
+    { id: "new-project", label: "New project", hint: "Start a research project", run: () => navigate("research") },
+    { id: "add-source", label: "Add a source", hint: "Bring a paper or document into your Library", run: () => navigate("library") },
+    { id: "build-week", label: "Build my week", hint: "Draft a schedule from your real deadlines", run: () => navigate("goals") },
+    { id: "study", label: "Start a study session", hint: "Practise the concept you are weakest on", run: () => navigate("learn") },
+    { id: "open-build", label: "Open Build", hint: "Write and run code beside your material", run: () => navigate("code") },
+    { id: "review", label: "Review proposals", hint: "Approve or reject pending changes", run: () => navigate("activity"), ...(pendingProposals ? { badge: `(${pendingProposals})` } : {}) },
+    { id: "settings", label: "Open settings", hint: "Account, appearance, AI, connections, privacy", run: () => navigate("account") },
+  ], [assistant, navigate, pageContext, pendingProposals]);
+
   return (
+    <AssistantProvider value={assistant}>
     <div className="app-shell">
       <aside
         ref={sidebarRef}
@@ -368,7 +426,13 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
           <button ref={openNavigationRef} className="icon-button mobile-only" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Menu size={20} /></button>
           <div className="location-label"><span>Continuum</span><strong>{meta.title}</strong></div>
           <button className="search-button" aria-label="Search workspace" onClick={() => setCommandOpen(true)}><Search size={17} /><span>Search workspace</span><kbd>⌘K</kbd></button>
-          <div className="topbar-right"><ThemeToggle /><span className="privacy-state"><i />Saved</span></div>
+          <div className="topbar-right">
+            <button className={panelOpen ? "topbar-ask active" : "topbar-ask"} onClick={() => setPanelOpen(!panelOpen)} aria-pressed={panelOpen} aria-label="Ask Continuum about this page">
+              <Sparkles size={16} /><span>Ask</span><kbd>⌘J</kbd>
+            </button>
+            <ThemeToggle />
+            <span className="privacy-state"><i />Saved</span>
+          </div>
         </header>
 
         <div className="content-wrap">
@@ -389,7 +453,16 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
         <button className={moreActive ? "active" : ""} onClick={() => setMobileNav(true)} aria-label={pendingProposals ? `More sections, ${pendingProposals} pending in Review` : "More sections"}><Menu size={19} /><span>More</span>{pendingProposals ? <i className="nav-dot" aria-hidden="true" /> : null}</button>
       </nav>
 
-      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} state={state} onNavigate={navigate} />
+      {state ? <AssistantPanel open={panelOpen} onOpenChange={setPanelOpen} state={state} /> : null}
+
+      <CommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        actions={paletteActions}
+        goals={sidebarGoals.map((goal) => ({ id: String(goal.id ?? ""), title: String(goal.title ?? "Untitled goal") }))}
+        projects={(state?.projects ?? []).map((project) => ({ id: String(project.id ?? ""), title: String(project.title ?? "Untitled project") }))}
+        onNavigate={navigate}
+      />
 
       <Dialog.Root open={shortcutsOpen} onOpenChange={setShortcutsOpen}>
         <Dialog.Portal>
@@ -398,10 +471,9 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
             <Dialog.Title>Keyboard shortcuts</Dialog.Title>
             <Dialog.Description>Available from anywhere in the workspace.</Dialog.Description>
             <dl>
-              <div><dt><kbd>⌘K</kbd></dt><dd>Jump to any section, goal, task, project, or receipt</dd></div>
-              <div><dt><kbd>⌘↵</kbd></dt><dd>Run your program in Code</dd></div>
-              <div><dt><kbd>Esc</kbd></dt><dd>Stop a running program, or close a panel</dd></div>
-              <div><dt><kbd>?</kbd></dt><dd>Open this sheet</dd></div>
+              {SHORTCUTS.map((shortcut) => (
+                <div key={shortcut.keys}><dt><kbd>{shortcut.keys}</kbd></dt><dd>{shortcut.description}</dd></div>
+              ))}
             </dl>
             <Dialog.Close className="button button-secondary">Close</Dialog.Close>
           </Dialog.Content>
@@ -432,68 +504,20 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
 
       {toast ? <div className="toast" role="status"><span className="toast-icon">✓</span><span>{toast}</span><button onClick={() => setToast(null)} aria-label="Dismiss"><X size={16} /></button></div> : null}
     </div>
+    </AssistantProvider>
   );
 }
 
 /**
- * `href` wins over `view` when present. Settings segments are sub-paths of one
- * view, so navigating by view alone would land every one of them on the default
- * segment and cost a third click (AC-ST3).
+ * §8.8: the `?` sheet is the single source of truth for shortcuts, generated
+ * from this one constant so a binding cannot exist without being documented.
  */
-type SearchAction = { id: string; label: string; hint: string; view: WorkspaceView; href?: Route };
-
-function rowString(row: Record<string, unknown>, key: string) {
-  return typeof row[key] === "string" ? row[key] : undefined;
-}
-
-function workspaceActions(state: WorkspaceState | undefined): SearchAction[] {
-  const destinations: SearchAction[] = navGroups.flatMap((group) => group.items.map((item) => ({ id: `view-${item.id}`, label: item.label, hint: workspaceMeta[item.id].description, view: item.id })));
-  // One entry per settings segment, replacing the single "Settings" destination
-  // that made every segment a three-click journey.
-  const settings: SearchAction[] = settingsDestinations.map((entry) => ({
-    id: `settings-${entry.segment}`,
-    label: entry.label,
-    hint: entry.description,
-    view: "account" as const,
-    href: entry.href,
-  }));
-  if (!state) return [...destinations.filter((item) => item.view !== "account"), ...settings];
-  const goals = state.goals.map((goal) => ({ id: `goal-${rowString(goal, "id")}`, label: rowString(goal, "title") ?? "Untitled goal", hint: "Goal", view: "goals" as const }));
-  const tasks = state.tasks.map((task) => ({ id: `task-${rowString(task, "id")}`, label: rowString(task, "title") ?? "Untitled task", hint: "Task", view: "goals" as const }));
-  const projects = state.projects.map((project) => ({ id: `project-${rowString(project, "id")}`, label: rowString(project, "title") ?? "Untitled project", hint: "Research project", view: "research" as const }));
-  const receipts = state.receipts.map((receipt) => ({ id: `receipt-${rowString(receipt, "id")}`, label: rowString(receipt, "summary") ?? "Outcome receipt", hint: "Memory receipt", view: "memory" as const }));
-  return [...destinations.filter((item) => item.view !== "account"), ...settings, ...goals, ...tasks, ...projects, ...receipts];
-}
-
-function CommandPalette({ open, onOpenChange, state, onNavigate }: { open: boolean; onOpenChange: (open: boolean) => void; state: WorkspaceState | undefined; onNavigate: (view: WorkspaceView) => void }) {
-  const router = useRouter();
-  const [query, setQuery] = useState("");
-  const actions = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return workspaceActions(state).filter((item) => !needle || `${item.label} ${item.hint}`.toLowerCase().includes(needle)).slice(0, 12);
-  }, [query, state]);
-
-  return (
-    <Dialog.Root open={open} onOpenChange={(next) => { onOpenChange(next); if (!next) setQuery(""); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="command-overlay" />
-        <Dialog.Content className="command-panel" aria-describedby="command-description">
-          <Dialog.Title className="sr-only">Search Continuum</Dialog.Title>
-          <Dialog.Description className="sr-only" id="command-description">Search sections, goals, tasks, projects, and outcome receipts.</Dialog.Description>
-          <div className="command-input"><Search size={19} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sections, goals, tasks, and projects" /><Dialog.Close aria-label="Close search"><X size={17} /></Dialog.Close></div>
-          <div className="command-results">
-            <p>{query ? "Matches" : "Workspace"}</p>
-            {actions.map((action) => <button key={action.id} onClick={() => {
-              // A sub-path is a real route, so it needs a router navigation —
-              // the view switcher only rewrites history for shell-owned views.
-              if (action.href) { onOpenChange(false); router.push(action.href); return; }
-              onNavigate(action.view);
-            }}><span>{action.label}</span><small>{action.hint}</small></button>)}
-            {!actions.length ? <div className="command-empty"><Search size={20} /><span>No workspace item matches “{query}”.</span></div> : null}
-          </div>
-          <footer><span><kbd>esc</kbd> close</span><span>Search opens the matching workspace; it never changes your data.</span></footer>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
-}
+const SHORTCUTS = [
+  { keys: "⌘K", description: "Find any goal, source, paper, conversation, or concept — or run a command" },
+  { keys: "⌘J", description: "Ask Continuum about the page you are on" },
+  { keys: "⌘↵", description: "Run your program in Build, or send a message" },
+  { keys: "⇧↵", description: "New line in the composer" },
+  { keys: "↑", description: "Edit your last message from an empty composer" },
+  { keys: "Esc", description: "Stop a run or a response, or close the topmost panel" },
+  { keys: "?", description: "Open this sheet" },
+] as const;
