@@ -17,7 +17,7 @@ import { chromium } from "@playwright/test";
 const BASE = process.argv[2] ?? process.env.BASE_URL ?? "http://localhost:3000";
 
 /** §7.1's addresses, plus the public ones. */
-const ROUTES = [
+const ALL_ROUTES = [
   { path: "/", auth: false },
   { path: "/login", auth: false },
   { path: "/privacy", auth: false },
@@ -36,8 +36,14 @@ const ROUTES = [
   { path: "/settings/account", auth: true },
   { path: "/settings/connections", auth: true },
   { path: "/settings/privacy", auth: true },
-  { path: "/dev/kit", auth: true },
+  // Dev-only by design (§20 Phase 1). It 404s on a deployment, which is the
+  // correct behaviour, so it is only swept against a local server.
+  { path: "/dev/kit", auth: true, devOnly: true },
 ];
+
+// A dev-only route 404s on a deployment, which is correct, so it is swept only
+// against a local server.
+const ROUTES = ALL_ROUTES.filter((route) => !route.devOnly || BASE.includes("localhost"));
 
 const WIDTHS = [320, 375, 1440];
 const THEMES = ["light", "dark"];

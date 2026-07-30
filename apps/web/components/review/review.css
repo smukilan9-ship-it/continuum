@@ -30,6 +30,15 @@
 .diff-row { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: var(--s-3); padding: var(--s-2) 0; border-top: 1px solid var(--line); }
 .diff-row dt { color: var(--ink-3); font-size: var(--t-small); }
 .diff-row dd { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-2); font-size: var(--t-small); }
+/* A before-and-after is two values that can each be a sentence, so at a phone
+   width the fixed label column plus an unbreakable value pushed /review to
+   599px inside a 375px viewport. Below 700px the label sits above its values
+   and long values break rather than widening the page (§19.7). */
+@media (max-width: 700px) {
+  .diff-row { grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }
+}
+.diff-row dd { overflow-wrap: anywhere; }
+.diff-row del, .diff-row ins, .diff-same { max-width: 100%; overflow-wrap: anywhere; }
 .diff-row del { color: var(--ink-3); background: var(--danger-surface); padding: 0 var(--s-1); border-radius: var(--r-sm); text-decoration: line-through; }
 .diff-row ins { color: var(--ink); background: var(--success-surface); padding: 0 var(--s-1); border-radius: var(--r-sm); text-decoration: none; }
 .diff-arrow { color: var(--ink-3); }
