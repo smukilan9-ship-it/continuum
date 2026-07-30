@@ -426,11 +426,13 @@ not `easy`. Correct but unable to explain it back is `hard`.
 card back to a one-day interval and discards everything learned about it. That is
 punishing, and it throws away real information.
 
-$$e' = \mathrm{clamp}(e + \delta_g,\ 1.3,\ 3.2), \qquad
+$$e' = \mathrm{clamp}(e + \delta,\ 1.3,\ 3.2), \qquad
 \delta = \{\text{forgot}: -0.24,\ \text{hard}: -0.14,\ \text{good}: 0,\ \text{easy}: +0.12\}$$
 
-$$I'_{\text{lapse}} = \max(1,\ \mathrm{round}(I/2)), \qquad
-I'_{\text{pass}} = \mathrm{clamp}(\mathrm{round}(I \cdot e' \cdot m_g),\ 1,\ 180)$$
+$$\text{lapse}: \quad I' = \max(1,\ \mathrm{round}(I/2))$$
+
+$$\text{pass}: \quad I' = \mathrm{clamp}(\mathrm{round}(I \cdot e' \cdot m),\ 1,\ 180), \qquad
+m = \{\text{hard}: 0.6,\ \text{good}: 1,\ \text{easy}: 1.15\}$$
 
 Every interval ships with a sentence, because a scheduler that says "review this
 Tuesday" and cannot say why is asking for trust it has not earned:
