@@ -61,6 +61,32 @@ export type SourceAssignment =
   | { status: "source_not_found" }
   | { status: "project_not_found" };
 
+/**
+ * Words from the user's own titles that are distinctive enough to identify a
+ * question as being about their work.
+ *
+ * Everything short or generic is dropped, because the cost of a false positive
+ * is retrieving on a question that did not need it. "OASIS", "ANHIR" and
+ * "exoplanet" survive; "the", "for", "class", "notes" and "project" do not.
+ */
+const VOCABULARY_STOPWORDS = new Set([
+  "the", "and", "for", "with", "from", "into", "your", "you", "our", "their", "this", "that",
+  "notes", "note", "project", "projects", "goal", "goals", "source", "sources", "reference",
+  "class", "study", "learn", "learning", "work", "plan", "review", "draft", "final", "new",
+  "using", "about", "full", "part", "one", "two", "raise", "score", "build", "master", "complete",
+  "publish", "technical", "connectivity", "candidate", "across", "between", "python", "code",
+]);
+
+function distinctiveTerms(titles: string[]): string[] {
+  const terms = new Set<string>();
+  for (const title of titles) {
+    for (const word of title.toLowerCase().replace(/[^a-z0-9]+/g, " ").split(" ")) {
+      if (word.length >= 4 && word.length <= 24 && !VOCABULARY_STOPWORDS.has(word)) terms.add(word);
+    }
+  }
+  return [...terms].slice(0, 120);
+}
+
 export interface Store {
   readonly kind: "memory" | "neon";
   readonly userId: string;
@@ -116,6 +142,11 @@ export interface Store {
    * asked a question about them.
    */
   searchSourcePassages(query: string, limit?: number): Promise<StoredSourceChunk[]>;
+  /**
+   * Distinctive words from the names of the user's goals, projects and sources,
+   * used to tell "about my work" from "general knowledge" (§11.3 step 1).
+   */
+  workspaceVocabulary(): Promise<string[]>;
   searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }): Promise<StoredMemoryChunk[]>;
   searchWorkspace(input: { query: string; kinds?: string[]; limit?: number }): Promise<WorkspaceSearchHit[]>;
   /** §9.9 AC-CX3 — permanently excludes one remembered record from retrieval. */
@@ -671,6 +702,7 @@ class MemoryStore implements Store {
     const needle = query.toLowerCase().slice(0, 200);
     return demoStore.chunks.filter((chunk) => chunk.text.toLowerCase().includes(needle)).slice(0, limit);
   }
+  async workspaceVocabulary() { return distinctiveTerms(demoStore.sources.map((source) => source.title)); }
   async searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }) {
     const query = input.query.toLowerCase();
     return demoStore.memoryChunks.filter((chunk) => current(chunk) && (!input.goalId || chunk.goalId === input.goalId) && (!input.projectId || chunk.projectId === input.projectId) && (!input.types?.length || input.types.includes(chunk.kind)) && chunk.content.toLowerCase().includes(query)).slice(0, input.limit ?? 8);
@@ -989,6 +1021,18 @@ class NeonStore implements Store {
   async assignSourceToProject(sourceId: string, projectId: string | null) { return this.repo.assignSourceToProject(sourceId, this.userId, projectId); }
   async getSourceOriginal(sourceId: string) { const source = await this.repo.getSourceOriginal(sourceId, this.userId); return source ? { id: source.id, title: source.title, mimeType: source.mimeType, ...(source.storagePath ? { storagePath: source.storagePath } : {}) } : undefined; }
   async vectorSearch(embedding: number[], limit: number) { return this.repo.vectorSearch(embedding, limit, this.userId); }
+  async workspaceVocabulary() {
+    const [goalRows, projectRows, sourceRows] = await Promise.all([
+      this.repo.listGoals(this.userId).catch(() => []),
+      this.repo.listProjects(this.userId).catch(() => []),
+      this.repo.listSources(this.userId).catch(() => []),
+    ]);
+    return distinctiveTerms([
+      ...goalRows.map((row) => String((row as { title?: unknown }).title ?? "")),
+      ...projectRows.map((row) => String((row as { title?: unknown }).title ?? "")),
+      ...sourceRows.map((row) => String((row as { title?: unknown }).title ?? "")),
+    ]);
+  }
   async searchSourcePassages(query: string, limit = 6) {
     const trimmed = query.trim().slice(0, 500);
     if (!trimmed) return [];
@@ -998,13 +1042,37 @@ class NeonStore implements Store {
         if (hits.length) return hits;
       } catch { /* Fall through to lexical, same as memory retrieval. */ }
     }
-    // Lexical fallback. Not a substitute for meaning, but it keeps a
-    // deployment with no embedding key from silently having no source
-    // retrieval at all — which is the state this method was written to end.
-    const lexical = await this.repo.searchResearch(this.userId, trimmed, limit * 2);
-    return lexical
-      .filter((row): row is typeof row & { kind: "source_passage" } => (row as { kind?: string }).kind === "source_passage")
-      .slice(0, limit) as unknown as StoredSourceChunk[];
+    // Lexical fallback, for a deployment with no embedding key.
+    //
+    // Term by term, not phrase by phrase. `searchResearch` does a single
+    // `ILIKE '%…%'`, so handing it a whole question asks the database for a
+    // document containing that exact sentence — which no document ever
+    // contains. The first version of this fallback did precisely that and
+    // therefore never matched anything, which is the same silence it was
+    // written to end.
+    const words = trimmed
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .split(" ")
+      .filter((word) => word.length >= 5)
+      // Longest first: the rarest word in a question is usually the longest.
+      .sort((left, right) => right.length - left.length)
+      .slice(0, 4);
+    if (!words.length) return [];
+    const perTerm = await Promise.all(words.map((word) => this.repo.searchResearch(this.userId, word, limit).catch(() => [])));
+    const seen = new Set<string>();
+    const hits: unknown[] = [];
+    // Round-robin, so one common term cannot fill the result set alone.
+    for (let rank = 0; rank < limit; rank += 1) {
+      for (const rows of perTerm) {
+        const row = rows[rank] as { kind?: string; id?: string } | undefined;
+        if (!row || row.kind !== "source_passage" || !row.id || seen.has(row.id)) continue;
+        seen.add(row.id);
+        hits.push(row);
+        if (hits.length >= limit) return hits as StoredSourceChunk[];
+      }
+    }
+    return hits as StoredSourceChunk[];
   }
   async searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }) {
     let embedding: number[] | undefined;

@@ -92,12 +92,43 @@ export interface ClassifyInput {
   hasPageContext: boolean;
   /** Titles already referenced earlier in this conversation. */
   conversationEntities?: string[];
+  /**
+   * Distinctive words drawn from the names of things in the user's workspace —
+   * their goals, projects and source titles.
+   *
+   * Without this the classifier decides whether the user's material is relevant
+   * without ever looking at the user's material. "Why can't OASIS claim
+   * single-cell co-expression?" opens with "why", names no workspace noun, and
+   * uses no possessive, so it read as general knowledge and retrieved nothing —
+   * even though OASIS is the title of the asker's own project, and the answer
+   * was sitting in a passage they had indexed. The assistant invented a
+   * different OASIS instead.
+   *
+   * A proper noun the user has named something after is the strongest possible
+   * signal that a question is about their work, and it costs one small query to
+   * know it.
+   */
+  workspaceVocabulary?: string[];
 }
 
 /**
  * The deterministic pass. Returns a classification with a confidence the caller
  * uses to decide whether a model consult is worth 1.5 seconds.
  */
+/**
+ * Whether the message contains a distinctive term from the user's own titles.
+ *
+ * Short and common words are dropped by `workspaceVocabulary()` before they get
+ * here, so this cannot fire on "the" or "data". Matching is word-boundary and
+ * case-insensitive: "OASIS" in a title matches "oasis" in a question, but not
+ * "oases".
+ */
+function namesWorkspaceEntity(message: string, vocabulary?: string[]): boolean {
+  if (!vocabulary?.length) return false;
+  const haystack = ` ${message.toLowerCase().replace(/[^a-z0-9]+/g, " ")} `;
+  return vocabulary.some((term) => haystack.includes(` ${term} `));
+}
+
 export function classifyHeuristic(input: ClassifyInput): Classification {
   const message = input.message.trim();
 
@@ -131,6 +162,13 @@ export function classifyHeuristic(input: ClassifyInput): Classification {
 
   if (possessive) {
     return classification("about_my_work", 0.75, "First-person reference to the user's own material.");
+  }
+
+  // Before concluding a question is general: does it name something the user
+  // has named? This sits above the general-knowledge branches deliberately —
+  // those are the ones it exists to correct.
+  if (namesWorkspaceEntity(message, input.workspaceVocabulary)) {
+    return classification("about_my_work", 0.9, "Names something in the user's workspace.");
   }
 
   // A definition question with no personal reference needs no retrieval.

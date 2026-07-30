@@ -39,6 +39,7 @@ function fakeStore(overrides: Partial<Record<keyof Store, unknown>> = {}) {
         { id: "mchunk_1", kind: "project_decision", content: "Decided on cross-marker association.", occurredAt: new Date().toISOString(), importance: 0.8, tokenEstimate: 20, sourceEventIds: [], metadata: {}, score: 0.82 },
       ];
     },
+    async workspaceVocabulary() { return ["oasis", "anhir", "multiplexed"]; },
     async searchSourcePassages() {
       calls.searchSourcePassages += 1;
       return [{ id: "chunk_1", sourceId: "source_1", sourceTitle: "Stack et al. 2014", passage: 3, text: "Serial sections are different physical slices, so the two markers can never be the same cell.", contentHash: "h", sourceVersion: 1, deleted: false, reference: "Stack et al. 2014 · passage 3" }];
@@ -281,5 +282,66 @@ describe("the user's own passages are retrieved", () => {
     const { store, calls } = fakeStore();
     await orchestrate({ store, message: "hi", attachmentIds: [], history: [] });
     expect(calls.searchSourcePassages).toBe(0);
+  });
+});
+
+/**
+ * The classifier used to decide whether the user's material was relevant
+ * without ever looking at the user's material.
+ *
+ * "Why can't OASIS claim single-cell co-expression?" opens with "why", contains
+ * no workspace noun and no possessive, so it read as general knowledge and
+ * retrieved nothing — even though OASIS is the title of the asker's own project
+ * and the answer sat in a passage they had indexed. Production answered by
+ * inventing a different OASIS, "a database that provides information on the
+ * co-expression of genes across multiple cells", and disclosed that nothing in
+ * the workspace matched.
+ *
+ * A proper noun the user has named something after is the strongest available
+ * signal that a question is about their work.
+ */
+describe("a question that names something the user named", () => {
+  it("is about their work, whatever verb it opens with", async () => {
+    const { store, calls } = fakeStore();
+    const result = await orchestrate({
+      store,
+      message: "Why can't OASIS claim single-cell co-expression?",
+      attachmentIds: [],
+      history: [],
+    });
+    expect(result.classification.requestClass).toBe("about_my_work");
+    expect(calls.searchSourcePassages).toBe(1);
+  });
+
+  it("still treats a genuinely general question as general", async () => {
+    const { store, calls } = fakeStore();
+    const result = await orchestrate({
+      store,
+      message: "What is a confidence interval?",
+      attachmentIds: [],
+      history: [],
+    });
+    expect(result.classification.requestClass).toBe("general_knowledge");
+    expect(calls.searchSourcePassages).toBe(0);
+    expect(result.usedContext).toEqual([]);
+  });
+
+  it("does not fire on a substring of a longer word", async () => {
+    // "oasis" is in the vocabulary; "oases" must not match it.
+    const { store } = fakeStore();
+    const result = await orchestrate({ store, message: "What are oases?", attachmentIds: [], history: [] });
+    expect(result.classification.requestClass).toBe("general_knowledge");
+  });
+
+  it("degrades to the previous behaviour if the vocabulary query fails", async () => {
+    const { store, calls } = fakeStore({ workspaceVocabulary: async () => { throw new Error("db down"); } });
+    const result = await orchestrate({ store, message: "Why can't OASIS claim single-cell co-expression?", attachmentIds: [], history: [] });
+    // No vocabulary, so it falls back to the old reading: the heuristic cannot
+    // place this question and defaults to one targeted pass. The point is that
+    // a failed vocabulary query degrades rather than throws — and that the
+    // fallback is the *cautious* direction, so retrieval still happens.
+    expect(result.classification.requestClass).toBe("about_my_work");
+    expect(result.classification.confidence).toBeLessThan(0.9);  // lower than a vocabulary match
+    expect(calls.searchSourcePassages).toBe(1);
   });
 });

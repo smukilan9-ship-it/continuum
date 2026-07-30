@@ -224,11 +224,24 @@ export async function orchestrate(input: OrchestrateInput & { mode?: "auto" | "f
     .filter(Boolean);
 
   // Step 1 — classify.
+  //
+  // The vocabulary is fetched first because classification consumes it, and it
+  // is what stops a question that names the user's own project from being
+  // dismissed as general knowledge. One small select of titles; if it fails,
+  // classification falls back to exactly its previous behaviour.
+  const workspaceVocabulary = await withDeadline(
+    "workspace vocabulary",
+    DEADLINES.retrieval,
+    input.store.workspaceVocabulary(),
+    [],
+    degraded,
+  );
   const classification = classifyHeuristic({
     message: input.message,
     hasAttachments: input.attachmentIds.length > 0,
     hasPageContext: Boolean(input.pageContext),
     conversationEntities,
+    workspaceVocabulary,
   });
   const taskClass = taskClassFor(classification, input.mode ?? "auto");
   const base = {
