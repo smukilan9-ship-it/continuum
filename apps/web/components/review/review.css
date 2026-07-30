@@ -64,7 +64,12 @@
 @media (max-width: 600px) {
   .review { padding: var(--s-6) var(--s-4) var(--s-12); }
   .diff-row { grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }
-  .proposal-actions .button { flex: 1 1 100%; }
+  /* `flex: 1 1 100%` sets the basis but leaves min-width at auto, so a button
+     whose label is wider than the card still refuses to shrink and pushes the
+     page past the viewport — measured at 599px inside 375px on /review once the
+     queue had proposals in it. */
+  .proposal-actions { flex-direction: column; align-items: stretch; }
+  .proposal-actions .button { width: 100%; min-width: 0; flex: 0 0 auto; }
   .event-days li { grid-template-columns: minmax(0, 1fr) auto; }
   .event-days li .status-chip { grid-column: 1 / -1; justify-self: start; }
 }
