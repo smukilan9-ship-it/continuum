@@ -773,7 +773,7 @@ export class NeonRepository {
       };
     }
     if (view === "learn") {
-      const [goalRows, taskRows, dependencyRows, masteryRows, activityRows, questionBankRows, receiptRows, bankScores] = await Promise.all([
+      const [goalRows, taskRows, dependencyRows, masteryRows, activityRows, questionBankRows, receiptRows, bankScores, sourceRows, paperRows] = await Promise.all([
         userGoals(), userTasks(),
         this.listTaskDependencies(userId),
         // Joined to `concepts` so each state carries the concept's real title.
@@ -788,6 +788,12 @@ export class NeonRepository {
         this.db.select().from(questionBanks).where(and(eq(questionBanks.userId, userId), eq(questionBanks.deleted, false))).orderBy(desc(questionBanks.updatedAt)).limit(20),
         userReceipts(5),
         this.bestBankScores(userId),
+        // Study's Material column reads `sources` and `papers`. This view
+        // returned neither, so the panel was permanently empty and told a
+        // learner with three attached documents that they had none.
+        this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).orderBy(desc(sources.updatedAt)).limit(20),
+        this.db.select({ paper: papers }).from(papers).innerJoin(projects, eq(papers.projectId, projects.id))
+          .where(and(eq(projects.userId, userId), eq(papers.deleted, false))).orderBy(desc(papers.updatedAt)).limit(20),
       ]);
       return {
         ...empty,
@@ -798,6 +804,8 @@ export class NeonRepository {
         resourceActivities: activityRows,
         questionBanks: questionBankRows.map((bank) => publicQuestionBankSummary(bank, bankScores.get(bank.id))),
         receipts: receiptRows,
+        sources: sourceRows.map(publicSourceMetadata),
+        papers: paperRows.map(({ paper }) => paper),
       };
     }
     if (view === "research") {
