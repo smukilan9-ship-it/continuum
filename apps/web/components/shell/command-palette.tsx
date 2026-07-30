@@ -6,6 +6,7 @@ import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./shell.css";
+import { useReturnFocus } from "@/components/ui/use-return-focus";
 import { searchKindSection, settingsDestinations, workspaceMeta, workspacePath, type SearchHit, type WorkspaceView } from "@/lib/workspace-routes";
 
 /** A runnable verb, always ranked above objects when the query matches it. */
@@ -60,6 +61,8 @@ export function CommandPalette({
   const [failed, setFailed] = useState(false);
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  // `Esc` must put the caret back where the user left it (§8.4, §18.2).
+  const returnFocus = useReturnFocus(open);
 
   useEffect(() => { if (!open) { setQuery(""); setRemote([]); setActive(0); setFailed(false); } }, [open]);
   useEffect(() => { setActive(0); }, [query]);
@@ -159,7 +162,7 @@ export function CommandPalette({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="command-overlay" />
-        <Dialog.Content className="command-panel" aria-describedby="command-description" onKeyDown={onKeyDown}>
+        <Dialog.Content className="command-panel" aria-describedby="command-description" onKeyDown={onKeyDown} onCloseAutoFocus={returnFocus.onCloseAutoFocus}>
           <Dialog.Title className="sr-only">Search Continuum</Dialog.Title>
           <Dialog.Description className="sr-only" id="command-description">
             Search actions, goals, projects, sources, papers, conversations, and concepts.

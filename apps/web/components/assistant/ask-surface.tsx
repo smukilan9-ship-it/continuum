@@ -69,15 +69,22 @@ export function AskSurface({ state, showToast, onRefresh }: {
       <section className="assistant-workspace">
         <header className="assistant-topline">
           <div>
-            {active ? (
-              <button
-                className="assistant-title"
-                onClick={() => setRenaming(active)}
-                aria-label={`Rename ${active.title}`}
-              >
-                {active.title}
-              </button>
-            ) : <span className="assistant-title">New conversation</span>}
+            {/* The conversation is what this page is about, so its name is the
+                page's `<h1>` (§19.1: every route has exactly one). Before this
+                the title was a bare button and `/ask` had no h1 at all as soon
+                as a conversation existed — axe reported `page-has-heading-one`
+                on every visit that was not the empty state. */}
+            <h1 className="assistant-title-heading">
+              {active ? (
+                <button
+                  className="assistant-title"
+                  onClick={() => setRenaming(active)}
+                  aria-label={`Rename ${active.title}`}
+                >
+                  {active.title}
+                </button>
+              ) : <span className="assistant-title">New conversation</span>}
+            </h1>
             {active?.obsidianSync ? (
               <Badge tone={active.obsidianSync.status === "synced" ? "green" : active.obsidianSync.status === "conflict" ? "orange" : "neutral"}>
                 Obsidian: {active.obsidianSync.status === "synced" ? "synced" : active.obsidianSync.status === "conflict" ? "needs review" : "pending"}

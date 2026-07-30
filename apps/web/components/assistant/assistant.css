@@ -121,6 +121,8 @@
   background: var(--surface);
 }
 .assistant-topline > div { display: flex; align-items: center; gap: var(--s-2); }
+/* Semantics only — the title keeps the size it had as a bare button. */
+.assistant-title-heading { display: flex; min-width: 0; margin: 0; font: inherit; letter-spacing: inherit; }
 
 .assistant-thread { width: 100%; max-width: 840px; margin: 0 auto; padding: var(--s-8) var(--s-6) var(--s-12); overflow-y: auto; }
 .assistant-thread.has-messages { padding-top: var(--s-5); }
@@ -586,7 +588,11 @@
 }
 .topbar-ask:hover { color: var(--ink); border-color: var(--line-strong); }
 .topbar-ask.active { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
-.topbar-ask kbd { color: inherit; opacity: .7; font-size: var(--t-micro); }
+/* No opacity. At 70% the inherited `--ink-2` blended to #80827b on white, which
+   axe measured at 3.89:1 for 11px text — a serious violation on every app route
+   in the light theme. `color: inherit` also keeps the active state legible on
+   the accent fill, which a hardcoded ink token would not. */
+.topbar-ask kbd { color: inherit; font-size: var(--t-micro); }
 
 @media (max-width: 900px) {
   .topbar-ask span { display: none; }

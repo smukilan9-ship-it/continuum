@@ -20,7 +20,7 @@
  */
 import type { ScheduleBlock } from "@continuum/schemas";
 import { GripVertical } from "lucide-react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import {
   blockPosition,
   dayKey,
@@ -62,6 +62,22 @@ export function WeekGrid({
   onResizeStart?: (event: ReactPointerEvent<HTMLButtonElement>, block: PlanBlock) => void;
   onMovePointerDown?: (event: ReactPointerEvent<HTMLElement>, block: PlanBlock) => void;
 }) {
+  const movingRef = useRef<HTMLLIElement | null>(null);
+
+  /**
+   * Each day is its own column, so shifting a block with `←`/`→` moves it to a
+   * different parent — React unmounts and remounts the element, and the browser
+   * drops focus to `<body>`. The keyboard move then died after one horizontal
+   * step: the next arrow and the Enter that drops the block went nowhere, and
+   * the block was stranded mid-move (AC-PL2). Refocusing the in-flight element
+   * after each commit keeps the whole gesture on the keyboard.
+   */
+  useEffect(() => {
+    if (!movingId) return;
+    const node = movingRef.current;
+    if (node && node !== document.activeElement) node.focus({ preventScroll: true });
+  });
+
   return (
     <div className={draft ? "plan-grid plan-grid-draft" : "plan-grid"}>
       <div className="plan-grid-hours" aria-hidden="true">
@@ -106,6 +122,7 @@ export function WeekGrid({
                     return (
                       <li
                         key={block.id}
+                        ref={movingId === block.id ? movingRef : undefined}
                         className={[
                           "plan-block",
                           overlapping ? "is-overlapping" : "",

@@ -93,7 +93,11 @@ export function Table<T>({
   className?: string;
 }) {
   return (
-    <div className={cn("table-scroll", className)}>
+    // A region that scrolls horizontally must be reachable by keyboard
+    // (WCAG 2.1.1) — axe reports `scrollable-region-focusable` as serious
+    // otherwise, and a keyboard user simply cannot see the right-hand columns.
+    // The caption names the region so the stop in the tab order is explained.
+    <div className={cn("table-scroll", className)} tabIndex={0} role="region" aria-label={caption}>
       <table className="table">
         <caption className="sr-only">{caption}</caption>
         <thead>

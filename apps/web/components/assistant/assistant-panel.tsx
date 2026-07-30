@@ -65,10 +65,25 @@ export function AssistantPanel({ open, onOpenChange, state }: {
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); onOpenChange(false); }
+      if (event.key !== "Escape") return;
+      /**
+       * §8.8: Escape closes the **topmost** layer only. This listener is on
+       * `window`, so without this guard dismissing the ⌘K palette — or any
+       * modal, side panel or drawer opened from inside the panel — also closed
+       * the assistant underneath it, and the user lost the conversation they
+       * were reading. Every layer that can sit above this one is a Radix dialog
+       * or a popper, both of which are identifiable in the document.
+       */
+      if (document.querySelector("[role='dialog'], [role='alertdialog'], [data-radix-popper-content-wrapper]")) return;
+      event.preventDefault();
+      onOpenChange(false);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // Capture on `window`, which runs before Radix's own document-level
+    // capture listener. React 19 flushes discrete events synchronously, so by
+    // the bubble phase the layer above has already been unmounted and the
+    // check above would find nothing to defer to.
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [open, onOpenChange]);
 
   const onPointerMove = useCallback((event: PointerEvent) => {

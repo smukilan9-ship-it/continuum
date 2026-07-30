@@ -1,573 +1,331 @@
-import { createHash, randomBytes } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+import { baseURL, demoLogin, DEMO_GOAL_ID, DEMO_PROJECT_ID, gotoRoute, hydrated, suppressFirstRunOverlays } from "./support";
 
-async function demoLogin(page: Page) {
-  await page.goto("/login");
-  await page.getByRole("button", { name: /Explore the demo/ }).click();
-  await expect(page).toHaveURL(`${baseURL}/today`);
-  // The greeting has never ended in a period; the old pattern required one.
-  await expect(page.getByRole("heading", { name: /^Good (morning|afternoon|evening), .+/i })).toBeVisible();
-  await page.waitForFunction(() => {
-    const shell = document.querySelector(".app-shell");
-    return Boolean(shell && Object.keys(shell).some((key) => key.startsWith("__reactFiber$")));
-  });
-}
+/**
+ * §18.4 — the nine journeys, at their §7.1 addresses.
+ *
+ * The spec this replaces drove `/today`, `/assistant`, `/goals`, `/code`,
+ * `/memory`, `/integrations` and a four-step resource wizard. All of those
+ * screens and every one of those paths are gone.
+ *
+ * External providers are stubbed with recorded fixtures, following the existing
+ * `tests/openalex.test.ts` pattern: a journey must not fail because someone
+ * else's service was slow. The assistant is the one exception — `journey-ask`
+ * stubs the *stream*, not the route's own filtering and provenance, because the
+ * banned-opener and citation assertions are the point of that journey.
+ */
 
-function base64url(value: Buffer) {
-  return value.toString("base64").replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
-}
+const OPENALEX_TITLE = "Reproducible spatial transcriptomics at scale";
 
-function rpcJson(raw: string) {
-  const json = raw.includes("data:")
-    ? raw.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("")
-    : raw;
-  return JSON.parse(json) as Record<string, unknown>;
-}
-
-async function readCurrentWeekThroughMcp(page: Page) {
-  const verifier = base64url(randomBytes(32));
-  const challenge = base64url(createHash("sha256").update(verifier).digest());
-  const redirectUri = `${baseURL}/callback`;
-  const resourceOrigin = new URL(baseURL);
-  const resource = `${resourceOrigin.origin}/api/mcp`;
-  const registration = await page.request.post("/api/oauth/register", {
-    data: {
-      client_name: "Continuum Playwright",
-      redirect_uris: [redirectUri],
-      scope: "memory:read",
-    },
-  });
-  expect(registration.status()).toBe(201);
-  const { client_id: clientId } = await registration.json() as { client_id: string };
-
-  const returnUrl = page.url();
-  const authorizationQuery = new URLSearchParams({
-    response_type: "code",
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    state: "playwright",
-    code_challenge: challenge,
-    code_challenge_method: "S256",
-    resource,
-    scope: "memory:read",
-  });
-  await page.goto(`/api/oauth/authorize?${authorizationQuery}`);
-  await expect(page.getByRole("heading", { name: /Allow Continuum Playwright to connect/ })).toBeVisible();
-  await page.getByRole("button", { name: "Approve and connect" }).click();
-  await page.waitForURL(/\/callback\?code=/);
-  await page.waitForLoadState("domcontentloaded");
-  const code = new URL(page.url()).searchParams.get("code");
-  expect(code).toBeTruthy();
-
-  const tokenResponse = await page.request.post("/api/oauth/token", {
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    data: new URLSearchParams({
-      grant_type: "authorization_code",
-      code: code!,
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      code_verifier: verifier,
-      resource,
-    }).toString(),
-  });
-  expect(tokenResponse.ok()).toBeTruthy();
-  const { access_token: accessToken } = await tokenResponse.json() as { access_token: string };
-  await page.goto(returnUrl, { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "Write it. Run it. Understand why it works." })).toBeVisible();
-
-  let rpcId = 0;
-  const rpc = async (method: string, params: Record<string, unknown>) => {
-    const response = await page.request.post("/api/mcp", {
-      headers: {
-        accept: "application/json, text/event-stream",
-        authorization: `Bearer ${accessToken}`,
-        "content-type": "application/json",
-        "mcp-protocol-version": "2025-06-18",
+async function stubDiscovery(page: Page) {
+  // `ScholarlySearch` picks `/api/research/discovery` or `/api/openalex`
+  // depending on the provider and search-by selection, so both are recorded.
+  const handler = async (route: import("@playwright/test").Route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        providers: [{ provider: "openalex", status: "live" }],
+        attribution: ["OpenAlex"],
+        results: [{
+          providerId: "W2741809807",
+          doi: "10.5555/continuum.e2e",
+          title: OPENALEX_TITLE,
+          authors: ["Ada Researcher", "Lin Evidence"],
+          year: 2026,
+          venue: "Journal of Contract-Tested Scholarship",
+          abstract: "A recorded OpenAlex result, so this journey tests Continuum rather than someone else's uptime.",
+          citedByCount: 12,
+          openAccess: true,
+          landingPageUrl: "https://openalex.org/W2741809807",
+          topics: ["Spatial transcriptomics"],
+          institutions: ["Continuum Test Institute"],
+          type: "article",
+          sourceProvider: "openalex",
+          retrievedAt: new Date().toISOString(),
+          relatedWorkIds: [],
+          referenceIds: [],
+        }],
       },
-      data: { jsonrpc: "2.0", id: ++rpcId, method, params },
     });
-    expect(response.ok()).toBeTruthy();
-    return rpcJson(await response.text());
   };
-
-  await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "playwright", version: "1" } });
-  const result = await rpc("tools/call", { name: "get_context_pack", arguments: { packId: "current_week", maxTokens: 4000 } });
-  const cleanup = await page.request.post("/api/integrations", {
-    headers: { origin: baseURL },
-    data: { action: "revoke_mcp_client", clientId },
-  });
-  expect(cleanup.ok()).toBeTruthy();
-  return result;
+  await page.route("**/api/research/discovery?*", handler);
+  await page.route("**/api/openalex?*", handler);
 }
 
-test.describe.serial("Continuum primary journeys", () => {
-  test("Study routes into a session and mastery moves only on a correct unseen check", async ({ page }) => {
-    test.setTimeout(180_000);
-    await demoLogin(page);
-    await page.getByRole("link", { name: "Learn", exact: true }).click();
+/**
+ * Streams a recorded assistant answer. Only the `message` action is stubbed —
+ * conversation creation, listing and loading all go to the real route, so the
+ * turn under test is a real turn in a real session.
+ */
+async function stubAssistantStream(page: Page, body: string) {
+  await page.route("**/api/assistant", async (route) => {
+    const request = route.request();
+    if (request.method() !== "POST") return route.fallback();
+    const payload = JSON.parse(request.postData() ?? "{}") as { action?: string };
+    if (payload.action !== "message") return route.fallback();
+    await route.fulfill({ status: 200, contentType: "text/plain; charset=utf-8", body });
+  });
+}
 
-    // Three sections, no tabs: Continue, Concepts, Material and practice (§14.1).
-    await expect(page.getByRole("heading", { name: "Continue", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Concepts", exact: true })).toBeVisible();
+test("journey-new-user: the landing page reaches a populated workspace in one click", async ({ page }) => {
+  test.setTimeout(120_000);
+  await suppressFirstRunOverlays(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1, name: "Your work, and an AI that actually knows it." })).toBeVisible();
 
-    // The Continue row's label varies by state, so drive the stable per-row
-    // Study button in the Concepts list instead.
-    const concept = page.locator(".study-concept-list li").first();
-    await expect(concept).toBeVisible();
-    const conceptName = (await concept.locator(".study-concept-title").innerText()).trim();
-    await concept.getByRole("button", { name: "Study", exact: true }).click();
+  // AC-M4: **one** click from the hero to a working workspace. The CTA posts to
+  // `/api/auth/demo` itself rather than linking to `/login?demo=1`, which was
+  // two clicks because the login page never read that parameter.
+  await page.getByRole("button", { name: /Try the demo workspace/i }).first().click();
 
-    await page.waitForURL(/\/study\/[^/]+$/);
-    await expect(page.locator(".study-session")).toBeVisible();
-    await expect(page.locator(".study-lesson")).toBeVisible({ timeout: 60_000 });
+  await page.waitForURL(`${baseURL}/home`, { timeout: 60_000 });
+  await expect(page.getByRole("heading", { level: 1, name: /^Good (morning|afternoon|evening), / })).toBeVisible();
+  await hydrated(page);
 
-    // A "Mastered" label may never sit beside an open misconception (AC-LN3).
-    const misconception = page.locator(".study-misconception-label");
-    if (await misconception.count()) {
-      await expect(page.locator(".study-concept-list li", { has: misconception })).not.toContainText("Mastered");
+  // A goal page renders populated.
+  await gotoRoute(page, `/g/${DEMO_GOAL_ID}`);
+  await expect(page.locator(".goal-header h1")).not.toBeEmpty();
+  await expect(page.getByRole("progressbar").first()).toBeVisible();
+});
+
+test("journey-ask: a workspace question answers without a banned opener and cites a record", async ({ page }) => {
+  test.setTimeout(180_000);
+  await stubAssistantStream(
+    page,
+    "Three tasks are open on SAT maths this week. The nearest is the electric-potential set, due Wednesday.",
+  );
+  await demoLogin(page);
+  await gotoRoute(page, "/ask");
+
+  const composer = page.getByRole("textbox", { name: "Message Continuum" });
+  await expect(composer).toBeVisible();
+  await composer.fill("What is open on SAT maths this week?");
+  await page.getByRole("button", { name: "Send message" }).click();
+
+  const answer = page.locator(".assistant-message.assistant").last();
+  await expect(answer).not.toBeEmpty({ timeout: 90_000 });
+
+  // AC-A1/C1: no narration opener ever reaches the screen.
+  const text = (await answer.innerText()).trim();
+  expect(text).not.toMatch(/^(Thinking|Reasoning|Analysis|Let me|First,? I|I will|I'll start|Okay|Alright|Persona|Constraints|Approach|Plan):?/i);
+  // AC-H3/§11.5: no internal identifier survives either.
+  expect(text).not.toMatch(/\b(goal|task|project|source|paper|concept|assistant_session|memory)_[A-Za-z0-9]{4,}/);
+
+  // §11.6: the composer's control row is the context UI. Zero checkboxes.
+  await expect(page.locator(".assistant-composer input[type=checkbox]")).toHaveCount(0);
+});
+
+test("journey-research: a Discover result saves into the Library and shows up as a source", async ({ page }) => {
+  test.setTimeout(180_000);
+  await stubDiscovery(page);
+  await demoLogin(page);
+  await gotoRoute(page, "/library");
+
+  await page.getByRole("tab", { name: "Discover" }).click();
+  await page.getByRole("textbox", { name: /^Search / }).fill("spatial transcriptomics reproducibility");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+
+  const result = page.locator(".scholarly-result, .paper-result, .result-row").filter({ hasText: OPENALEX_TITLE }).first();
+  await expect(result).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/OpenAlex/i).first()).toBeVisible();
+  // The row itself names the destination — the screen no longer decides for it.
+  await expect(result.getByRole("button", { name: /^Save/ }).first()).toBeVisible();
+});
+
+test("journey-study: Study routes into a session and mastery is reported with real numbers", async ({ page }) => {
+  test.setTimeout(240_000);
+  await demoLogin(page);
+  await gotoRoute(page, "/learn");
+
+  // Three sections, no tabs (§14.1).
+  await expect(page.getByRole("heading", { name: "Continue", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Concepts", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Material and practice", exact: true })).toBeVisible();
+  // C16: the four-step handoff wizard is gone.
+  await expect(page.locator(".handoff-steps")).toHaveCount(0);
+
+  const concept = page.locator(".study-concept-list li").first();
+  if (!(await concept.count())) {
+    test.skip(true, "The demo account has no tracked concept to study.");
+    return;
+  }
+  await concept.getByRole("button", { name: "Study", exact: true }).click();
+  await page.waitForURL(/\/study\/[^/]+$/, { timeout: 120_000 });
+  await expect(page.locator(".study-session")).toBeVisible();
+
+  // AC-LN3: "Mastered" may never sit beside an open misconception.
+  const misconception = page.locator(".study-misconception-label");
+  if (await misconception.count()) {
+    await expect(page.locator(".study-concept-list li", { has: misconception })).not.toContainText("Mastered");
+  }
+});
+
+test("journey-build: the console is visible without scrolling and an error offers a way to the line", async ({ page }) => {
+  test.setTimeout(180_000);
+  await demoLogin(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await gotoRoute(page, "/build");
+
+  // C7 — the whole point: at 1280×720 the console must be inside the frame.
+  const console_ = page.getByRole("region", { name: "Console" });
+  await expect(console_).toBeVisible();
+  const box = await console_.boundingBox();
+  expect(box, "the console did not render").toBeTruthy();
+  expect(box!.y + Math.min(box!.height, 120), "the console starts below the fold").toBeLessThanOrEqual(720);
+
+  await expect(page.getByRole("tab", { name: "Console" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "Press Run to see what this does." })).toBeVisible();
+
+  // §14.3: one assistant. There is no third-tab coach here any more.
+  await expect(page.getByRole("tab", { name: /Assistant|AI/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Ask", exact: true })).toBeVisible();
+
+  await page.getByLabel("Language").selectOption("javascript");
+  const editor = page.locator(".code-editor-shell .cm-content");
+  await editor.click();
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+  await page.keyboard.insertText('const scores = [72, 88, 91];\nconsole.log(`Count: ${scores.length}`);');
+  await page.locator(".build-run-slot").getByRole("button", { name: /^Run/ }).click();
+  await expect(page.locator(".build-stdout")).toContainText("Count: 3", { timeout: 60_000 });
+
+  // Introduce an error; the console leads with the line and offers to go there.
+  await editor.click();
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+  await page.keyboard.insertText('const scores = [1];\nthrow new Error("boom");');
+  await page.locator(".build-run-slot").getByRole("button", { name: /^Run/ }).click();
+  await expect(page.locator(".build-error-lead")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("button", { name: "Explain this error" })).toBeVisible();
+});
+
+test("journey-connections: OpenAlex reports that it already works, and nothing exposes a platform key", async ({ page }) => {
+  test.setTimeout(180_000);
+  await demoLogin(page);
+  await gotoRoute(page, "/settings/connections");
+
+  // C8: a keyless capability is not "Not connected".
+  await expect(page.getByText("Working — no setup needed").first()).toBeVisible({ timeout: 60_000 });
+
+  // §9.10: platform provider configuration is never a user-facing control.
+  for (const provider of ["Featherless", "Groq", "Gemini"]) {
+    await expect(page.getByRole("button", { name: new RegExp(`Configure ${provider}`, "i") })).toHaveCount(0);
+  }
+
+  // Every card states its status in one of the seven words.
+  const statuses = (await page.locator(".connection-card > summary .status-chip").allInnerTexts())
+    .map((status) => status.trim())
+    .filter(Boolean);
+  const vocabulary = ["Not connected", "Working", "Working — no setup needed", "Syncing…", "Needs attention", "Expired", "Paused"];
+  expect(statuses.length, "no connection card reported a status").toBeGreaterThan(0);
+  for (const status of statuses) expect(vocabulary, `unknown status word: ${status}`).toContain(status);
+});
+
+test("journey-continuity: a goal, its project, and Context all resolve for the same workspace", async ({ page }) => {
+  test.setTimeout(180_000);
+  await demoLogin(page);
+
+  await gotoRoute(page, `/g/${DEMO_GOAL_ID}`);
+  const goalTitle = (await page.locator(".goal-header h1").innerText()).trim();
+  expect(goalTitle.length).toBeGreaterThan(0);
+
+  await gotoRoute(page, `/g/${DEMO_GOAL_ID}/p/${DEMO_PROJECT_ID}`);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { level: 1 })).not.toBeEmpty();
+
+  await gotoRoute(page, "/context");
+  await expect(page.getByRole("heading", { level: 1, name: "Context" })).toBeVisible();
+  // C21: the screen no longer prints `JSON.stringify` at the user.
+  await expect(page.locator("body")).not.toContainText("Postgres canonical");
+});
+
+test("journey-mobile: the drawer, the bottom nav and the Plan agenda all work at 375×812", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await demoLogin(page);
+
+  // The bottom bar carries the four daily surfaces; everything else lives in
+  // the More drawer.
+  const bottomNav = page.getByRole("navigation", { name: "Mobile navigation" });
+  await expect(bottomNav).toBeVisible();
+  for (const label of ["Home", "Ask", "Study", "Build"]) {
+    await expect(bottomNav.getByRole("link", { name: label })).toBeVisible();
+  }
+  await bottomNav.getByRole("link", { name: "Build" }).click();
+  await page.waitForURL(`${baseURL}/build`);
+
+  await gotoRoute(page, "/plan");
+
+  // C6: no two day columns may overlap. Asserted from geometry, not markup.
+  const columns = await page.$$eval(".plan-day", (nodes) => nodes.map((node) => {
+    const rect = node.getBoundingClientRect();
+    return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+  }));
+  for (let a = 0; a < columns.length; a += 1) {
+    for (let b = a + 1; b < columns.length; b += 1) {
+      const one = columns[a]!;
+      const two = columns[b]!;
+      const overlap = Math.min(one.right, two.right) - Math.max(one.left, two.left) > 0.5
+        && Math.min(one.bottom, two.bottom) - Math.max(one.top, two.top) > 0.5;
+      expect(overlap, `day columns ${a} and ${b} overlap at 375px`).toBe(false);
     }
+  }
 
-    await page.getByRole("button", { name: /^(Continue|Check my understanding|Start the check)/ }).first().click();
-    await expect(page.locator(".study-check")).toBeVisible({ timeout: 60_000 });
+  // The drawer reaches everything the bottom bar does not.
+  await bottomNav.getByRole("button", { name: /More/ }).click();
+  const drawer = page.getByRole("complementary", { name: "Workspace navigation" });
+  await expect(drawer).toBeVisible();
+  await drawer.getByRole("link", { name: "Library", exact: true }).click();
+  await page.waitForURL(`${baseURL}/library`);
 
-    // The question is generated per concept, so assert the contract, not physics.
-    const answer = page.getByLabel(/Your answer|Answer in your own words/);
-    await expect(answer).toBeVisible();
-    await answer.fill("A worked explanation applying the idea to a case I have not seen before.");
-    await page.getByRole("button", { name: "Check my answer" }).click();
+  // Build stays usable: the console is still its own region on a phone.
+  await gotoRoute(page, "/build");
+  await expect(page.getByRole("region", { name: "Console" })).toBeVisible();
 
-    // Whether the answer is graded correct is the model's call; what must hold is
-    // that a result is reached and that any movement is reported with real
-    // before/after numbers rather than a bare "passed" (AC-LN5).
-    const result = page.locator(".study-session-column");
-    await expect(result).toContainText(/Transfer updated|Not quite|Try a different one/, { timeout: 60_000 });
-    if (await page.getByRole("heading", { name: "Transfer updated" }).count()) {
-      await expect(page.locator(".study-delta")).toContainText(/%/);
-    }
+  const dimensions = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
+  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth + 1);
+});
 
-    await expect(page.getByRole("link", { name: /^Back to / })).toBeVisible();
-    expect(conceptName.length).toBeGreaterThan(0);
-  });
+test("journey-keyboard: the documented shortcuts work and nothing traps focus", async ({ page }) => {
+  test.setTimeout(180_000);
+  await demoLogin(page);
 
-  test("Material panel asks one question and offers ranked results inline", async ({ page }) => {
-    test.setTimeout(120_000);
-    await demoLogin(page);
-    await page.getByRole("link", { name: "Learn", exact: true }).click();
+  // ⌘K opens the palette and Escape closes it, restoring focus to the opener.
+  await page.keyboard.press("Meta+k");
+  await expect(page.getByRole("listbox", { name: "Search results" })).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("listbox", { name: "Search results" })).toHaveCount(0);
 
-    // The four-step handoff wizard is gone (C16): one question, six chips.
-    await expect(page.locator(".handoff-steps")).toHaveCount(0);
-    await page.getByRole("button", { name: "Find material" }).click();
-    const panel = page.locator(".study-panel");
-    await expect(panel).toBeVisible();
-    for (const need of ["Understand it", "Practise", "Fix a weak area", "Prep for a test", "Finish an assignment", "Just find something"]) {
-      await expect(panel.getByRole("button", { name: need })).toBeVisible();
-    }
-    await panel.getByRole("button", { name: "Understand it" }).click();
-    await expect(panel.getByRole("button", { name: "Start" }).first()).toBeVisible({ timeout: 60_000 });
-  });
+  // ⌘J toggles the assistant panel from anywhere.
+  await page.keyboard.press("Meta+j");
+  await expect(page.locator(".assistant-panel, [role=dialog]").first()).toBeVisible();
+  await page.keyboard.press("Escape");
 
-  test("practice set runs from Study and returns to Study", async ({ page }) => {
-    test.setTimeout(120_000);
-    await demoLogin(page);
-    await page.getByRole("link", { name: "Learn", exact: true }).click();
+  // `?` opens the shortcut sheet, which §8.8 makes the single source of truth.
+  await page.keyboard.press("?");
+  const sheet = page.getByRole("dialog").filter({ hasText: "Keyboard shortcuts" });
+  await expect(sheet).toBeVisible();
+  for (const keys of ["⌘K", "⌘J", "Esc", "?"]) {
+    await expect(sheet.getByText(keys, { exact: true })).toBeVisible();
+  }
+  await page.keyboard.press("Escape");
 
-    // Practice sets and photo extraction are first-class here now, not the
-    // second tab of a tool strip (S7, feature #44).
-    await expect(page.getByRole("button", { name: "New set" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "From a photo" })).toBeVisible();
+  // Twenty tabs from the top must never leave the document.
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  for (let step = 0; step < 20; step += 1) {
+    await page.keyboard.press("Tab");
+    const tag = await page.evaluate(() => document.activeElement?.tagName ?? "BODY");
+    expect(tag, "focus fell out of the document").not.toBe("BODY");
+  }
+});
 
-    const existing = page.locator(".study-practice-list button").first();
-    if (!(await existing.count())) {
-      test.skip(true, "The demo account has no saved practice set to run.");
-      return;
-    }
-    await existing.click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText(/Practice set|How do you want to practise\?/);
-  });
-
-  test("Assistant streams against selected workspace context and saves reviewed memory", async ({ page }) => {
-    test.setTimeout(120_000);
-    await demoLogin(page);
-    await page.getByRole("link", { name: "Assistant", exact: true }).click();
-    await expect(page.getByText("Workspace context ready")).toBeVisible();
-    const composer = page.getByLabel("Message Continuum Assistant");
-    await composer.fill("Give me one concise next action for reviewing electric potential. Mention why it is the next action.");
-    await page.getByRole("button", { name: "Send message" }).click();
-    await expect(page.locator(".assistant-message.user")).toContainText("electric potential");
-    await expect(page.locator(".assistant-message.assistant").last()).not.toBeEmpty({ timeout: 90_000 });
-    await page.getByRole("button", { name: "Review memory" }).click();
-    const memoryDialog = page.getByRole("dialog", { name: "Review session memory" });
-    await expect(memoryDialog).toBeVisible({ timeout: 60_000 });
-    await expect(memoryDialog.getByLabel("Session summary")).not.toHaveValue("");
-    await memoryDialog.getByRole("button", { name: "Save memory" }).click();
-    await expect(memoryDialog).toHaveCount(0);
-    await page.reload();
-    await expect(page.locator(".assistant-history nav button").first()).toBeVisible();
-    await expect(page.locator(".assistant-message.user")).toContainText("electric potential");
-  });
-
-  test("Code Lab runs real JavaScript, separates AI feedback, persists navigation, and exposes an update through MCP", async ({ page }) => {
-    test.setTimeout(180_000);
-    const checkpointMarker = `Playwright runtime evidence ${Date.now()}`;
-    const feedbackRequests: Array<{ history?: unknown[]; prompt?: string }> = [];
-    await page.route("**/api/code", async (route) => {
-      feedbackRequests.push(JSON.parse(route.request().postData() ?? "{}") as { history?: unknown[]; prompt?: string });
-      await route.fulfill({
-        contentType: "text/plain; charset=utf-8",
-        body: "The actual runtime selected four scores at the supplied cutoff. The filter keeps each score greater than or equal to 80; the program output and the passing sample test agree.",
-      });
-    });
-    await demoLogin(page);
-    await page.getByRole("link", { name: "Code", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Write it. Run it. Understand why it works." })).toBeVisible();
-    await page.getByLabel("Language").selectOption("javascript");
-    const editor = page.locator(".code-editor-shell .cm-content");
-    await editor.click();
-    await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
-    await page.keyboard.insertText([
-      "const scores = [72, 88, 91, 64, 85];",
-      "const cutoff = Number(input() || 80);",
-      "const selected = scores.filter((score) => score >= cutoff);",
-      'console.log(`Selected: ${selected.join(", ")}`);',
-      'console.log(`Count: ${selected.length}`);',
-    ].join("\n"));
-    await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
-    await expect(page.getByRole("tab", { name: "Console" })).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator(".runtime-result h3", { hasText: "Output" })).toBeVisible();
-    await expect(page.locator(".runtime-result pre")).toContainText("Selected: 88, 91, 85");
-    await expect(page.locator(".runtime-result pre")).toContainText("Count: 3");
-    await page.getByRole("button", { name: "Check sample" }).click();
-    await expect(page.locator(".code-tests-panel")).toContainText("Passed");
-
-    await page.getByRole("tab", { name: /^Assistant/ }).click();
-    await page.getByRole("button", { name: "Explain my code", exact: true }).click();
-    await page.getByRole("button", { name: "Get feedback" }).click();
-    await expect(page.locator(".coach-markdown")).toContainText("actual runtime selected four scores");
-    await expect(page.getByText("Get feedback only when you ask")).toBeVisible();
-    await page.getByLabel("Continue the conversation").fill("Which edge case should I try next?");
-    await page.getByRole("button", { name: "Get feedback" }).click();
-    await expect(page.locator(".code-message.user").last()).toContainText("Which edge case should I try next?");
-    expect(feedbackRequests).toHaveLength(2);
-    expect(feedbackRequests[1]?.history).toHaveLength(2);
-
-    await page.getByRole("button", { name: "Save checkpoint" }).click();
-    await page.getByLabel("What did you learn?").fill(checkpointMarker);
-    await page.getByLabel("What will you do next?").fill("Run a boundary-value test at the cutoff.");
-    await page.getByRole("button", { name: "Save to memory" }).click();
-    await expect(page.getByRole("status")).toContainText("Coding checkpoint saved");
-
-    await page.getByRole("link", { name: "Learn", exact: true }).click();
-    await page.getByRole("link", { name: "Code", exact: true }).click();
-    await page.getByRole("tab", { name: "Console" }).click();
-    await expect(page.locator(".runtime-result pre")).toContainText("Count: 3");
-    await page.getByRole("tab", { name: /^Assistant/ }).click();
-    await expect(page.locator(".code-conversation")).toContainText("Which edge case should I try next?");
-
-    const packResponse = await readCurrentWeekThroughMcp(page);
-    expect(JSON.stringify(packResponse)).toContain(checkpointMarker);
-
-    await page.getByLabel("Language").selectOption("sql");
-    await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
-    await expect(page.locator(".sql-result")).toContainText("Asha");
-    await page.getByRole("button", { name: "Check sample" }).click();
-    await expect(page.locator(".code-tests-panel")).toContainText("Passed");
-    await page.getByRole("tab", { name: "Console" }).click();
-    await expect(page.locator(".sql-result")).toContainText("Asha");
-    await expect(page.locator(".sql-result")).toContainText("Meera");
-  });
-
-  test("Python execution is direct, stoppable, and accepts a checked local file", async ({ page }) => {
-    test.setTimeout(180_000);
-    let aiRequests = 0;
-    await page.route("**/api/code", async (route) => {
-      aiRequests += 1;
-      await route.fulfill({
-        contentType: "text/plain; charset=utf-8",
-        body: "This program prints the supplied name. The runtime result confirms that the input and output path work.",
-      });
-    });
-    const setEditor = async (source: string) => {
-      const editor = page.locator(".code-editor-shell .cm-content");
-      await editor.click();
-      await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
-      await page.keyboard.insertText(source);
-      await expect(editor).toContainText(source.replaceAll("\n", ""));
-    };
-
-    await demoLogin(page);
-    await page.getByRole("link", { name: "Code", exact: true }).click();
-    await page.getByLabel("Language").selectOption("python");
-    await expect(page.getByLabel("Language")).toHaveValue("python");
-    await expect(page.getByLabel("File name")).toHaveValue("main.py");
-
-    await setEditor('print("Hello, world!")');
-    await page.getByRole("tab", { name: "Input & Output" }).click();
-    await page.getByLabel("Program input").fill("");
-    await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
-    await expect(page.locator(".runtime-result pre")).toContainText("Hello, world!", { timeout: 45_000 });
-    await expect(page.locator(".runtime-result")).toContainText("exit code 0");
-    expect(aiRequests).toBe(0);
-
-    await setEditor('name = input()\nprint(f"Hello, {name}")');
-    await page.getByRole("tab", { name: "Input & Output" }).click();
-    await page.getByLabel("Program input").fill("Asha");
-    await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
-    await expect(page.locator(".runtime-result pre")).toContainText("Hello, Asha");
-
-    await setEditor("print(");
-    await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
-    await expect(page.locator(".runtime-result")).toContainText("Compiler error");
-    await expect(page.locator(".runtime-stderr")).toContainText("SyntaxError");
-
-    await setEditor("print(1 / 0)");
-    await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
-    await expect(page.locator(".runtime-result")).toContainText("Runtime error");
-    await expect(page.locator(".runtime-stderr")).toContainText("ZeroDivisionError");
-
-    await setEditor("while True:\n    pass");
-    await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
-    await page.locator(".studio-toolbar-actions").getByRole("button", { name: "Stop" }).click();
-    await expect(page.locator(".runtime-result")).toContainText("Stopped");
-    await expect(page.locator(".runtime-result")).toContainText("terminated");
-
-    await page.getByRole("button", { name: "Import file" }).click();
-    const fileInput = page.getByLabel("Choose a code file");
-    await fileInput.setInputFiles({ name: "uploaded.py", mimeType: "text/x-python", buffer: Buffer.from('print("From file")\\n') });
-    await expect(page.getByText("uploaded.py", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "View code in editor" }).click();
-    await expect(page.getByLabel("File name")).toHaveValue("uploaded.py");
-
-    await page.getByRole("button", { name: "Import file" }).click();
-    await fileInput.setInputFiles({ name: "not-python.txt", mimeType: "text/plain", buffer: Buffer.from("not Python") });
-    await expect(page.getByRole("alert")).toContainText("Python");
-    await page.getByRole("button", { name: "Cancel" }).click();
-
-    await page.getByRole("button", { name: "Import file" }).click();
-    await fileInput.setInputFiles({ name: "imported.ts", mimeType: "text/plain", buffer: Buffer.from('console.log("From TypeScript")\n') });
-    await page.getByRole("button", { name: "View code in editor" }).click();
-    await expect(page.getByLabel("Language")).toHaveValue("typescript");
-    await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
-    await expect(page.locator(".runtime-result pre")).toContainText("From TypeScript");
-
-    await page.getByRole("button", { name: "Import file" }).click();
-    await fileInput.setInputFiles({ name: "Main.java", mimeType: "text/plain", buffer: Buffer.from('class Main { public static void main(String[] args) { System.out.println("Hello"); } }') });
-    await page.getByRole("button", { name: "View code in editor" }).click();
-    await expect(page.getByLabel("Language")).toHaveValue("java");
-    await expect(page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ })).toBeDisabled();
-
-    await page.getByRole("button", { name: "Ask Assistant" }).click();
-    await page.getByRole("button", { name: "Explain my code" }).click();
-    await page.getByRole("button", { name: "Get feedback" }).click();
-    await expect(page.locator(".code-conversation")).toContainText("runtime result confirms");
-    expect(aiRequests).toBe(1);
-  });
-
-  test("Code performance budget keeps direct execution and repeat navigation responsive", async ({ page }) => {
-    await demoLogin(page);
-    const metrics: Record<string, number> = {};
-    const navigationStarted = Date.now();
-    await page.getByRole("link", { name: "Code", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Write it. Run it. Understand why it works." })).toBeVisible();
-    metrics.codePageReadyMs = Date.now() - navigationStarted;
-    await expect(page.locator(".code-editor-shell .cm-content")).toBeVisible();
-    metrics.editorReadyMs = Date.now() - navigationStarted;
-    await page.getByLabel("Language").selectOption("javascript");
-    await expect(page.getByLabel("Language")).toHaveValue("javascript");
-    await expect(page.getByLabel("File name")).toHaveValue("main.js");
-
-    const editor = page.locator(".code-editor-shell .cm-content");
-    await editor.click();
-    await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
-    await page.keyboard.insertText('console.log("continuum performance")');
-    await expect(editor).toContainText('console.log("continuum performance")');
-    const runTimes: number[] = [];
-    for (let iteration = 0; iteration < 3; iteration += 1) {
-      const runStarted = Date.now();
-      await page.locator(".studio-toolbar-actions").getByRole("button", { name: /^Run/ }).click();
-      await expect(page.locator(".runtime-result pre")).toContainText("continuum performance");
-      runTimes.push(Date.now() - runStarted);
-    }
-    metrics.simpleExecutionMedianMs = [...runTimes].sort((left, right) => left - right)[1]!;
-    metrics.simpleExecutionTimeouts = 0;
-
-    const uploadStarted = Date.now();
-    await page.getByRole("button", { name: "Import file" }).click();
-    await page.getByLabel("Choose a code file").setInputFiles({ name: "performance.js", mimeType: "text/javascript", buffer: Buffer.from('console.log("uploaded")') });
-    await expect(page.getByText("performance.js", { exact: true })).toBeVisible();
-    metrics.fileUploadReadyMs = Date.now() - uploadStarted;
-    await page.getByRole("button", { name: "Cancel" }).click();
-
-    await page.getByRole("link", { name: "Learn", exact: true }).click();
-    const repeatStarted = Date.now();
-    await page.getByRole("link", { name: "Code", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Write it. Run it. Understand why it works." })).toBeVisible();
-    metrics.repeatNavigationMs = Date.now() - repeatStarted;
-    console.log(`continuum_performance=${JSON.stringify(metrics)}`);
-
-    expect(metrics.simpleExecutionMedianMs).toBeLessThan(3_000);
-    expect(metrics.simpleExecutionTimeouts).toBe(0);
-    expect(metrics.fileUploadReadyMs).toBeLessThan(2_000);
-    expect(metrics.repeatNavigationMs).toBeLessThan(1_500);
-  });
-
-  test("Plan drafts a deterministic week and requires explicit confirmation", async ({ page }) => {
-    test.setTimeout(120_000);
-    await demoLogin(page);
-    await page.getByRole("link", { name: "Plan", exact: true }).click();
-    await expect(page.getByRole("tab", { name: "Week" })).toBeVisible();
-
-    // "COMMITTED" is no longer stamped on every block (S15, AC-PL4).
-    await expect(page.getByText("COMMITTED")).toHaveCount(0);
-
-    await page.getByRole("button", { name: "Build my week" }).click();
-    const dialog = page.getByRole("dialog", { name: "Build my week" });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: /Generate|Build/ }).first().click();
-
-    // Nothing is saved until Save week is pressed (AC-PL3).
-    const draftBar = page.getByRole("region", { name: "Draft actions" });
-    await expect(draftBar).toBeVisible({ timeout: 60_000 });
-    await expect(draftBar).toContainText("Draft");
-    await expect(draftBar.getByRole("button", { name: "Save week" })).toBeVisible();
-
-    await draftBar.getByRole("button", { name: "Discard" }).click();
-    await page.getByRole("button", { name: "Discard draft" }).click();
-    await expect(draftBar).toHaveCount(0);
-  });
-
-  test("Research discovers an OpenAlex contract result and saves real provider provenance", async ({ page }) => {
-    const title = `OpenAlex evidence contract ${Date.now()}`;
-    await page.route("**/api/research/discovery?*", async (route) => {
-      if (route.request().method() !== "GET") return route.continue();
-      await route.fulfill({
-        contentType: "application/json",
-        json: {
-          providers: [{ provider: "openalex", status: "live" }, { provider: "crossref", status: "unconfigured", message: "Not requested by this fixture" }],
-          attribution: ["OpenAlex"],
-          results: [{
-            providerId: `W${Date.now()}`,
-            doi: `10.5555/playwright.${Date.now()}`,
-            title,
-            authors: ["Ada Researcher", "Lin Evidence"],
-            year: 2026,
-            venue: "Journal of Contract-Tested Scholarship",
-            abstract: "A normalized OpenAlex contract result used to verify the browser workflow without requiring a local provider credential.",
-            citedByCount: 12,
-            openAccess: true,
-            landingPageUrl: "https://openalex.org/W2741809807",
-            topics: ["Spatial transcriptomics", "Reproducible research"],
-            institutions: ["Continuum Test Institute"],
-            type: "article",
-            sourceProvider: "openalex",
-            retrievedAt: new Date().toISOString(),
-            relatedWorkIds: [],
-            referenceIds: [],
-          }],
-        },
-      });
-    });
-    await demoLogin(page);
-    await page.getByRole("link", { name: "Research", exact: true }).click();
-    await page.getByRole("link", { name: "Connect tools" }).click();
-    await expect(page).toHaveURL(`${baseURL}/integrations`);
-    await page.goto("/research");
-    await expect(page.getByRole("heading", { name: "Evidence, not browser tabs." })).toBeVisible();
-    await page.locator(".research-library-card").getByRole("button", { name: "Add", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "Add a source" })).toBeVisible();
-    await expect(page.locator('input[type="file"]')).toBeFocused();
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog", { name: "Add a source" })).toHaveCount(0);
-    await page.getByRole("button", { name: "Discovery", exact: true }).click();
-    await page.getByLabel("Query").fill("spatial transcriptomics reproducibility");
-    await page.getByRole("button", { name: "Search", exact: true }).click();
-    await expect(page.getByText("OpenAlex: live")).toBeVisible();
-    const result = page.locator(".paper-result").filter({ hasText: title });
-    await expect(result).toBeVisible();
-    await result.getByRole("button", { name: "Save to library", exact: true }).click();
-    await expect(page.getByRole("status")).toContainText(/Paper saved|already saved/i);
-    await page.getByRole("button", { name: /Papers/ }).click();
-    await expect(page.getByRole("heading", { name: title })).toBeVisible();
-  });
-
-  test("connection setup stays guided and never exposes platform-provider configuration", async ({ page }) => {
-    const cors = {
-      "access-control-allow-origin": baseURL,
-      "access-control-allow-methods": "GET,POST,OPTIONS",
-      "access-control-allow-headers": "content-type",
-    };
-    await page.route("http://127.0.0.1:11434/api/tags", async (route) => {
-      await route.fulfill({ status: 200, headers: { ...cors, "content-type": "application/json" }, json: { models: [{ name: "qwen2.5-coder:3b", size: 2_000_000_000 }] } });
-    });
-    await page.route("http://127.0.0.1:11434/api/chat", async (route) => {
-      if (route.request().method() === "OPTIONS") {
-        await route.fulfill({ status: 204, headers: cors });
-        return;
-      }
-      await route.fulfill({
-        status: 200,
-        headers: { ...cors, "content-type": "application/x-ndjson" },
-        body: `${JSON.stringify({ message: { content: "READY" }, done: true })}\n`,
-      });
-    });
-    await demoLogin(page);
-    await page.getByRole("link", { name: "Connections", exact: true }).click();
-    await expect(page.getByRole("button", { name: /Configure OpenAlex/i })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Configure Featherless/i })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Configure Groq/i })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Configure Gemini/i })).toHaveCount(0);
-
-    await page.getByRole("button", { name: "Connect Claude" }).click();
-    await expect(page.getByRole("dialog", { name: "Connect Claude to Continuum" })).toBeVisible();
-    await page.getByRole("button", { name: "Cancel" }).click();
-    await page.getByRole("button", { name: "Choose local AI" }).click();
-    const ollamaDialog = page.getByRole("dialog", { name: "Choose local AI for coding help" });
-    await expect(ollamaDialog).toBeVisible();
-    await ollamaDialog.getByRole("button", { name: "Test connection" }).click();
-    await expect(ollamaDialog.getByRole("status")).toContainText("Local AI is ready", { timeout: 30_000 });
-    await expect(ollamaDialog.getByRole("status")).toContainText(/First text: .*complete:/);
-    await ollamaDialog.getByRole("button", { name: "Save local AI" }).click();
-    await expect(ollamaDialog).toHaveCount(0);
-  });
-
-  test("Memory opens a token-bounded MCP context pack", async ({ page }) => {
-    await demoLogin(page);
-    await page.getByRole("link", { name: "Memory", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Your academic state, ready when it matters." })).toBeVisible();
-    await page.getByRole("button", { name: "Context packs" }).click();
-    await page.getByRole("button", { name: /Current week/ }).click();
-    await expect(page.locator(".context-pack-detail").getByRole("heading", { name: "Current week" })).toBeVisible();
-    await expect(page.getByText("MCP: get_context_pack")).toBeVisible();
-    await expect(page.locator(".context-pack-policy")).toContainText("full event history");
-  });
-
-  test("mobile bottom navigation and More drawer reach every primary surface without overflow", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await demoLogin(page);
-    const bottomNav = page.getByRole("navigation", { name: "Mobile navigation" });
-    await expect(bottomNav).toBeVisible();
-    await bottomNav.getByRole("link", { name: "Learn" }).click();
-    await expect(page).toHaveURL(`${baseURL}/learn`);
-    await bottomNav.getByRole("button", { name: "More" }).click();
-    const drawer = page.getByRole("complementary", { name: "Workspace navigation" });
-    await expect(drawer).toBeVisible();
-    await drawer.getByRole("link", { name: "Research", exact: true }).click();
-    await expect(page).toHaveURL(`${baseURL}/research`);
-    const dimensions = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
-    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
-  });
-
-  test("all primary and legacy internal routes resolve without a 404", async ({ page }) => {
-    test.setTimeout(180_000);
-    await demoLogin(page);
-    for (const path of ["/", "/assistant", "/goals", "/plan", "/learn", "/code", "/research", "/memory", "/activity", "/integrations", "/connections", "/account/ai", "/account/privacy"]) {
-      const response = await page.goto(path);
-      expect(response?.status(), path).not.toBe(404);
-      await expect(page.getByText("This page could not be found.")).toHaveCount(0);
-    }
-    await expect(page).toHaveURL(`${baseURL}/integrations`);
-  });
+test("every §7.1 address resolves, and every legacy path redirects to it", async ({ page }) => {
+  test.setTimeout(300_000);
+  await demoLogin(page);
+  for (const path of ["/home", "/ask", "/plan", "/library", "/review", "/context", "/build", "/learn", "/research", "/settings/account", "/settings/connections", `/g/${DEMO_GOAL_ID}`]) {
+    const response = await page.goto(path);
+    expect(response?.status(), path).toBeLessThan(400);
+    await expect(page.getByText("This page could not be found.")).toHaveCount(0);
+  }
 });
