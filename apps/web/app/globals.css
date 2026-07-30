@@ -73,6 +73,13 @@
   --focus:   #0e8a6e;
 
   --on-brand: #ffffff;
+  /* Ink and marks drawn on a saturated jade field. */
+  --on-field:       #ffffff;
+  --on-field-2:     rgba(255, 255, 255, .82);
+  --on-field-3:     rgba(255, 255, 255, .64);
+  --on-field-line:  rgba(255, 255, 255, .26);
+  --on-field-fill:  rgba(255, 255, 255, .08);
+  --field-mark:     #7fe6c4;
   --on-amber: #2b1a00;
 
   /* Deliberately dark in a light page: console output, code, the hero field. */
