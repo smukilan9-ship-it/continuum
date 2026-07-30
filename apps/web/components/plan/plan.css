@@ -182,6 +182,8 @@
   border-radius: var(--r-sm);
   background: var(--surface);
   transition: box-shadow var(--d-fast) var(--e-out);
+  /* So the title below can ask how tall its own block is. */
+  container-type: size;
 }
 
 .plan-block small {
@@ -201,6 +203,18 @@
   line-height: var(--t-micro-lh);
   font-weight: 500;
   color: var(--ink);
+}
+/* A one-hour block is only tall enough for a single line, so a two-line clamp
+   never reached its own ellipsis — the block's `overflow: hidden` cut the
+   second line instead, and titles read as "Rewrite string-" and "Review the
+   last full-", truncated mid-word with nothing to say they had been. Clamping
+   to what actually fits puts the ellipsis back.
+
+   A size container queries its *content* box, so this threshold is already net
+   of padding and border: two lines need the time label (11px), the gap, and
+   2x14px of text — 41px. Below that, one line and an ellipsis. */
+@container (max-height: 40px) {
+  .plan-block strong { -webkit-line-clamp: 1; line-clamp: 1; }
 }
 
 .plan-block-grip { position: absolute; top: var(--s-1); right: var(--s-1); color: var(--ink-3); }

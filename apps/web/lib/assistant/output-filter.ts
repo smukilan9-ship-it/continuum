@@ -129,9 +129,34 @@ function swapIdentifiers(text: string, labels?: Map<string, string>): string {
  * `"uncertainFields":`, which is not parseable. Use `redactContextValue` for
  * structured data.
  */
+/**
+ * Context field names, rewritten into what a person would call the thing.
+ *
+ * Observed in a production answer: "…focus on addressing the active
+ * misconception …, as noted in the relevantMemories." The prompt already forbids
+ * naming the labelled sections, but the payload inside them is JSON, and the
+ * model cited one of our own keys as though it were a source. The prompt asks;
+ * this enforces. Same reasoning as INTERNAL_ONLY_KEYS below — the difference is
+ * that those keys are stripped before the model reads them, and these are keys
+ * it legitimately reads but must never repeat.
+ */
+/** Each pattern absorbs a preceding article, so "the relevantMemories" does not
+ *  become "the your saved notes". */
+const CONTEXT_KEY_WORDS: ReadonlyArray<[RegExp, string]> = [
+  [/\b(?:the\s+)?relevant_?[Mm]emories\b/g, "your saved notes"],
+  [/\b(?:the\s+)?sourcePassages\b/g, "the passages in your library"],
+  [/\b(?:the\s+)?workspaceRecords\b/g, "your workspace"],
+  [/\b(?:the\s+)?pageContext\b/g, "the screen you are on"],
+  [/\b(?:the\s+)?contextPolicy\b/g, "your context"],
+  [/\b(?:the\s+)?pedagogical_?[Cc]ontext\b/g, "your profile"],
+  [/\b(?:the\s+)?taskClass\b/g, "this request"],
+];
+
 export function redactIdentifiers(text: string, labels?: Map<string, string>): string {
   if (!text) return text;
-  return swapIdentifiers(text, labels)
+  let swapped = swapIdentifiers(text, labels);
+  for (const [pattern, human] of CONTEXT_KEY_WORDS) swapped = swapped.replace(pattern, human);
+  return swapped
     // An id sitting in parentheses or after a colon leaves debris behind.
     .replace(/\(\s*\)/g, "")
     .replace(/\[\s*\]/g, "")

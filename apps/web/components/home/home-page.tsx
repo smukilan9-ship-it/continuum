@@ -131,15 +131,18 @@ export function HomePage({
    * a heading promising one span and a body delivering another. The schedule
    * this reads from always held the whole week; only the summary was narrow.
    *
+   * The window is the seven days starting today — the same one Plan's grid
+   * draws and labels "This week". A calendar Monday–Sunday week here made Home
+   * report 8.4h and Plan 10.2h for the same phrase on the same data, which is
+   * the kind of disagreement that costs a number its credibility.
+   *
    * Day keys are built in UTC from the already-zone-resolved `today` key, so
    * the arithmetic never crosses a DST boundary in the user's zone.
    */
   const weekDays = useMemo(() => {
     const [year, month, day] = today.split("-").map(Number);
     if (!year || !month || !day) return [];
-    const anchor = Date.UTC(year, month - 1, day);
-    const mondayOffset = (new Date(anchor).getUTCDay() + 6) % 7;
-    const monday = anchor - mondayOffset * 86_400_000;
+    const start = Date.UTC(year, month - 1, day);
 
     const byDay = new Map<string, Row[]>();
     for (const block of state.schedule) {
@@ -152,17 +155,19 @@ export function HomePage({
     }
 
     return Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(monday + index * 86_400_000);
+      const date = new Date(start + index * 86_400_000);
       const key = date.toISOString().slice(0, 10);
       const blocks = byDay.get(key) ?? [];
+      const weekday = (date.getUTCDay() + 6) % 7; // Monday = 0
       return {
         key,
-        label: WEEKDAY_INITIALS[index]!,
+        label: WEEKDAY_INITIALS[weekday]!,
+        name: WEEKDAY_NAMES[weekday]!,
         dayOfMonth: date.getUTCDate(),
         minutes: blocks.reduce((total, block) => total + (durationMinutes(block) ?? 0), 0),
         done: blocks.filter((block) => blockState(block, now) === "done").length,
         total: blocks.length,
-        isToday: key === today,
+        isToday: index === 0,
       };
     });
   }, [state.schedule, timeZone, today, now]);
@@ -297,11 +302,11 @@ export function HomePage({
             </div>
             {weekBlocks ? (
               <ol className="week-strip">
-                {weekDays.map((day, index) => (
+                {weekDays.map((day) => (
                   <li
                     key={day.key}
                     className={`week-day${day.isToday ? " is-today" : ""}${day.total ? "" : " is-empty"}`}
-                    title={`${WEEKDAY_NAMES[index]} ${day.dayOfMonth} — ${day.total ? `${Math.round(day.minutes / 6) / 10}h, ${day.done} of ${day.total} done` : "nothing scheduled"}`}
+                    title={`${day.name} ${day.dayOfMonth} — ${day.total ? `${Math.round(day.minutes / 6) / 10}h, ${day.done} of ${day.total} done` : "nothing scheduled"}`}
                   >
                     <span className="week-day-label">{day.label}</span>
                     <span className="week-day-track">

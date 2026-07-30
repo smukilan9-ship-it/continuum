@@ -450,3 +450,25 @@ describe("a cited answer is not an instruction leak", () => {
     expect(built.prompt).toContain("never be the same cell");
   });
 });
+
+/**
+ * A live answer read: "…as noted in the relevantMemories." The prompt forbids
+ * naming the labelled sections, but the payload inside them is JSON and the
+ * model cited one of our own keys as a source.
+ */
+describe("context field names never reach the reader", () => {
+  it("rewrites a leaked context key into what a person would call it", () => {
+    const out = redactIdentifiers("Focus on arc-length, as noted in the relevantMemories.");
+    expect(out).not.toMatch(/relevantMemories/);
+    expect(out).toBe("Focus on arc-length, as noted in your saved notes.");
+  });
+
+  it("covers the other keys the assistant is handed", () => {
+    expect(redactIdentifiers("See sourcePassages and pageContext.")).toBe("See the passages in your library and the screen you are on.");
+  });
+
+  it("leaves ordinary prose alone", () => {
+    const prose = "Your saved notes mention the parabola drill and its relevant memories.";
+    expect(redactIdentifiers(prose)).toBe(prose);
+  });
+});
