@@ -57,6 +57,14 @@ const BANNED = [
   /\bidempotenc/i,
   /\bupsert\b/i,
   /\btombstone\b/i,
+  // Found in a Review toast: "Confirmed and applied the approved, whitelisted
+  // fields to the shared state; the audit history was preserved." Every one of
+  // those names the implementation rather than what happened to the user's work.
+  /\bwhitelist/i,
+  /\bshared state\b/i,
+  /\baudit history\b/i,
+  // A tool name is not a sentence. This one was shown to the user verbatim.
+  /\b[a-z]+_[a-z]+_[a-z]+\(/,
 ];
 
 const failures = [];

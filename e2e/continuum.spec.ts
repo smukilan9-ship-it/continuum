@@ -329,3 +329,113 @@ test("every §7.1 address resolves, and every legacy path redirects to it", asyn
     await expect(page.getByText("This page could not be found.")).toHaveCount(0);
   }
 });
+
+/**
+ * §19.2 W7. "Build and save a week: ≤ 5 interactions including editing."
+ *
+ * The count is the assertion. Open the dialog, answer the three questions, and
+ * generate — anything that needs a sixth interaction to reach a saved week has
+ * failed the criterion, however good the result looks.
+ */
+test("journey-plan: a week is built and saved in five interactions", async ({ page }) => {
+  test.setTimeout(240_000);
+  await demoLogin(page);
+  await gotoRoute(page, "/plan");
+
+  let interactions = 0;
+  const click = async (locator: import("@playwright/test").Locator) => { await locator.click(); interactions += 1; };
+  const fill = async (locator: import("@playwright/test").Locator, value: string) => { await locator.fill(value); interactions += 1; };
+
+  await click(page.getByRole("button", { name: "Build my week" }).first());
+
+  const dialog = page.getByRole("dialog", { name: "Build my week" });
+  await expect(dialog).toBeVisible({ timeout: 30_000 });
+  // §14.2: three questions, and the rest comes from what Continuum already has.
+  await expect(dialog.getByRole("group")).toHaveCount(3);
+
+  await fill(dialog.getByLabel("Weekdays"), "18:00-21:00");
+  await fill(dialog.getByLabel("Weekends"), "10:00-15:00");
+  await click(dialog.getByRole("button", { name: "45 min" }));
+  await click(dialog.getByRole("button", { name: "Generate" }));
+
+  // A draft week appears and says so. §14.2 removed the "COMMITTED" label:
+  // a draft is dashed, a committed block is solid, and the difference is stated
+  // in words as well as in the border.
+  await expect(page.locator(".week-block, .draft-block, .day-block").first()).toBeVisible({ timeout: 120_000 });
+  expect(interactions, `took ${interactions} interactions`).toBeLessThanOrEqual(5);
+});
+
+/**
+ * §19.2 W8 / §19.3. "Connect Zotero: entirely within one dialog, with a test
+ * before saving." The test-before-save is the part worth guarding — it is what
+ * stops a bad key being stored and then failing silently on the first sync.
+ */
+test("journey-zotero: connecting stays in one dialog and will not save an untested key", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.route("**/api/connections/zotero", async (route) => {
+    const payload = JSON.parse(route.request().postData() ?? "{}") as { action?: string };
+    if (payload.action === "validate") {
+      return route.fulfill({ json: { ok: true, message: "Connected as e2e-library (1 group, 128 items)" } });
+    }
+    if (payload.action === "connect") {
+      return route.fulfill({ json: { ok: true, connection: { connected: true, username: "e2e-library" } } });
+    }
+    return route.fallback();
+  });
+  await demoLogin(page);
+  await gotoRoute(page, "/settings/connections");
+
+  const url = page.url();
+  await page.getByRole("button", { name: /Connect Zotero|Set up Zotero|Configure Zotero/i }).first().click();
+
+  const dialog = page.getByRole("dialog", { name: /Connect your Zotero library/i });
+  await expect(dialog).toBeVisible({ timeout: 30_000 });
+  // "Entirely within one dialog" — no navigation, no second screen.
+  expect(page.url()).toBe(url);
+
+  const save = dialog.getByRole("button", { name: /Save connection/i });
+  await expect(save).toBeDisabled();
+
+  await dialog.getByLabel(/Zotero private key/i).fill("e2e-zotero-key-0123456789");
+  // Still refused: a key that has not been tested has not been shown to work.
+  await expect(save).toBeDisabled();
+
+  await dialog.getByRole("button", { name: /Test connection/i }).click();
+  await expect(dialog.getByText(/Connected as e2e-library/i)).toBeVisible({ timeout: 30_000 });
+  await expect(save).toBeEnabled();
+});
+
+/**
+ * §19.2 W9. "Approve an assistant proposal: ≤ 2 clicks from any screen."
+ *
+ * Also AC-RV1: the diff has to show what the record holds *now* beside what the
+ * proposal would make it. Review resolved no target record until the view began
+ * reading the rows its proposals name, so every "before" cell was an em dash —
+ * an approve button over a change you could not see.
+ */
+test("journey-review: a proposal shows both sides of its change and approves in two clicks", async ({ page }) => {
+  test.setTimeout(180_000);
+  await demoLogin(page);
+
+  // Two clicks from an unrelated screen: Review in the sidebar, then Approve.
+  await gotoRoute(page, "/build");
+  await page.getByRole("link", { name: /^Review/ }).first().click();
+  await page.waitForURL(/\/review$/, { timeout: 30_000 });
+
+  const card = page.locator(".proposal-card, .review-proposal, article").filter({ hasText: "Waiting" }).first();
+  const queue = page.getByRole("heading", { name: /Waiting for your approval/ });
+  await expect(queue).toBeVisible({ timeout: 60_000 });
+  const before = Number((await queue.innerText()).match(/\((\d+)\)/)?.[1] ?? 0);
+  expect(before, "the demo workspace has no proposal to approve").toBeGreaterThan(0);
+
+  // AC-RV1: at least one row carries a real before *and* after, not a blank.
+  const changed = page.locator(".proposal-change-row, .change-row").first();
+  await expect(changed).toBeVisible({ timeout: 30_000 });
+  const beforeCell = changed.locator("del, .change-before").first();
+  await expect(beforeCell).toBeVisible();
+  await expect(beforeCell).not.toHaveText("—");
+
+  await page.getByRole("button", { name: "Approve" }).first().click();
+  await expect(queue).toContainText(`(${before - 1})`, { timeout: 60_000 });
+  void card;
+});

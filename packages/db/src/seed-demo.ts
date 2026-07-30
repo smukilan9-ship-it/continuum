@@ -30,6 +30,7 @@ import {
   learningStates,
   memoryChunks,
   memoryEvents,
+  memoryProposals,
   memoryRecords,
   milestones,
   misconceptions,
@@ -95,6 +96,7 @@ export const RESET_TARGETS: Array<[table: { id: unknown }, prefix: string]> = [
   [resourceActivities, "activity_demo_"],
   [sessionReceipts, "receipt_demo_"],
   [memoryChunks, "mchunk_demo_"],
+  [memoryProposals, "proposal_demo_"],
   [memoryRecords, "record_demo_"],
   [memoryEvents, "event_demo_"],
   [modelRoutes, "route_demo_"],
@@ -412,6 +414,56 @@ export function buildDemoData(now: Date) {
     { id: "route_demo_3", userId: DEMO_ACCOUNT_USER_ID, taskClass: "retrieval_grounded", provider: "gemini", model: "gemini-embedding-001", reason: "Grounded Q&A over OASIS sources — embeddings for citation-locked retrieval.", verificationStatus: "verified", fallbackUsed: false },
   ];
 
+  // Review's whole argument is that nothing an assistant proposes takes effect
+  // until a person approves it (§9.8). With an empty queue the screen states
+  // that and then shows nothing, so the claim is unverifiable and W9 has nothing
+  // to exercise. These two are the shapes the screen renders differently: one
+  // carries field-level changes, so the before-and-after diff has something to
+  // diff, and one is a schedule change, which takes the two-step approve-then-
+  // commit path rather than applying on approval.
+  const proposalRows = [
+    {
+      id: "proposal_demo_deadline",
+      userId: DEMO_ACCOUNT_USER_ID,
+      clientId: "claude-desktop",
+      kind: "task_update",
+      entityId: "task_demo_sat_mockreview",
+      summary: "Move the mock-test review a day later, after the timed drill",
+      payload: {
+        entityId: "task_demo_sat_mockreview",
+        // Every field here has to be a change the task can actually take: the
+        // same types the column holds, and a value that differs from the one
+        // already stored, or the diff shows a row that would do nothing.
+        changes: { deadline: daysFromNow(7).toISOString(), estimatedMinutes: 75, priority: 2 },
+        reason: "The timed drill lands the day before and its result is what the review is meant to read.",
+      },
+      risk: "low",
+      status: "pending",
+      expiresAt: daysFromNow(7),
+    },
+    {
+      id: "proposal_demo_schedule",
+      userId: DEMO_ACCOUNT_USER_ID,
+      clientId: "claude-desktop",
+      kind: "schedule_change",
+      entityId: "goal_demo_sql",
+      summary: "Add two 45-minute SQL sessions to the free evenings this week",
+      payload: {
+        goalId: "goal_demo_sql",
+        changes: {
+          blocks: [
+            { taskId: "task_demo_sql_param", startsAt: atDay(2, 19, 45).startsAt.toISOString(), minutes: 45 },
+            { taskId: "task_demo_sql_cli", startsAt: atDay(4, 19, 45).startsAt.toISOString(), minutes: 45 },
+          ],
+        },
+        reason: "Two evenings this week have no block and parameterised queries is the weakest concept on this goal.",
+      },
+      risk: "medium",
+      status: "pending",
+      expiresAt: daysFromNow(7),
+    },
+  ];
+
   // Two lived-in conversations so a reset demo opens on a real thread rather
   // than an empty Ask screen. Each assistant turn carries `usedContext` naming
   // the exact seeded records the answer came from, so the citation chips in the
@@ -513,7 +565,7 @@ export function buildDemoData(now: Date) {
     goalRows, milestoneRows, taskRows, taskDeps, projectRows, sourceRows, chunkRows, paperRows,
     decisionRows, noteRows, claimRows, evidenceRows, curriculumRows, curriculumNodeRows, conceptRows,
     learningStateRows, assessmentRows, attemptRows, misconceptionRows, scheduleRows, calendarRows,
-    receiptRows, eventRows, recordRows, memoryChunkRows, resourceRows, activityRows, routeRows,
+    receiptRows, eventRows, recordRows, memoryChunkRows, resourceRows, activityRows, routeRows, proposalRows,
     assistantSessionRows, assistantMessageRows,
   };
 }
@@ -610,6 +662,7 @@ export async function seedDemoAccount(options: SeedDemoOptions): Promise<SeedDem
   await db.insert(sessionReceipts).values(data.receiptRows).onConflictDoNothing();
   await db.insert(resourceActivities).values(data.activityRows).onConflictDoNothing();
   await db.insert(modelRoutes).values(data.routeRows).onConflictDoNothing();
+  await db.insert(memoryProposals).values(data.proposalRows).onConflictDoNothing();
   await db.insert(assistantSessions).values(data.assistantSessionRows).onConflictDoNothing();
   await db.insert(assistantMessages).values(data.assistantMessageRows).onConflictDoNothing();
 
@@ -634,6 +687,7 @@ export async function seedDemoAccount(options: SeedDemoOptions): Promise<SeedDem
       events: data.eventRows.length,
       memoryChunks: data.memoryChunkRows.length,
       resourceActivities: data.activityRows.length,
+      pendingProposals: data.proposalRows.length,
     },
   };
 }

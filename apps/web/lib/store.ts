@@ -425,7 +425,7 @@ class MemoryStore implements Store {
       proposal.status = proposal.kind === "schedule_change" ? "confirmed" : "applied";
       proposal.confirmedAt = now;
       await this.appendEvent({ type: "proposal.confirmed", summary: String(proposal.summary), entityIds: [String(proposal.id)], payload: proposal, source: { surface } }, now);
-      return { data: proposal, entityIds: [String(proposal.id)], summary: proposal.kind === "schedule_change" ? "Confirmed the schedule proposal; a separate commit is still required." : "Confirmed and applied the approved fields to the shared state." };
+      return { data: proposal, entityIds: [String(proposal.id)], summary: proposal.kind === "schedule_change" ? "Approved. Nothing moves in your week until you confirm the new times." : "Approved, and your work is updated." };
     }
     if (name === "reject_proposal") {
       const proposal = demoStore.proposals.find((item) => item.id === args.proposalId && item.status === "pending");
@@ -840,7 +840,7 @@ class NeonStore implements Store {
       const proposal = await this.repo.confirmProposal(String(args.proposalId), this.userId);
       if (!proposal) throw new Error("Pending proposal not found, expired, or already resolved");
       await this.appendEvent({ type: "proposal.confirmed", summary: proposal.summary, entityIds: [proposal.id], payload: { kind: proposal.kind, payload: proposal.payload, confirmedBy: args.confirmedBy }, source: { surface } }, now);
-      return { data: proposal, entityIds: [proposal.id], summary: proposal.kind === "schedule_change" ? "Confirmed the schedule proposal; commit_schedule_change is still required before the block changes." : "Confirmed and applied the approved, whitelisted fields to the shared state; the audit history was preserved." };
+      return { data: proposal, entityIds: [proposal.id], summary: proposal.kind === "schedule_change" ? "Approved. Nothing moves in your week until you confirm the new times." : "Approved, and your work is updated. The earlier version is kept in Review." };
     }
     if (name === "reject_proposal") {
       const proposal = await this.repo.rejectProposal(String(args.proposalId), this.userId);

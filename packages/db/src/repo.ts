@@ -803,7 +803,35 @@ export class NeonRepository {
         this.db.select({ id: modelRoutes.id, taskClass: modelRoutes.taskClass, reason: modelRoutes.reason, verificationStatus: modelRoutes.verificationStatus, fallbackUsed: modelRoutes.fallbackUsed, createdAt: modelRoutes.createdAt }).from(modelRoutes).where(eq(modelRoutes.userId, userId)).orderBy(desc(modelRoutes.createdAt)).limit(30),
         userEvents(50),
       ]);
-      return { ...empty, proposals: proposalRows, modelRoutes: routeRows, events: eventView(eventRows) };
+      // AC-RV1 wants a before-and-after, and "before" is whatever the proposal
+      // would overwrite. Without these the screen resolved no target and printed
+      // an em dash in every left-hand cell — a diff with one side missing, which
+      // is precisely the "approve a change you cannot see" problem Review exists
+      // to remove. Only the records the pending proposals actually name are
+      // read, so this stays a Review-shaped query rather than a whole workspace.
+      const targetIds = [...new Set(proposalRows.flatMap((row) => {
+        const payload = row.payload as Record<string, unknown>;
+        return [payload.entityId, payload.goalId, payload.taskId, payload.projectId, row.entityId]
+          .filter((value): value is string => typeof value === "string" && value.length > 0);
+      }))];
+      const [targetGoals, targetTasks, targetProjects, targetMilestones] = targetIds.length
+        ? await Promise.all([
+          this.db.select().from(goals).where(and(eq(goals.userId, userId), eq(goals.deleted, false), inArray(goals.id, targetIds))),
+          this.db.select({ task: tasks }).from(tasks).innerJoin(goals, eq(tasks.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(tasks.deleted, false), inArray(tasks.id, targetIds))),
+          this.db.select().from(projects).where(and(eq(projects.userId, userId), eq(projects.deleted, false), inArray(projects.id, targetIds))),
+          this.db.select({ milestone: milestones }).from(milestones).innerJoin(goals, eq(milestones.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(milestones.deleted, false), inArray(milestones.id, targetIds))),
+        ])
+        : [[], [], [], []];
+      return {
+        ...empty,
+        proposals: proposalRows,
+        modelRoutes: routeRows,
+        events: eventView(eventRows),
+        goals: targetGoals,
+        tasks: targetTasks.map(({ task }) => task),
+        projects: targetProjects,
+        milestones: targetMilestones.map(({ milestone }) => milestone),
+      };
     }
     if (view === "code") {
       const [goalRows, taskRows, projectRows, masteryRows, receiptRows] = await Promise.all([
