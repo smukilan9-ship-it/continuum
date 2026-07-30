@@ -105,11 +105,8 @@ export function SourceRow({
       selected={selected}
       onSelect={() => actions.onOpen(source)}
       leading={<span className="source-glyph" aria-hidden="true"><Glyph size={16} /></span>}
-      title={
-        <span className="source-title" aria-posinset={position?.index !== undefined ? position.index + 1 : undefined} aria-setsize={position?.setSize}>
-          {source.title}
-        </span>
-      }
+      position={position}
+      title={<span className="source-title">{source.title}</span>}
       meta={source.subtitle}
       trailing={
         <span className="source-chips">

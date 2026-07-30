@@ -87,7 +87,8 @@ export function ResultRow({
       density="comfortable"
       selected={selected}
       onSelect={actions.onOpen}
-      title={<span className="result-title" aria-posinset={position.index + 1} aria-setsize={position.setSize}>{work.title}</span>}
+      position={position}
+      title={<span className="result-title">{work.title}</span>}
       meta={meta}
       trailing={
         <span className="result-chips">

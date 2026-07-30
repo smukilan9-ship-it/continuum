@@ -447,7 +447,7 @@
 .section-heading { margin: 42px 0 17px; }
 .section-heading h2 { color: var(--ink); font-size: clamp(22px, 2.4vw, 30px); letter-spacing: -.035em; }
 .section-heading > p { max-width: 520px; }
-.card-kicker { color: var(--accent-mark); }@media (max-width: 760px) {
+@media (max-width: 760px) {
   .page-intro h1 { font-size: clamp(31px, 11vw, 44px); }
   .section-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
   .section-heading > p { text-align: left; }

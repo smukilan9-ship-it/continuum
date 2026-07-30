@@ -31,6 +31,7 @@ export function Row({
   actions,
   density = "default",
   className,
+  position,
 }: {
   href?: string;
   onSelect?: () => void;
@@ -42,6 +43,12 @@ export function Row({
   actions?: ReactNode;
   density?: "compact" | "default" | "comfortable";
   className?: string;
+  /**
+   * Where this row sits in the whole list, for a virtualised list where the DOM
+   * holds a slice. `aria-posinset`/`aria-setsize` belong on the element with the
+   * `listitem` role — that is this `<li>`, not anything inside it.
+   */
+  position?: { index: number; setSize: number };
 }) {
   const body = (
     <>
@@ -57,7 +64,7 @@ export function Row({
   const interactive = Boolean(href || onSelect);
 
   return (
-    <li className={cn("row", `row-${density}`, interactive && "row-interactive", selected && "row-selected", className)}>
+    <li className={cn("row", `row-${density}`, interactive && "row-interactive", selected && "row-selected", className)} aria-posinset={position ? position.index + 1 : undefined} aria-setsize={position?.setSize}>
       {href ? (
         <Link className="row-hit" href={href as Route} aria-current={selected ? "true" : undefined}>{body}</Link>
       ) : onSelect ? (
