@@ -161,6 +161,8 @@ export function LandingPage() {
             first thing the visitor sees and animates in content they are already
             looking at. Measured: it held largest-contentful-paint at 3.0s
             against §19.9's 2.0s, of which 2.4s was render delay alone. */}
+        <div className="mk-hero-band">
+          <div className="mk-hero-wash" aria-hidden="true" />
         <section className="mk-hero" aria-labelledby="hero-title">
           <div className="mk-hero-copy">
             <p className="mk-eyebrow">For students and researchers</p>
@@ -196,6 +198,7 @@ export function LandingPage() {
             />
           </figure>
         </section>
+        </div>
 
         {/* 2 — Problem */}
         <section className="mk-section mk-problem" aria-labelledby="problem-title">

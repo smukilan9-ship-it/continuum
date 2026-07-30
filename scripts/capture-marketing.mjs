@@ -6,7 +6,7 @@
  *   node scripts/capture-marketing.mjs --only=plan-week,build-run
  *   node scripts/capture-marketing.mjs --headed
  *
- * Output: apps/web/public/marketing/{light,dark}/<name>.png
+ * Output: apps/web/public/marketing/light/<name>.png
  *         1440x900 at deviceScaleFactor 2, so every file is 2880x1800 and the
  *         `width`/`height` constants in components/landing/product-shot.tsx stay
  *         correct. Do not change the viewport without changing those.
@@ -41,7 +41,8 @@ const BASE_URL = (process.env.CONTINUUM_MARKETING_BASE_URL ?? "http://localhost:
 const OUTPUT_DIR = fileURLToPath(new URL("../apps/web/public/marketing/", import.meta.url));
 const VIEWPORT = { width: 1440, height: 900 };
 const SCALE = 2;
-const THEMES = ["light", "dark"];
+// One theme now. The dark variants are gone with dark mode.
+const THEMES = ["light"];
 
 const args = process.argv.slice(2);
 const placeholdersOnly = args.includes("--placeholders");
@@ -143,11 +144,10 @@ async function openFirstConversation(page) {
   await page.waitForTimeout(800);
 }
 
-/** The theme comes from localStorage (see the inline script in app/layout.tsx), not the OS. */
-async function applyTheme(page, theme) {
-  await page.evaluate((preference) => window.localStorage.setItem("continuum-theme", preference), theme);
+/** There is one theme, so this only guarantees a clean reload between shots. */
+async function applyTheme(page) {
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForFunction((expected) => document.documentElement.dataset.theme === expected, theme, { timeout: 15_000 });
+  await page.waitForTimeout(400);
 }
 
 async function signIn(page) {
