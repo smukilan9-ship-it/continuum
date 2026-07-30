@@ -504,6 +504,7 @@ body {
 .shortcut-sheet dt { min-width: 64px; }
 .shortcut-sheet dd { margin: 0; color: var(--ink-2); font-size: var(--t-small); }
 
+/* Below the sidebar breakpoint the shell is a single column: §19.7 allows no
    horizontal page scroll at any width. */
 @media (max-width: 767px) {
   .content-wrap > .screen,
