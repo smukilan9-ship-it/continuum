@@ -347,6 +347,9 @@ describe("virtualised row heights agree between CSS and JS", () => {
 
   it("keeps virtualised rows out of the container-query stack", () => {
     // They cannot grow, so wrapping clips them instead of reflowing them.
-    expect(read("components/ui/kit.css")).toMatch(/\.library-virtual\s*>\s*\.row\s*\{\s*flex-wrap:\s*nowrap/);
+    // Named individually, not as a group: a rule covering the whole virtual
+    // list outranks `.result-row` and undoes the stack it opts into.
+    expect(read("components/ui/kit.css")).toMatch(/\.source-row\s*\{\s*flex-wrap:\s*nowrap/);
+    expect(read("components/ui/kit.css")).not.toMatch(/\.library-virtual\s*>\s*\.row/);
   });
 });

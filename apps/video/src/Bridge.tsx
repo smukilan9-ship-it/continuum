@@ -6,12 +6,13 @@ import {
 } from "remotion";
 
 import { mark, palette } from "./brand";
+import { Bloom } from "./vfx";
 
 /**
  * S1 · Bridge — 45 frames, rendered WITH ALPHA (PLAN §3.2, T3).
  *
  * Sits on V2 over the head of `cap_today`. It opens on the same paper the Hook
- * ends on, carrying the Hook's lime dot forward, then irises that dot open into
+ * ends on, carrying the Hook's amber dot forward, then irises that dot open into
  * the mark's rounded-square silhouette to reveal the live product beneath.
  *
  * Nothing here may set a background colour: everything outside the paper ring
@@ -48,7 +49,7 @@ export const Bridge: React.FC = () => {
     extrapolateRight: "clamp",
   });
 
-  // A lime edge trails the wipe and burns off before the ring clears frame.
+  // An amber edge trails the wipe and burns off before the ring clears frame.
   const glow = interpolate(frame, [IRIS_START, 12, 34, IRIS_END], [0, 0.9, 0.5, 0], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
@@ -93,6 +94,13 @@ export const Bridge: React.FC = () => {
           />
         ) : null}
       </svg>
+
+      {/* The Hook's dot carries a 340px bloom; without the same glow here the
+          cut at film frame 420 drops it in one frame. It rides the dot out
+          rather than the iris, so it is gone before the hole grows past it. */}
+      {dot > 0 ? (
+        <Bloom size={340} strength={0.85 * dot} color={mark.trace} />
+      ) : null}
     </AbsoluteFill>
   );
 };

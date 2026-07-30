@@ -82,7 +82,7 @@ const TerminalBody: React.FC<BodyProps> = ({ local }) => (
   </div>
 );
 
-/** macOS Calendar, week view, with the exam sitting on Friday. */
+/** macOS Calendar, week view, with the exam sitting on Saturday. */
 const CalendarBody: React.FC<BodyProps> = ({ local }) => {
   const shown = fade(local, 3, 12);
   return (
@@ -107,20 +107,23 @@ const CalendarBody: React.FC<BodyProps> = ({ local }) => {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
+        {/* The week the seeded SAT actually falls in: 3 Oct 2026 is a Saturday,
+            which is the only day the test runs, so the view has to cross the
+            month boundary to hold it. */}
         {[
-          { day: "MON", date: 12 },
-          { day: "TUE", date: 13 },
-          { day: "WED", date: 14 },
-          { day: "THU", date: 15 },
-          { day: "FRI", date: 16 },
+          { day: "TUE", date: 29 },
+          { day: "WED", date: 30 },
+          { day: "THU", date: 1 },
+          { day: "FRI", date: 2 },
+          { day: "SAT", date: 3 },
         ].map((column) => (
           <div key={column.day} style={{ display: "grid", gap: 3, justifyItems: "center" }}>
             <span style={{ fontSize: 7.5, letterSpacing: 0.6, color: "#8d8d89" }}>{column.day}</span>
             <span
               style={{
                 fontSize: 12,
-                fontWeight: column.date === 16 ? 700 : 400,
-                color: column.date === 16 ? "#e5484d" : "#2b2b29",
+                fontWeight: column.date === 3 ? 700 : 400,
+                color: column.date === 3 ? "#e5484d" : "#2b2b29",
               }}
             >
               {column.date}
@@ -157,7 +160,7 @@ const CalendarBody: React.FC<BodyProps> = ({ local }) => {
                   textOverflow: "ellipsis",
                 }}
               >
-                EE-201 EXAM
+                SAT EXAM
               </div>
             ) : (
               <Line width={78} height={5} color="#e8e8e5" />
@@ -167,7 +170,7 @@ const CalendarBody: React.FC<BodyProps> = ({ local }) => {
         ))}
       </div>
 
-      <span style={{ fontSize: 9.5, color: palette.ink2 }}>EE-201 EXAM — Fri 16 Oct, 9:00 AM</span>
+      <span style={{ fontSize: 9.5, color: palette.ink2 }}>SAT EXAM — Sat 3 Oct, 8:00 AM</span>
     </div>
   );
 };

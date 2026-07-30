@@ -3,7 +3,7 @@ import { random } from "remotion";
 import { Line, fade } from "./primitives";
 
 /**
- * macOS Preview showing the Griffiths chapter (f66).
+ * macOS Preview showing the mock-test review PDF (f66).
  *
  * Page-thumbnail rail on the left with page 3 selected, then the page itself:
  * section heading, body text, a display equation, a figure with a caption.
@@ -65,7 +65,7 @@ export const PreviewUI: React.FC<{ local: number; seed: string }> = ({ local, se
           }}
         >
           <div style={{ fontSize: 13, fontWeight: 700, color: "#1c1c1a", fontFamily: "Georgia, serif" }}>
-            2.3 The Electric Potential
+            4.2 Arc Length and Sector Area
           </div>
           {Array.from({ length: 5 }, (_, index) => (
             <Line key={index} width={80 + random(`${seed}-p1-${index}`) * 20} height={5.5} color="#dcdcd8" />
@@ -83,9 +83,9 @@ export const PreviewUI: React.FC<{ local: number; seed: string }> = ({ local, se
             }}
           >
             <span style={{ fontSize: 14, fontFamily: "Georgia, serif", fontStyle: "italic", color: "#1c1c1a" }}>
-              V(r) = − ∫ E · dl
+              s = rθ        A = ½r²θ
             </span>
-            <span style={{ fontSize: 8, color: "#9a9a96" }}>(2.21)</span>
+            <span style={{ fontSize: 8, color: "#9a9a96" }}>(4.7)</span>
           </div>
 
           {Array.from({ length: 4 }, (_, index) => (

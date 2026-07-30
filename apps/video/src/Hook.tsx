@@ -254,7 +254,11 @@ export const Hook: React.FC<{ style?: HookStyle }> = ({ style = "depth" }) => {
   });
   // Breathes and settles back to exactly 12px, which is where `Bridge` picks
   // the dot up on its own frame 0.
-  const breathe = interpolate(frame, [DOT_LANDED, 417, 420], [1, 1.15, 1], {
+  //
+  // The settle keyframe is 419, not 420: a 420-frame composition renders frames
+  // 0–419, so a keyframe at 420 is one frame past the last one that exists and
+  // the dot handed off 5% oversized.
+  const breathe = interpolate(frame, [DOT_LANDED, 417, 419], [1, 1.15, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
@@ -340,7 +344,7 @@ export const Hook: React.FC<{ style?: HookStyle }> = ({ style = "depth" }) => {
       {/* All that mass, compressed. The Close re-opens this exact dot. */}
       {dotScale > 0 ? (
         <>
-          <Bloom size={340} strength={dotScale * 0.85} />
+          <Bloom size={340} strength={dotScale * 0.85} color={mark.trace} />
           <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
             <div
               style={{
@@ -356,8 +360,23 @@ export const Hook: React.FC<{ style?: HookStyle }> = ({ style = "depth" }) => {
         </>
       ) : null}
 
-      {/* Deepens as the desktop goes cold, lifts as it resolves. */}
-      <Vignette strength={(style === "grid" ? 0.15 : 0.35) + cool * 0.65} />
+      {/* Deepens as the desktop goes cold, then ramps to nothing across the
+          collapse — the third effect to do so, for the same reason as `cool`
+          and `grain`: `Bridge` draws flat canvas with no vignette, so anything
+          still darkening the corners at f419 pops off at the cut. Measured at
+          up to 9/255 in the far corner before this ramp existed.
+
+          It costs nothing to lose. By f414 the frame is an empty canvas with
+          one dot on it, and a vignette on an empty white field is invisible. */}
+      <Vignette
+        strength={
+          ((style === "grid" ? 0.15 : 0.35) + cool * 0.65) *
+          interpolate(frame, [COLLAPSE_START, DOT_LANDED], [1, 0], {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+          })
+        }
+      />
     </AbsoluteFill>
   );
 };

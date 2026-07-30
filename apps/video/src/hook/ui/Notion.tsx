@@ -42,22 +42,22 @@ export const NotionUI: React.FC<{ local: number; seed: string }> = ({ local, see
           >
             N
           </div>
-          <span style={{ fontSize: 11, fontWeight: 600, color: "#37352f" }}>EE Notes</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "#37352f" }}>Mukilan Notes</span>
         </div>
         <SidebarRow label="Search" size={10.5} color="#6b6a65" />
         <SidebarRow label="Home" size={10.5} color="#6b6a65" />
         <SidebarRow label="Inbox" size={10.5} color="#6b6a65" />
         <div style={{ height: 7 }} />
-        <SidebarRow label="📘  EE-201" size={10.5} color="#37352f" />
-        <SidebarRow label="📝  exam_notes_FINAL_v3" size={10.5} color="#37352f" active activeBg="rgba(0,0,0,0.05)" />
-        <SidebarRow label="📝  exam_notes_v2" size={10.5} color="#8b8a84" />
+        <SidebarRow label="📘  SAT Prep" size={10.5} color="#37352f" />
+        <SidebarRow label="📝  sat_error_log_FINAL_v3" size={10.5} color="#37352f" active activeBg="rgba(0,0,0,0.05)" />
+        <SidebarRow label="📝  sat_error_log_v2" size={10.5} color="#8b8a84" />
         <SidebarRow label="📅  Study plan" size={10.5} color="#37352f" />
-        <SidebarRow label="🔗  Paper links" size={10.5} color="#37352f" />
+        <SidebarRow label="🔗  Practice links" size={10.5} color="#37352f" />
       </aside>
 
       <div style={{ flex: 1, minWidth: 0, padding: "16px 20px", display: "grid", gap: 12, alignContent: "start" }}>
         <div style={{ fontSize: 17, fontWeight: 700, color: "#37352f", letterSpacing: -0.4 }}>
-          exam_notes_FINAL_v3
+          sat_error_log_FINAL_v3
         </div>
 
         {[0, 1, 2].map((bullet) => (

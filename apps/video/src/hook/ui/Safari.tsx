@@ -137,14 +137,14 @@ export const SafariUI: React.FC<{ local: number; seed: string }> = ({ local, see
           </div>
 
           <div style={{ fontSize: 12.5, fontWeight: 600, color: "#0f0f0f", letterSpacing: -0.2 }}>
-            Electric Potential in 21 Minutes
+            SAT Circles & Parabolas in 21 Minutes
           </div>
           <div style={{ fontSize: 10, color: "#606060" }}>412K views · 2 years ago</div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 1 }}>
             <div style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: "#c4302b" }} />
             <div style={{ display: "grid", gap: 2, flex: 1, minWidth: 0 }}>
-              <span style={{ fontSize: 10.5, fontWeight: 600, color: "#0f0f0f" }}>PhysicsCrashCourse</span>
+              <span style={{ fontSize: 10.5, fontWeight: 600, color: "#0f0f0f" }}>SAT Math Academy</span>
               <span style={{ fontSize: 9, color: "#606060" }}>1.2M subscribers</span>
             </div>
             <div

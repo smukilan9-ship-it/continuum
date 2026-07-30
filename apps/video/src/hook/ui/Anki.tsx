@@ -11,10 +11,10 @@ import { fade } from "./primitives";
 const BLUE = "#2f6fb0";
 
 const decks = [
-  { name: "EE-201", indent: 0, due: 43, fresh: 12 },
-  { name: "Electrostatics", indent: 1, due: 31, fresh: 8 },
-  { name: "Boundary conditions", indent: 1, due: 12, fresh: 4 },
-  { name: "Circuits", indent: 0, due: 0, fresh: 0 },
+  { name: "SAT Math", indent: 0, due: 43, fresh: 12 },
+  { name: "Advanced Geometry", indent: 1, due: 31, fresh: 8 },
+  { name: "Circles & Parabolas", indent: 1, due: 12, fresh: 4 },
+  { name: "Reading & Writing", indent: 0, due: 0, fresh: 0 },
 ];
 
 export const AnkiUI: React.FC<{ local: number }> = ({ local }) => {

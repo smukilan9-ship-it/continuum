@@ -11,12 +11,12 @@ import { interpolate, random } from "remotion";
 
 /** The same handful of questions, asked again in every app. That is the joke. */
 export const REPEATED_TOPICS = [
-  "Electric potential intuition",
-  "Boundary conditions help",
-  "Image charge method",
-  "Griffiths ch.2 problem 14",
-  "Voltage vs potential energy",
-  "Poisson equation basics",
+  "Arc length vs sector area",
+  "Circles in the coordinate plane",
+  "Parabola vertex form help",
+  "Bluebook mock 4 — Q17",
+  "Radians vs degrees",
+  "Timed pacing strategy",
 ] as const;
 
 export const fade = (local: number, at = 4, over = 12) =>

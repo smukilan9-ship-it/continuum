@@ -908,11 +908,13 @@
 .list { container-type: inline-size; }
 
 @container (max-width: 430px) {
-  /* Virtualised rows are excluded: their height is a constant the windowing
-     maths depends on, so a wrapped line is clipped rather than shown. They
-     stack unconditionally instead, at a height that fits — see
-     `.result-row` in library.css. */
-  .library-virtual > .row { flex-wrap: nowrap; }
+  /* A virtualised row cannot grow — its height is a constant the windowing
+     maths depends on, so a wrapped line is clipped rather than shown. The
+     source row is still a single 56px line and must not wrap. The scholarly
+     result row opts *in* at a fixed 116px instead, in library.css, which is
+     why it is not named here: naming the whole virtual list would outrank it
+     and undo exactly the fix it exists to apply. */
+  .source-row { flex-wrap: nowrap; }
   .row { flex-wrap: wrap; align-items: flex-start; }
   .row-hit { flex: 1 1 100%; grid-template-columns: auto minmax(0, 1fr); }
   /* The trailing badge drops under the copy instead of competing with it. */
