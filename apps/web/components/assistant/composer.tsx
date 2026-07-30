@@ -169,7 +169,12 @@ export function Composer({ compact = false }: { compact?: boolean }) {
 
       {assistant.busy
         ? <Button type="button" className="assistant-send stop" onClick={assistant.stop} aria-label="Stop response"><Square size={15} /></Button>
-        : <Button className="assistant-send" disabled={!canSend} aria-label="Send message"><ArrowUp size={17} /></Button>}
+        /* `type="submit"`, explicitly. The Button primitive defaults to
+           type="button", so without this the send control sits inside
+           <form onSubmit={submit}> and never submits it — the most important
+           button in the product, doing nothing on click. Enter still worked,
+           which is why it went unnoticed. */
+        : <Button type="submit" className="assistant-send" disabled={!canSend} aria-label="Send message"><ArrowUp size={17} /></Button>}
 
       <div className="assistant-composer-options">
         <div className="assistant-composer-chips">

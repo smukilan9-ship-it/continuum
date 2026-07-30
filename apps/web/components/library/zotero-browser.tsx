@@ -307,6 +307,7 @@ export function ZoteroBrowser({
         <form className="library-search" onSubmit={(event) => { event.preventDefault(); setStart(0); setSubmittedQuery(query.trim()); }}>
           <Search size={16} aria-hidden="true" />
           <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title or creator" aria-label="Search Zotero" />
+          <Button type="submit" variant="secondary" size="sm">Search</Button>
         </form>
         <LoadingButton variant="secondary" size="sm" loading={busy === "sync"} loadingLabel="Syncing…" onClick={() => void runSync()}>
           <RefreshCw size={14} aria-hidden="true" />Sync now
