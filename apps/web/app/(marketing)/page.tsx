@@ -1,6 +1,18 @@
 import type { Metadata } from "next";
 import { LandingPage } from "@/components/landing/landing-page";
 
+/**
+ * Rendered per request, not prerendered.
+ *
+ * The hero's primary call to action is the demo, and whether the demo exists is
+ * a runtime feature flag. Statically prerendering this page bakes the answer in
+ * at build time, so flipping ENABLE_DEMO_LOGIN changes nothing until someone
+ * redeploys — and a page whose main CTA depends on a flag it read hours ago is
+ * a page that can be wrong. The page has no per-user content, so the only cost
+ * is a render.
+ */
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   // Absolute, so the layout's "%s | Continuum" template does not append a second
   // brand to a title that already carries it.

@@ -289,12 +289,22 @@ export async function orchestrate(input: OrchestrateInput & { mode?: "auto" | "f
   const rankedMemory = capContext(rankMemory(memory as unknown as Array<Record<string, unknown>>, excluded));
 
   // Step 8 — provenance is the records that were actually retrieved.
-  const usedContext = mergeProvenance([
+  //
+  // Two lists, deliberately. `usedContext` is what the answer cites and is
+  // capped at MAX_RECORDS. `candidates` is everything retrieval saw, and it is
+  // what §11.5's identifier swap reads: a model that leaks `goal_demo_oasis`
+  // leaks it because the goal was in the prompt at all, not because that goal
+  // finished in the top eight. Building the label map from the cited list alone
+  // meant the filter had no title for the rest and deleted them, leaving
+  // "That decision belongs to  and it is…" — a sentence with a hole in it,
+  // which is worse than the identifier it removed.
+  const candidates = mergeProvenance([
     fromAttachments(attachments.sources, attachments.chunks),
     page.provenance,
     fromMemoryChunks(rankedMemory),
     fromWorkspaceContext(workspace),
-  ], MAX_RECORDS).filter((entry) => !excluded.has(entry.id));
+  ], Number.MAX_SAFE_INTEGER).filter((entry) => !excluded.has(entry.id));
+  const usedContext = candidates.slice(0, MAX_RECORDS);
 
   const context: Record<string, unknown> = {
     ...(page.records ?? {}),
@@ -309,7 +319,7 @@ export async function orchestrate(input: OrchestrateInput & { mode?: "auto" | "f
     ? undefined
     : input.pageContext?.kind === "project" ? "use_project" as const : "search_sources" as const;
 
-  return { ...base, context, usedContext, labels: labelMap(usedContext), groundedInWorkspace, ...(depthOffer ? { depthOffer } : {}) };
+  return { ...base, context, usedContext, labels: labelMap(candidates), groundedInWorkspace, ...(depthOffer ? { depthOffer } : {}) };
 }
 
 async function loadAttachments(store: Store, attachmentIds: string[]) {

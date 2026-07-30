@@ -45,6 +45,13 @@ const ALL_ROUTES = [
 // against a local server.
 const ROUTES = ALL_ROUTES.filter((route) => !route.devOnly || BASE.includes("localhost"));
 
+// A deployment's connection pool is smaller than this script's appetite: 108
+// navigations back to back produced a handful of 500s with connection
+// timeouts, different routes each run, every one of which returned 200 on its
+// own. Pace the remote runs rather than reporting the pool as a route bug.
+const PACE_MS = BASE.includes("localhost") ? 0 : 400;
+const pace = () => (PACE_MS ? new Promise((resolve) => setTimeout(resolve, PACE_MS)) : Promise.resolve());
+
 const WIDTHS = [320, 375, 1440];
 const THEMES = ["light", "dark"];
 
@@ -106,6 +113,7 @@ async function main() {
         await page.setViewportSize({ width, height: 900 });
         // `domcontentloaded` plus a settle, not `networkidle`: the app holds open
         // connections (streams, polling), so networkidle never fires on some routes.
+        await pace();
         const response = await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout: 120_000 });
         await page.waitForTimeout(900);
         const status = response?.status() ?? 0;

@@ -164,7 +164,7 @@ async function settleWithin<T>(promise: Promise<T>, milliseconds: number): Promi
   }
 }
 
-function compactToBudget<T>(value: T, maxTokens: number): T {
+export function compactToBudget<T>(value: T, maxTokens: number): T {
   const maxChars = Math.max(400, maxTokens * 4);
   const clone = JSON.parse(JSON.stringify(value)) as T;
   const serialized = () => JSON.stringify(clone);
@@ -753,7 +753,7 @@ class NeonStore implements Store {
       const project = await this.repo.getProject(String(args.projectId), this.userId);
       if (!project) throw new Error("Project not found");
       const relevantMemories = await this.searchMemory({ query: String(args.focus ?? project.project.title), projectId: project.project.id, limit: Number(args.limit ?? 6) });
-      return compactToBudget({ ...project, relevantMemories }, Number(args.maxTokens ?? 1400));
+      return compactToBudget({ ...project, relevantMemories }, Number(args.maxTokens ?? 4000));
     }
     if (name === "list_goals") return this.repo.listGoals(this.userId);
     if (name === "load_goal" || name === "get_goal_state") {
