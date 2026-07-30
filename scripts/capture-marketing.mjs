@@ -21,10 +21,8 @@
  * Two shots depend on UI that is being rebuilt concurrently and will not look
  * right — or will time out on `ready` — until it lands:
  *
- *   ask-inspector  §11.6 context inspector. Today the provenance surface is the
- *                  `<details class="assistant-used-context">` disclosure, which
- *                  this script expands as the closest available stand-in. Retake
- *                  once the inspector panel exists.
+ *   ask-inspector  §11.6 context inspector — now shipped. The shot clicks a
+ *                  citation chip to open the real inspector panel.
  *   study-check    §14.1 study rebuild + the `study_sessions` table (§16.11
  *                  migration 2). The goal Study tab renders today, but the
  *                  "unseen checkpoint" framing the marketing row describes is
@@ -61,26 +59,45 @@ const only = args.find((arg) => arg.startsWith("--only="))?.slice("--only=".leng
  */
 
 /** @type {Shot[]} */
+/**
+ * The three-step first-run tour is a coach-mark overlay that fires for any
+ * account with goals and no completion flag — which every fresh browser context
+ * is. It sat in the corner of every shot.
+ *
+ * The try/catch matters: an init script also runs on `about:blank`, where
+ * touching localStorage throws and would abort the whole script silently.
+ */
+async function dismissFirstRun(context) {
+  await context.addInitScript(() => {
+    try {
+      window.localStorage.setItem("continuum.tour.completed.v1", "1");
+      window.localStorage.setItem("continuum.onboarding.skipped.v1", "1");
+    } catch { /* Not a real origin yet. */ }
+  });
+}
+
 const SHOTS = [
   {
     name: "ask-cited",
-    path: "/assistant",
+    path: "/ask",
     ready: ".assistant-message",
     async prepare(page) {
       await openFirstConversation(page);
-      await page.locator(".assistant-used-context").first().waitFor({ state: "visible", timeout: 15_000 });
+      await page.locator(".citation-chip").first().waitFor({ state: "visible", timeout: 15_000 });
     },
   },
   {
     name: "ask-inspector",
-    path: "/assistant",
+    path: "/ask",
     ready: ".assistant-message",
-    note: "§11.6 inspector not built — expanding the provenance disclosure as a stand-in.",
     async prepare(page) {
       await openFirstConversation(page);
-      const provenance = page.locator(".assistant-used-context").first();
-      await provenance.waitFor({ state: "visible", timeout: 15_000 });
-      await provenance.locator("summary").click();
+      // §11.6: clicking a citation chip opens the context inspector showing the
+      // exact snippet the answer used.
+      const chip = page.locator(".citation-chip").first();
+      await chip.waitFor({ state: "visible", timeout: 15_000 });
+      await chip.click();
+      await page.locator(".context-inspector").waitFor({ state: "visible", timeout: 10_000 });
       await page.waitForTimeout(400);
     },
   },
@@ -102,7 +119,7 @@ const SHOTS = [
   },
   {
     name: "build-run",
-    path: "/code",
+    path: "/build",
     ready: ".cm-content",
     async prepare(page) {
       await page.locator(".cm-content").click();
@@ -144,7 +161,7 @@ async function signIn(page) {
   if (result.status !== 200) {
     throw new Error(`Demo sign-in failed (${result.status}): ${result.body}\nStart the dev server with DATABASE_URL set and run \`pnpm seed:demo\`.`);
   }
-  await page.goto(`${BASE_URL}/today`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE_URL}/home`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".app-shell", { timeout: 30_000 });
 }
 
@@ -173,6 +190,11 @@ async function writePlaceholders(browser) {
   for (const theme of THEMES) {
     await mkdir(`${OUTPUT_DIR}${theme}`, { recursive: true });
     const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: SCALE });
+  // The three-step first-run tour is a coach-mark overlay that fires for any
+  // account with goals and no completion flag — including a fresh browser
+  // context, which is what this script always is. It appeared in the corner of
+  // every shot until it was dismissed up front.
+  await dismissFirstRun(context);
     const page = await context.newPage();
     for (const shot of SHOTS) {
       if (only && !only.includes(shot.name)) continue;
@@ -189,6 +211,7 @@ async function capture(browser) {
   for (const theme of THEMES) {
     await mkdir(`${OUTPUT_DIR}${theme}`, { recursive: true });
     const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: SCALE, colorScheme: theme });
+    await dismissFirstRun(context);
     const page = await context.newPage();
     await signIn(page);
     await applyTheme(page, theme);
