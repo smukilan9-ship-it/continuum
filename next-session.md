@@ -221,6 +221,12 @@ it is code that was skipped.
 - **A real Zotero library and a real Obsidian vault.** Both are stubbed at the
   network boundary in the journeys.
 - **§18.11's Safari and Firefox passes.** Playwright runs Chromium only.
+- **`verify-release.mjs` outruns the Neon connection pool.** Against a
+  deployment it visits 18 routes x 2 themes x 3 widths back to back and a
+  handful come back 500 with a connection timeout — different routes each run,
+  and every one of them returns 200 when requested on its own. The app is fine;
+  the sweep needs a small delay between navigations, or the pool needs raising
+  for it. Do not read those 500s as route failures.
 - **The light theme has not had a design pass.** It is verified — every route,
   no overflow, correct tokens, zero axe violations, and now no literal colour —
   but verified is not designed.
