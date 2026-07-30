@@ -24,7 +24,6 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AssistantPanel } from "@/components/assistant/assistant-panel";
 import { AssistantProvider, useAssistantController } from "@/components/assistant/use-assistant";
 import type { AssistantSession, PageContext } from "@/components/assistant/types";
 import { BrandMark } from "@/components/brand-mark";
@@ -84,6 +83,14 @@ const mobileItems: NavItem[] = [
   { id: "learn", label: "Study", icon: BookOpen },
   { id: "code", label: "Build", icon: Code2 },
 ];
+
+/**
+ * The ⌘J panel is mounted by the shell, so importing it eagerly pulled
+ * react-markdown, remark-gfm and the whole thread renderer into the first load
+ * of every route — 38 kB past §19.9's 180 kB app-shell budget for a surface
+ * most page views never open. It loads when it is first opened.
+ */
+const AssistantPanel = dynamic(() => import("@/components/assistant/assistant-panel").then((module) => module.AssistantPanel), { ssr: false });
 
 const IntegrationsScreen = dynamic(() => import("@/components/integrations-screen").then((module) => module.IntegrationsScreen), { loading: () => <ScreenLoading /> });
 
