@@ -105,8 +105,8 @@
   --gradient-amber: linear-gradient(122deg, var(--amber) 0%, var(--amber-lift) 100%);
   --gradient-ink: var(--gradient-field);
   --gradient-wash:
-    radial-gradient(58% 52% at 76% 16%, rgba(14, 138, 110, .16), transparent 68%),
-    radial-gradient(44% 44% at 96% 6%, rgba(224, 135, 4, .13), transparent 70%),
+    radial-gradient(58% 52% at 76% 16%, rgba(5, 163, 124, .18), transparent 68%),
+    radial-gradient(44% 44% at 96% 6%, rgba(245, 158, 11, .15), transparent 70%),
     linear-gradient(168deg, #ffffff 0%, #f7faf8 58%, #eaf3ef 100%);
 
   /* A fine grain so a large dark field is a surface, not a flat fill. */
@@ -124,8 +124,8 @@
   --on-accent: var(--on-brand);
   --on-accent-mark: var(--on-brand);
   --on-accent-mark-2: rgba(255, 255, 255, .82);
-  --cyan: #12a081;
-  --violet: #4cc0a0;
+  --cyan: #0abc90;
+  --violet: #4fd8b0;
 }
 
 /* A status tint needs a border a step stronger than its surface but far weaker

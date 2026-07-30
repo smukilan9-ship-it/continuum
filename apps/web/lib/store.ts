@@ -13,7 +13,7 @@ import {
   type StoredSourceChunk,
   type WorkspaceSearchHit,
 } from "@continuum/db";
-import { assertScheduleCommitAllowed, curatedResourceRegistry, recommendBestResource, updateMastery, type ResourceNeed } from "@continuum/domain";
+import { assertScheduleCommitAllowed, curatedResourceRegistry, gradeFrom, nextReview, recommendBestResource, updateMastery, type ResourceNeed } from "@continuum/domain";
 import { contentHash } from "@continuum/retrieval";
 import {
   memoryEventSchema,
@@ -230,6 +230,28 @@ function assertRecentConfirmation(confirmedAt: unknown, now: string) {
   const confirmationTime = Date.parse(String(confirmedAt));
   const requestTime = Date.parse(now);
   if (Number.isNaN(confirmationTime) || Math.abs(requestTime - confirmationTime) > 15 * 60_000) throw new Error("Confirmation timestamp must be within 15 minutes of this write");
+}
+
+/**
+ * When to ask about this concept again.
+ *
+ * The grade comes from evidence — was the item unseen, was it answered
+ * correctly, could the learner explain it — never from a self-report, because a
+ * learner who has just re-read the page reports fluency they do not have.
+ */
+function scheduleNext(current: Record<string, unknown>, args: Record<string, unknown>, now: string) {
+  const grade = gradeFrom({
+    correct: Boolean(args.correct),
+    unseen: Boolean(args.unseen),
+    explanationScore: typeof args.explanationScore === "number" ? args.explanationScore : undefined,
+    seconds: typeof args.seconds === "number" ? args.seconds : undefined,
+  });
+  return nextReview({
+    intervalDays: typeof current.intervalDays === "number" ? current.intervalDays : 0,
+    ease: typeof current.ease === "number" ? current.ease : 2.5,
+    reps: typeof current.reps === "number" ? current.reps : 0,
+    lapses: typeof current.lapses === "number" ? current.lapses : 0,
+  }, grade, new Date(now));
 }
 
 class MemoryStore implements Store {
@@ -859,8 +881,10 @@ class NeonStore implements Store {
     if (name === "record_learning_evidence") {
       const attemptId = String(args.attemptId);
       const conceptId = String(args.conceptId);
-      const mastery = updateMastery(await this.getLearningState(conceptId), { id: attemptId, kind: "assessment", correct: Boolean(args.correct), unseen: Boolean(args.unseen), occurredAt: now });
-      await this.saveLearningState(mastery);
+      const current = await this.getLearningState(conceptId);
+      const mastery = updateMastery(current, { id: attemptId, kind: "assessment", correct: Boolean(args.correct), unseen: Boolean(args.unseen), occurredAt: now });
+      const review = scheduleNext(current as unknown as Record<string, unknown>, args, now);
+      await this.saveLearningState(mastery, review);
       await this.appendEvent({ type: "learning.evidence.recorded", summary: Boolean(args.correct) ? "Recorded correct learning evidence." : "Recorded learning evidence; the checkpoint did not pass.", entityIds: [attemptId, conceptId], payload: { ...args, mastery }, source: { surface } }, now);
       return { data: mastery, entityIds: [attemptId, conceptId], evidenceIds: [attemptId], summary: "Learning evidence saved; transfer changed only for a correct unseen assessment." };
     }
@@ -918,7 +942,9 @@ class NeonStore implements Store {
   }
 
   async getLearningState(conceptId = "concept_potential") { return (await this.repo.getLearningState(this.userId, conceptId)) ?? { conceptId, exposure: 0, understanding: 0, transfer: 0, retention: 0, confidence: 0, status: "not_started", evidenceIds: [], explanation: "No verified evidence has been recorded for this concept yet." }; }
-  async saveLearningState(state: MasteryState) { await this.repo.saveLearningState(state, this.userId); }
+  async saveLearningState(state: MasteryState, review?: { intervalDays: number; ease: number; reps: number; lapses: number; dueAt: string }) {
+    await this.repo.saveLearningState(state, this.userId, review);
+  }
   async ensureConcept(topic: string) { const normalized = topic.trim().replace(/\s+/g, " "); const conceptId = `concept_${createHash("sha256").update(`${this.userId}:${normalized.toLowerCase()}`).digest("hex").slice(0, 20)}`; await this.repo.ensureConcept(conceptId, normalized); return conceptId; }
   async saveQuestionBank(input: QuestionBankWrite) { return this.repo.saveQuestionBank({ ...input, userId: this.userId }); }
   async listQuestionBanks() { return this.repo.listQuestionBanks(this.userId); }

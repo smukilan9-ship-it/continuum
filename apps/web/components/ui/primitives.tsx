@@ -7,7 +7,11 @@ import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 
 import { cn } from "./utils";
 
-export type ButtonVariant = "primary" | "secondary" | "quiet" | "danger";
+/**
+ * `amber` is momentum, not action: a review that has lapsed, the block running
+ * now. It never carries a destructive or a neutral control.
+ */
+export type ButtonVariant = "primary" | "secondary" | "quiet" | "danger" | "amber" | "gradient";
 export type ControlSize = "sm" | "md" | "lg";
 
 /**

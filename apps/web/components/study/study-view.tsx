@@ -24,6 +24,8 @@ import { Button, EmptyState, LoadingButton, StatusChip } from "@/components/ui";
 import { PageHeader } from "@/components/workspace/page-header";
 import { PracticeRunner } from "@/components/workspace/question-bank-panel";
 import { text, type WorkspaceState } from "@/components/workspace/types";
+import { Stagger } from "@/components/ui/motion";
+import { ReviewQueue } from "./review-queue";
 import { ConceptList } from "./concept-list";
 import { rankConcepts, type ConceptSignal } from "./mastery";
 import { chooseNextAction } from "./next-action";
@@ -48,6 +50,31 @@ export function StudyView({
   const [starting, setStarting] = useState("");
 
   const concepts = useMemo(() => rankConcepts(state.learningStates), [state.learningStates]);
+
+  /**
+   * Days in a row with a verified check.
+   *
+   * Counted from the evidence, not from opening the app. A streak that rewards
+   * showing up is a streak that measures showing up; this one only moves when
+   * a concept was actually practised, so it is a claim the product can defend.
+   */
+  const streakDays = useMemo(() => {
+    const days = new Set(
+      (state.learningStates as unknown as Array<Record<string, unknown>>)
+        .map((row) => row.lastPracticedAt)
+        .filter((value): value is string | Date => Boolean(value))
+        .map((value) => new Date(value).toISOString().slice(0, 10)),
+    );
+    let count = 0;
+    const cursor = new Date();
+    // Today not yet practised is not a broken streak — yesterday is.
+    if (!days.has(cursor.toISOString().slice(0, 10))) cursor.setDate(cursor.getDate() - 1);
+    while (days.has(cursor.toISOString().slice(0, 10))) {
+      count += 1;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    return count;
+  }, [state.learningStates]);
   const next = useMemo(() => chooseNextAction(state), [state]);
   const goal = state.goals[0];
   const goalId = text(goal, "id");
@@ -95,14 +122,28 @@ export function StudyView({
   }
 
   return (
-    <div className="screen study-screen">
+    <Stagger className="screen study-screen" selector=":scope > *">
       <PageHeader
         title="Study"
         description="What to work on next, what you know, and the material behind it. Progress changes only after a check that can support it."
         stats={[{ label: "concepts", value: concepts.length }, { label: "practice sets", value: state.questionBanks.length }]}
       />
 
-      {/* 1 — Continue. One row, one primary action. */}
+      {/* 1 — Due today. The schedule comes before the suggestion: what a
+          learner owes their past self outranks what the product would pick. */}
+      <section className="study-section" aria-labelledby="study-due-heading">
+        <h2 id="study-due-heading" className="study-section-heading">Due today</h2>
+        <ReviewQueue
+          states={state.learningStates as unknown as Array<Record<string, unknown>>}
+          streakDays={streakDays}
+          onReview={(conceptId) => {
+            const concept = concepts.find((entry) => entry.conceptId === conceptId);
+            if (concept) void startSession(concept);
+          }}
+        />
+      </section>
+
+      {/* 2 — Continue. One row, one primary action. */}
       <section className="study-section" aria-labelledby="study-continue-heading">
         <h2 id="study-continue-heading" className="study-section-heading">Continue</h2>
         {next ? (
@@ -174,6 +215,6 @@ export function StudyView({
         showToast={showToast}
         onRefresh={onRefresh}
       />
-    </div>
+    </Stagger>
   );
 }

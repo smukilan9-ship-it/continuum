@@ -1131,7 +1131,13 @@ export class NeonRepository {
     };
   }
 
-  async saveLearningState(state: MasteryState, userId = DEMO_USER_ID) {
+  /**
+   * `review` is the SM-2 state. It is a separate argument rather than part of
+   * MasteryState because mastery is what the learner knows and the schedule is
+   * when to ask again — the same evidence updates both, but a caller that only
+   * corrects an explanation should not be forced to invent a due date.
+   */
+  async saveLearningState(state: MasteryState, userId = DEMO_USER_ID, review?: { intervalDays: number; ease: number; reps: number; lapses: number; dueAt: string }) {
     await this.ensureDemoSeed();
     const values = {
       id: `learning_${userId.replace(/^user_/, "")}_${state.conceptId.replace(/^concept_/, "")}`,
@@ -1146,6 +1152,13 @@ export class NeonRepository {
       evidenceIds: state.evidenceIds,
       explanation: state.explanation,
       lastPracticedAt: state.lastPracticedAt ? new Date(state.lastPracticedAt) : null,
+      ...(review ? {
+        dueAt: new Date(review.dueAt),
+        intervalDays: review.intervalDays,
+        ease: review.ease,
+        reps: review.reps,
+        lapses: review.lapses,
+      } : {}),
       updatedAt: new Date(),
       deleted: false,
     };
