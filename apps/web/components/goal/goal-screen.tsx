@@ -16,6 +16,7 @@ import {
   Target,
   Trash2,
 } from "lucide-react";
+import Link from "next/link";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -160,7 +161,7 @@ export function GoalScreen({
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error ?? "This goal could not be updated");
       cache.current.clear();
-      if (changes.deleted) { router.push("/goals"); return; }
+      if (changes.deleted) { router.push("/plan"); return; }
       await load(view);
       showToast(successMessage);
       await onRefresh();
@@ -331,7 +332,10 @@ function Overview({ payload, goalId, onSelectView, onNavigate, onOpenConcept, on
               <div className="card-kicker"><FlaskConical size={16} aria-hidden="true" /><span>Project</span></div>
               <h3>{text(project, "title")}</h3>
               <p>{text(project, "purpose", text(project, "phase", "Active"))}</p>
-              <button className="goal-inline-link" onClick={() => onNavigate("research")}>Open research <ArrowRight size={13} /></button>
+              {/* AC-P1: every project is reachable from its goal in one click. */}
+              <Link className="goal-inline-link" href={`/g/${encodeURIComponent(goalId)}/p/${encodeURIComponent(text(project, "id"))}` as Route}>
+                Open project <ArrowRight size={13} />
+              </Link>
             </Card>
           ))}
         </div>

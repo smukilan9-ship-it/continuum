@@ -93,7 +93,7 @@ export function AssistantPanel({ open, onOpenChange, state }: {
 
   if (!open) return null;
 
-  const conversationHref = (assistant.active ? `/assistant?conversation=${encodeURIComponent(assistant.active.id)}` : "/assistant") as Route;
+  const conversationHref = (assistant.active ? `/ask?conversation=${encodeURIComponent(assistant.active.id)}` : "/ask") as Route;
 
   return (
     <>

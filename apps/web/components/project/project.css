@@ -1,0 +1,71 @@
+/* ==========================================================================
+   Project page — §13.1. Co-located and token-only (§15.9).
+   ========================================================================== */
+
+.project-header { display: grid; gap: var(--s-2); margin-bottom: var(--s-5); }
+
+.project-breadcrumb { display: flex; align-items: center; gap: var(--s-2); color: var(--ink-3); font-size: var(--t-small); }
+.project-breadcrumb a { color: var(--ink-2); }
+.project-breadcrumb a:hover { color: var(--ink); text-decoration: underline; }
+
+.project-header-line { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-3); }
+.project-header-line h1 { margin: 0; color: var(--ink); font-size: var(--t-h1); line-height: var(--t-h1-lh); letter-spacing: -.02em; }
+.project-header-line .button { margin-inline-start: auto; }
+.project-purpose { margin: 0; color: var(--ink-2); font-size: var(--t-body); max-width: 70ch; }
+
+/* §13.1: one dominant element, then three quiet sections at equal weight —
+   replacing the six-card grid (S5). */
+.project-overview { display: grid; gap: var(--s-4); }
+.project-hero { padding: var(--s-5); display: grid; gap: var(--s-2); justify-items: start; }
+.project-hero h2 { margin: 0; color: var(--ink); font-size: var(--t-h2); line-height: var(--t-h2-lh); letter-spacing: -.02em; }
+.project-hero p { margin: 0; color: var(--ink-3); }
+
+.project-overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s-3); }
+.project-overview-grid .card { padding: var(--s-4); display: grid; align-content: start; gap: var(--s-2); }
+.project-overview-grid p { margin: 0; color: var(--ink-3); font-size: var(--t-small); }
+
+.project-list { margin: 0; padding: 0; display: grid; gap: var(--s-2); list-style: none; }
+.project-list strong { display: block; color: var(--ink); font-size: var(--t-small); font-weight: 500; line-height: 1.45; }
+.project-list small { color: var(--ink-3); font-size: var(--t-micro); }
+
+.project-sources, .project-ledger { display: grid; gap: var(--s-2); }
+.project-sources-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-bottom: var(--s-2); }
+
+.project-source-row {
+  padding: var(--s-3);
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.project-source-row > span:first-child { width: 34px; height: 34px; display: grid; place-items: center; color: var(--ink-3); background: var(--surface-sunken); border-radius: var(--r-sm); }
+.project-source-row strong { display: block; color: var(--ink); font-size: var(--t-body); font-weight: 600; }
+.project-source-row small { color: var(--ink-3); font-size: var(--t-micro); }
+
+.project-ledger-row {
+  padding: var(--s-3);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.project-ledger-row > div { display: grid; gap: 2px; }
+.project-ledger-row strong { color: var(--ink); font-size: var(--t-body); font-weight: 600; line-height: 1.45; }
+.project-ledger-row small { color: var(--ink-3); font-size: var(--t-micro); line-height: 1.5; }
+/* Superseded decisions render struck-through rather than disappearing, so the
+   record of what was decided and then changed stays legible. */
+.project-ledger-row.is-superseded strong { text-decoration: line-through; color: var(--ink-3); }
+
+@media (max-width: 900px) {
+  .project-screen .section-tabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .project-screen .section-tabs::-webkit-scrollbar { display: none; }
+  .project-source-row { grid-template-columns: 34px minmax(0, 1fr); }
+  .project-ledger-row { grid-template-columns: minmax(0, 1fr); }
+  .project-header-line .button { margin-inline-start: 0; }
+}

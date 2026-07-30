@@ -6,9 +6,12 @@ import { redirect } from "next/navigation";
 
 export const workspacePageMetadata = { robots: { index: false, follow: false } };
 
-export async function WorkspacePage({ view, goalId }: { view: WorkspaceView; goalId?: string }) {
+export async function WorkspacePage({ view, goalId, projectId }: { view: WorkspaceView; goalId?: string; projectId?: string }) {
   const user = await getServerUser();
-  if (!user) redirect(`/login?returnTo=${encodeURIComponent(goalId ? `/g/${goalId}` : workspacePath[view])}`);
+  if (!user) {
+    const returnTo = projectId && goalId ? `/g/${goalId}/p/${projectId}` : goalId ? `/g/${goalId}` : workspacePath[view];
+    redirect(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+  }
   const store = getStore(user.id);
   // The shell's own chrome (goal list, Review badge) reads separately from the
   // screen's data, so it is correct on every route rather than only on the ones
@@ -25,6 +28,6 @@ export async function WorkspacePage({ view, goalId }: { view: WorkspaceView; goa
   // none", and reading it as the latter bounced every Library deep link to
   // onboarding. Shell data answers it directly.
   const needsOnboarding = view !== "today" && shell.goals.length === 0;
-  return <ContinuumApp user={user} initialState={initialState} shell={shellData} view={view} goalId={goalId} serverNow={new Date().toISOString()} needsOnboarding={needsOnboarding} />;
+  return <ContinuumApp user={user} initialState={initialState} shell={shellData} view={view} goalId={goalId} projectId={projectId} serverNow={new Date().toISOString()} needsOnboarding={needsOnboarding} />;
 }
 

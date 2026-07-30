@@ -345,7 +345,7 @@ export function LandingPage() {
           <nav aria-label="Build">
             <strong>Build</strong>
             {FOOTER_BUILD.map(([label, href]) => <a key={label} href={href}>{label}</a>)}
-            <Link href="/integrations">Claude connection</Link>
+            <Link href="/settings/connections">Claude connection</Link>
           </nav>
 
           <nav aria-label="Contact">

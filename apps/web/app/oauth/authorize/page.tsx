@@ -142,7 +142,7 @@ export default async function OAuthAuthorizePage({
 function OAuthHeader() {
   return (
     <header className="oauth-header">
-      <a className="brand" href="/integrations" aria-label="Continuum Connections">
+      <a className="brand" href="/settings/connections" aria-label="Continuum Connections">
         <BrandMark className="brand-symbol" />
         <span>continuum</span>
       </a>

@@ -17,6 +17,41 @@ const nextConfig = {
     "@continuum/retrieval",
     "@continuum/schemas",
   ],
+  /**
+   * §16.7 — the fifteen legacy paths, as permanent (308) redirects.
+   *
+   * Every one of these was a live address before the §7.1 rename, so bookmarks,
+   * shared links, and the OAuth `returnTo` values already in the wild all keep
+   * working. 308 rather than 307 because the new address is the canonical one.
+   *
+   * `/research` and `/learn` are deliberately *not* in this list. §16.7 sends
+   * both to `/home` on the basis that they are absorbed into the goal page, but
+   * Learn still owns the practice-set builder and the resource panel, which
+   * have no other address yet. Redirecting them today would delete reachable
+   * capability, so they stay live and are simply not in the fixed nav.
+   */
+  async redirects() {
+    return [
+      { source: "/today", destination: "/home", permanent: true },
+      { source: "/assistant", destination: "/ask", permanent: true },
+      { source: "/assistant/:path*", destination: "/ask/:path*", permanent: true },
+      { source: "/goals", destination: "/plan", permanent: true },
+      { source: "/code", destination: "/build", permanent: true },
+      { source: "/code/:path*", destination: "/build/:path*", permanent: true },
+      { source: "/memory", destination: "/context", permanent: true },
+      { source: "/activity", destination: "/review", permanent: true },
+      { source: "/integrations", destination: "/settings/connections", permanent: true },
+      { source: "/connections", destination: "/settings/connections", permanent: true },
+      { source: "/account", destination: "/settings/account", permanent: true },
+      { source: "/account/:segment", destination: "/settings/:segment", permanent: true },
+      // The scholarly routes merged into the Library, keeping their deep links.
+      { source: "/openalex", destination: "/library?tab=discover", permanent: true },
+      { source: "/openalex/:entity/:id", destination: "/library/:entity/:id", permanent: true },
+      { source: "/zotero", destination: "/library?tab=zotero", permanent: true },
+      { source: "/welcome", destination: "/start", permanent: true },
+    ];
+  },
+
   async headers() {
     const oauthPopupHeaders = [
       // Claude completes hosted connector authorization in a cross-origin popup.

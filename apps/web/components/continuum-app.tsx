@@ -9,10 +9,8 @@ import {
   Command,
   Code2,
   Database,
-  FlaskConical,
   Library,
   Goal,
-  Link2,
   LogOut,
   Menu,
   MessageCircle,
@@ -41,31 +39,31 @@ type NavItem = { id: WorkspaceView; label: string; icon: typeof CalendarDays };
 type NavGroup = { label: string; items: NavItem[]; variant?: "primary" | "utility" };
 
 /**
- * The sidebar lists the user's own goals, not Continuum's feature list.
+ * §7.1: six fixed destinations, then the user's own goals.
  *
  * It used to be thirteen destinations grouped by storage ("Work", "Sources"),
  * so a goal's plan, material, study, and research lived in four unconnected
  * tabs and nothing on screen said which goal you were working on. The fixed
  * entries are now only the things that genuinely span goals; everything else
- * hangs off the goal itself.
+ * hangs off the goal itself. Learn and Research remain reachable routes — Learn
+ * owns the practice-set builder, and Research is where a project without a goal
+ * still lives — but they are not destinations in their own right.
  */
 const navGroups: NavGroup[] = [
   {
     label: "",
     variant: "primary",
     items: [
-      { id: "today", label: "Today", icon: CalendarDays },
-      { id: "assistant", label: "Ask Continuum", icon: MessageCircle },
+      { id: "today", label: "Home", icon: CalendarDays },
+      { id: "assistant", label: "Ask", icon: MessageCircle },
       { id: "goals", label: "Plan", icon: Goal },
     ],
   },
   {
     label: "Across your work",
     items: [
-      { id: "learn", label: "Learn", icon: BookOpen },
-      { id: "code", label: "Code", icon: Code2 },
-      { id: "research", label: "Research", icon: FlaskConical },
       { id: "library", label: "Library", icon: Library },
+      { id: "code", label: "Build", icon: Code2 },
       { id: "memory", label: "Context", icon: Database },
     ],
   },
@@ -74,17 +72,17 @@ const navGroups: NavGroup[] = [
     variant: "utility",
     items: [
       { id: "activity", label: "Review", icon: Activity },
-      { id: "integrations", label: "Connections", icon: Link2 },
       { id: "account", label: "Settings", icon: ShieldCheck },
     ],
   },
 ];
 
+/** §8.9: Home · Ask · Study · Build · More. */
 const mobileItems: NavItem[] = [
-  { id: "today", label: "Today", icon: CalendarDays },
-  { id: "assistant", label: "Assistant", icon: MessageCircle },
-  { id: "learn", label: "Learn", icon: BookOpen },
-  { id: "code", label: "Code", icon: Code2 },
+  { id: "today", label: "Home", icon: CalendarDays },
+  { id: "assistant", label: "Ask", icon: MessageCircle },
+  { id: "learn", label: "Study", icon: BookOpen },
+  { id: "code", label: "Build", icon: Code2 },
 ];
 
 const IntegrationsScreen = dynamic(() => import("@/components/integrations-screen").then((module) => module.IntegrationsScreen), { loading: () => <ScreenLoading /> });
@@ -112,7 +110,10 @@ const TOUR_STEPS = [
  * Derived from the route rather than from each screen, so a screen cannot
  * forget to supply it.
  */
-function pageContextFor(view: WorkspaceView, state: WorkspaceState | undefined, goalId?: string): PageContext | undefined {
+function pageContextFor(view: WorkspaceView, state: WorkspaceState | undefined, goalId?: string, projectId?: string): PageContext | undefined {
+  if (view === "project" && projectId) {
+    return { kind: "project", id: projectId, label: "Project: this project" };
+  }
   if (view === "goal" && goalId) {
     const goal = state?.goals.find((row) => String(row.id) === goalId);
     return { kind: "goal", id: goalId, label: `Goal: ${String(goal?.title ?? "this goal")}` };
@@ -133,7 +134,7 @@ export type ShellData = {
   pendingProposals: number;
 };
 
-export function ContinuumApp({ user, initialState, shell, view, goalId, serverNow, needsOnboarding = false }: { user: AuthUser; initialState: Record<string, unknown>; shell: ShellData; view: WorkspaceView; goalId?: string; serverNow: string; needsOnboarding?: boolean }) {
+export function ContinuumApp({ user, initialState, shell, view, goalId, projectId, serverNow, needsOnboarding = false }: { user: AuthUser; initialState: Record<string, unknown>; shell: ShellData; view: WorkspaceView; goalId?: string; projectId?: string; serverNow: string; needsOnboarding?: boolean }) {
   const router = useRouter();
   const activeGoalId = goalId;
   const [mobileNav, setMobileNav] = useState(false);
@@ -194,7 +195,7 @@ export function ContinuumApp({ user, initialState, shell, view, goalId, serverNo
   });
   const { setPageContext, setPanelOpen, panelOpen } = assistant;
 
-  const pageContext = useMemo(() => pageContextFor(currentView, state, activeGoalId), [currentView, state, activeGoalId]);
+  const pageContext = useMemo(() => pageContextFor(currentView, state, activeGoalId, projectId), [currentView, state, activeGoalId, projectId]);
   useEffect(() => { setPageContext(pageContext); }, [pageContext, setPageContext]);
 
   useEffect(() => {
@@ -229,11 +230,11 @@ export function ContinuumApp({ user, initialState, shell, view, goalId, serverNo
     return () => window.removeEventListener("keydown", listener);
   }, [panelOpen, setPanelOpen]);
 
-  // First run: point an un-onboarded user at /welcome unless they chose to explore.
+  // First run: point an un-onboarded user at /start unless they chose to explore.
   useEffect(() => {
     if (!needsOnboarding) return;
     if (window.localStorage.getItem(SKIP_ONBOARDING_KEY) === "1") return;
-    window.location.assign("/welcome");
+    window.location.assign("/start");
   }, [needsOnboarding]);
 
   // The tour runs once, after a plan exists, and is resumable from Account.
@@ -395,7 +396,7 @@ export function ContinuumApp({ user, initialState, shell, view, goalId, serverNo
           {currentView === "integrations"
             ? <IntegrationsScreen showToast={setToast} />
             : state
-              ? <WorkspaceScreens view={currentView} state={state} shellGoals={shell.goals} user={user} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} serverNow={serverNow} goalId={activeGoalId} onNavigate={navigate} onRefresh={refreshCurrent} showToast={setToast} />
+              ? <WorkspaceScreens view={currentView} state={state} shellGoals={shell.goals} projectId={projectId} user={user} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} serverNow={serverNow} goalId={activeGoalId} onNavigate={navigate} onRefresh={refreshCurrent} showToast={setToast} />
               : <ScreenLoading />}
         </div>
       </main>

@@ -61,7 +61,7 @@ function segmentFromPath(pathname: string): SettingsSegment {
  */
 export function SettingsPage({ user, showToast }: { user: AuthUser; showToast: Toast }) {
   // The address is the source of truth for which section is open, so Back,
-  // Forward, a bookmark, and the sidebar's own "/account" push all agree — and
+  // Forward, a bookmark, and the sidebar's own "/settings" push all agree — and
   // it is right on the server render, so nothing flashes the wrong section.
   const pathname = usePathname();
   const [segment, setSegment] = useState<SettingsSegment>(() => segmentFromPath(pathname));
@@ -71,7 +71,7 @@ export function SettingsPage({ user, showToast }: { user: AuthUser; showToast: T
 
   const choose = useCallback((next: SettingsSegment) => {
     setSegment(next);
-    const path = next === "account" ? "/account" : `/account/${next}`;
+    const path = `/settings/${next}`;
     if (window.location.pathname !== path) window.history.pushState({ settings: next }, "", path);
   }, []);
 

@@ -23,7 +23,7 @@ export function useSettingsProfile(showToast: (message: string | null) => void) 
 
   const load = useCallback(async () => {
     try {
-      const response = await fetch("/account/preferences", { cache: "no-store" });
+      const response = await fetch("/api/account/preferences", { cache: "no-store" });
       const payload = await response.json() as SettingsProfile & { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Your settings could not be loaded.");
       setProfile({ account: payload.account, assistantDefaults: normalizeAssistantDefaults(payload.assistantDefaults) });
@@ -42,7 +42,7 @@ export function useSettingsProfile(showToast: (message: string | null) => void) 
     }
     setSaving(true);
     try {
-      const response = await fetch("/account/preferences", {
+      const response = await fetch("/api/account/preferences", {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(patch),

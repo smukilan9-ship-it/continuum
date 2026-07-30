@@ -22,7 +22,7 @@ function functionBody(source: string, name: string) {
 
 describe("account recovery exists", () => {
   it("ships the three routes that were advertised but never built", () => {
-    for (const page of ["apps/web/app/forgot-password/page.tsx", "apps/web/app/reset-password/page.tsx", "apps/web/app/verify-email/page.tsx"]) {
+    for (const page of ["apps/web/app/(auth)/forgot-password/page.tsx", "apps/web/app/(auth)/reset-password/page.tsx", "apps/web/app/(auth)/verify-email/page.tsx"]) {
       expect(read(page).length).toBeGreaterThan(0);
     }
   });

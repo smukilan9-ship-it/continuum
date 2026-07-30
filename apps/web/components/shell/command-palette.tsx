@@ -113,7 +113,7 @@ export function CommandPalette({
     }
 
     for (const [section, hits] of groupHits(remote)) {
-      built.push({ label: section, rows: hits.slice(0, SECTION_CAP).map<Row>((hit) => ({ type: "link", key: `${hit.kind}-${hit.id}`, label: hit.title, hint: hit.snippet ? `${hit.context} · ${hit.snippet}` : hit.context, href: (hit.href ?? "/today") as Route })) });
+      built.push({ label: section, rows: hits.slice(0, SECTION_CAP).map<Row>((hit) => ({ type: "link", key: `${hit.kind}-${hit.id}`, label: hit.title, hint: hit.snippet ? `${hit.context} · ${hit.snippet}` : hit.context, href: (hit.href ?? "/home") as Route })) });
     }
 
     const destinations: Row[] = [

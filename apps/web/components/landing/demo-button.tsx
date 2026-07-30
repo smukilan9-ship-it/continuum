@@ -38,7 +38,7 @@ export function DemoButton({
         setBusy(false);
         return;
       }
-      window.location.assign("/today");
+      window.location.assign("/home");
     } catch {
       setError("The demo workspace could not be reached. Check your connection and try again.");
       setBusy(false);

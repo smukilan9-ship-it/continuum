@@ -15,6 +15,7 @@ const AccountScreen = dynamic(() => import("./workspace/account-screen").then((m
 const AskSurface = dynamic(() => import("./assistant/ask-surface").then((module) => module.AskSurface), { loading });
 const GoalsScreen = dynamic(() => import("./workspace/goals-screen").then((module) => module.GoalsScreen), { loading });
 const GoalScreen = dynamic(() => import("./goal/goal-screen").then((module) => module.GoalScreen), { loading });
+const ProjectScreen = dynamic(() => import("./project/project-screen").then((module) => module.ProjectScreen), { loading });
 const LearnScreen = dynamic(() => import("./workspace/learn-screen").then((module) => module.LearnScreen), { loading });
 const CodeScreen = dynamic(() => import("./workspace/code-screen").then((module) => module.CodeScreen), { loading });
 const ContextPage = dynamic(() => import("./context/context-page").then((module) => module.ContextPage), { loading });
@@ -22,8 +23,9 @@ const LibraryScreen = dynamic(() => import("./workspace/library-screen").then((m
 const ResearchScreen = dynamic(() => import("./workspace/research-screen").then((module) => module.ResearchScreen), { loading });
 const HomePage = dynamic(() => import("./home/home-page").then((module) => module.HomePage), { loading });
 
-export function WorkspaceScreens({ view, state, user, userName, serverNow, goalId, shellGoals, onNavigate, onRefresh, showToast }: { view: WorkspaceView; state: WorkspaceState; user: AuthUser; userName: string; serverNow: string; goalId?: string; shellGoals: Array<{ id: string; title: string; progress: number; targetDate: string; status: string }>; onNavigate: (view: WorkspaceView) => void; onRefresh: () => Promise<void>; showToast: Toast }) {
+export function WorkspaceScreens({ view, state, user, userName, serverNow, goalId, projectId, shellGoals, onNavigate, onRefresh, showToast }: { view: WorkspaceView; state: WorkspaceState; user: AuthUser; userName: string; serverNow: string; goalId?: string; projectId?: string; shellGoals: Array<{ id: string; title: string; progress: number; targetDate: string; status: string }>; onNavigate: (view: WorkspaceView) => void; onRefresh: () => Promise<void>; showToast: Toast }) {
   if (view === "today") return <HomePage state={state} userName={userName} timeZone={user.timezone} serverNow={serverNow} onNavigate={onNavigate} onRefresh={onRefresh} />;
+  if (view === "project") return <ProjectScreen goalId={goalId ?? ""} projectId={projectId ?? ""} goalTitle={shellGoals.find((goal) => goal.id === goalId)?.title} />;
   if (view === "goal") return <GoalScreen goalId={goalId ?? ""} shellGoal={shellGoals.find((goal) => goal.id === goalId)} serverNow={serverNow} showToast={showToast} onNavigate={onNavigate} onRefresh={onRefresh} />;
   if (view === "assistant") return <AskSurface state={state} showToast={showToast} onRefresh={onRefresh} />;
   if (view === "goals") return <GoalsScreen state={state} timeZone={user.timezone} serverNow={serverNow} showToast={showToast} onRefresh={onRefresh} />;

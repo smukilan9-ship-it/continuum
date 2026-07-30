@@ -49,13 +49,13 @@ export function PrivacySegment({
           Anything it has learned about you is listed in Context, in your own words, with where it came from. You can remove any single item from there and it stops being used.
         </p>
         <div className="settings-form-actions">
-          <Link className="button button-secondary" href="/memory">Open Context<ArrowRight size={15} aria-hidden="true" /></Link>
+          <Link className="button button-secondary" href="/context">Open Context<ArrowRight size={15} aria-hidden="true" /></Link>
         </div>
       </SettingsSection>
 
       <SettingsSection title="Connected clients" description="Anything you connected — Claude, a paired vault, a personal key — is listed with what it can reach.">
         <div className="settings-form-actions">
-          <Button variant="secondary" onClick={() => window.location.assign("/integrations")}>Review connections</Button>
+          <Button variant="secondary" onClick={() => window.location.assign("/settings/connections")}>Review connections</Button>
         </div>
       </SettingsSection>
     </>

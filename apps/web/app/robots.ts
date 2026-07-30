@@ -2,36 +2,44 @@ import type { MetadataRoute } from "next";
 
 /**
  * Only the four public routes are crawlable (redesign.md §9.12). The disallow
- * list is the current app surface, not the pre-redesign one — `/g/`, `/plan`,
- * `/study/`, `/library`, `/settings`, `/connections` and the account-recovery
- * routes all shipped after the previous version of this file was written and
- * were being offered to crawlers.
+ * list covers both the §7.1 addresses and the legacy paths that now 308 to
+ * them, so a crawler holding an old URL is told not to follow it rather than
+ * discovering the whole app through a redirect chain.
  */
 const APP_ROUTES = [
   "/api/",
+  "/ask",
+  "/build",
+  "/context",
+  "/dev",
+  "/forgot-password",
+  "/g/",
+  "/home",
+  "/learn",
+  "/library",
+  "/mcp",
+  "/oauth",
+  "/plan",
+  "/research",
+  "/reset-password",
+  "/review",
+  "/settings",
+  "/start",
+  "/study/",
+  "/verify-email",
+  // The §16.7 legacy paths. They 308 to the entries above, but a crawler that
+  // has one indexed should be told not to follow it rather than discovering the
+  // app through a redirect chain.
   "/account",
   "/activity",
   "/assistant",
   "/code",
   "/connections",
-  "/dev",
-  "/forgot-password",
-  "/g/",
   "/goals",
   "/integrations",
-  "/learn",
-  "/library",
-  "/mcp",
   "/memory",
-  "/oauth",
   "/openalex",
-  "/plan",
-  "/research",
-  "/reset-password",
-  "/settings",
-  "/study/",
   "/today",
-  "/verify-email",
   "/welcome",
   "/zotero",
 ];

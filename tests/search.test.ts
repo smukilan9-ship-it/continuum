@@ -89,8 +89,10 @@ describe("workspace search", () => {
 
   it("routes a task and a project through the goal that owns them", () => {
     expect(searchHitHref({ kind: "task", id: "task_1", parentId: "goal_sat" })).toContain("/g/goal_sat");
+    // A project opens its own page under the goal that owns it (§13.1, AC-P1).
+    expect(searchHitHref({ kind: "project", id: "project_1", parentId: "goal_sat" })).toBe("/g/goal_sat/p/project_1");
     // Without an owning goal the section that lists them is still a real landing.
-    expect(searchHitHref({ kind: "task", id: "task_1" })).toBe("/goals");
+    expect(searchHitHref({ kind: "task", id: "task_1" })).toBe("/plan");
   });
 
   it("escapes LIKE wildcards so a query cannot widen itself", async () => {

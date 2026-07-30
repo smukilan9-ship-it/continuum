@@ -196,7 +196,7 @@ export function VerifyEmailPanel({ token }: { token: string }) {
   if (state === "failed") {
     return (
       <Shell title="This link no longer works" lead="Confirmation links expire after 24 hours and can only be used once.">
-        <Link className="button button-primary button-large" href={"/today" as Route}>Continue to Continuum <ArrowRight size={16} /></Link>
+        <Link className="button button-primary button-large" href={"/home" as Route}>Continue to Continuum <ArrowRight size={16} /></Link>
       </Shell>
     );
   }
@@ -207,7 +207,7 @@ export function VerifyEmailPanel({ token }: { token: string }) {
         <CheckCircle2 size={22} aria-hidden="true" />
         <p>Password recovery is now available for this account.</p>
       </div>
-      <Link className="button button-primary button-large" href={"/today" as Route}>Continue to Continuum <ArrowRight size={16} /></Link>
+      <Link className="button button-primary button-large" href={"/home" as Route}>Continue to Continuum <ArrowRight size={16} /></Link>
     </Shell>
   );
 }

@@ -14,7 +14,7 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailab
   const [error, setError] = useState<string | null>(authError ?? null);
   const [busy, setBusy] = useState<null | "form" | "demo">(null);
   const [showPassword, setShowPassword] = useState(false);
-  const destination = returnTo?.startsWith("/") ? returnTo : "/today";
+  const destination = returnTo?.startsWith("/") ? returnTo : "/home";
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -63,7 +63,7 @@ export function LoginForm({ returnTo, demoMode, registrationEnabled, demoAvailab
           <p className="eyebrow">CONTINUUM · LOCAL MODE</p>
           <h1>Pick up your academic work with the context intact.</h1>
           <p>This local development workspace uses an in-memory account. Production requires persistent accounts and never enables this bypass.</p>
-          <Link className="button button-primary button-large" href={"/today" as Route}>Open local workspace <ArrowRight size={17} /></Link>
+          <Link className="button button-primary button-large" href={"/home" as Route}>Open local workspace <ArrowRight size={17} /></Link>
           <span className="privacy-note">Local process only · no production authentication bypass</span>
         </section>
       </main>
