@@ -795,7 +795,35 @@
    re-render killed the tween mid-flight. It was then a CSS keyframe with
    `animation-fill-mode: both`, which holds the *from* state — opacity 0 —
    whenever the animation does not run, and left the screen blank instead.
-   Both failures share a cause: making an element's visibility depend on an
-   animation completing. Motion in this product is now confined to hover, the
-   pointer sheen and the streak flame, none of which can hide anything. */
-.stagger { display: contents; }
+   Both failures share a cause: making an element's *visibility* depend on an
+   animation completing.
+
+   The entrance is back, with that cause designed out: it animates `transform`
+   only. Every keyframe here is fully opaque, so the worst case for a stalled,
+   interrupted, unsupported or never-started animation is content sitting eight
+   pixels low — legible, clickable, and not worth a bug report. `both` is safe
+   for the same reason: the held from-state is a position, not a visibility.
+
+   Reduced motion removes it outright rather than shortening it. */
+/* Applied to `.screen` directly rather than through a wrapper component, so
+   every screen gets it without ten call sites importing a component whose only
+   job is to add a class. */
+.screen > *,
+.stagger > * {
+  animation: rise-in var(--d-slow, .42s) var(--e-out) both;
+}
+.screen > *:nth-child(1), .stagger > *:nth-child(1) { animation-delay: 0ms; }
+.screen > *:nth-child(2), .stagger > *:nth-child(2) { animation-delay: 55ms; }
+.screen > *:nth-child(3), .stagger > *:nth-child(3) { animation-delay: 110ms; }
+.screen > *:nth-child(4), .stagger > *:nth-child(4) { animation-delay: 165ms; }
+.screen > *:nth-child(5), .stagger > *:nth-child(5) { animation-delay: 220ms; }
+.screen > *:nth-child(n+6), .stagger > *:nth-child(n+6) { animation-delay: 260ms; }
+
+@keyframes rise-in {
+  from { transform: translate3d(0, 10px, 0) scale(.995); }
+  to { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen > *, .stagger > * { animation: none; }
+}

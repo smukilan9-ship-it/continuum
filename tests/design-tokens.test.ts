@@ -99,3 +99,37 @@ describe("§19.10 one token set", () => {
     }
   });
 });
+
+/**
+ * The entrance animation, twice.
+ *
+ * It was GSAP and stranded a screen at a third of its opacity; it was then a
+ * CSS keyframe with `animation-fill-mode: both` and left a screen blank. Both
+ * failures were the same mistake — content whose visibility depends on an
+ * animation completing — and both shipped, because nothing failed when they
+ * did. This is that missing check.
+ */
+describe("no animation can hide a screen", () => {
+  const kit = read("components/ui/kit.css");
+
+  /** The `@keyframes rise-in { … }` body, whatever it currently contains. */
+  const riseIn = kit.match(/@keyframes\s+rise-in\s*\{([\s\S]*?)\n\}/)?.[1];
+
+  it("has an entrance at all", () => {
+    expect(riseIn).toBeDefined();
+    expect(kit).toMatch(/\.screen\s*>\s*\*/);
+  });
+
+  it("animates transform only — never opacity, visibility, filter or clip", () => {
+    // A transform-only entrance degrades to "content sits a few pixels low".
+    // Anything on this list degrades to "content is not there".
+    for (const property of ["opacity", "visibility", "filter", "clip-path", "display"]) {
+      expect(riseIn!).not.toMatch(new RegExp(`(^|[;{\\s])${property}\\s*:`));
+    }
+  });
+
+  it("is removed under prefers-reduced-motion rather than shortened", () => {
+    const reduced = kit.match(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?)\n\}/g)?.join("\n") ?? "";
+    expect(reduced).toMatch(/\.screen\s*>\s*\*[^{]*\{[^}]*animation:\s*none/);
+  });
+});

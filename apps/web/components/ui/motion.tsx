@@ -19,33 +19,12 @@ import { useEffect, useRef, type ReactNode } from "react";
 const reduced = () =>
   typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/**
- * Fades and lifts children in sequence — as a CSS animation, deliberately.
- *
- * This was GSAP, and it stranded a whole screen at a third of its opacity: the
- * effect started a tween, a data fetch re-rendered, the cleanup killed it
- * mid-flight, and the inline `opacity: 0.38` it had written stayed there. A JS
- * entrance owns the element's visibility, so every path that can interrupt it
- * is a path that can hide the page.
- *
- * A CSS animation cannot. It ends at `opacity: 1` by definition, it survives a
- * re-render because nothing is holding state, and with no JS at all the element
- * is simply visible. GSAP is still the right tool for the pointer sheen and the
- * counter below, because neither of those decides whether content is readable.
- */
-export function Stagger({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  /** Retained for call-site compatibility; the CSS drives the sequence. */
-  selector?: string;
-  delay?: number;
-  distance?: number;
-  className?: string;
-}) {
-  return <div className={className}>{children}</div>;
-}
+/* The screen entrance lives in CSS (`.screen > *` in kit.css), not here. It was
+   a GSAP component twice and stranded a screen at a third of its opacity both
+   times — a JS entrance owns the element's visibility, so every path that can
+   interrupt it is a path that can hide the page. GSAP remains the right tool
+   for the two effects below, because neither decides whether content is
+   readable. */
 
 /**
  * A pointer-tracked sheen for a hero surface. The gradient follows the cursor
