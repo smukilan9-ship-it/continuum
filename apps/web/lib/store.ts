@@ -1036,20 +1036,21 @@ class NeonStore implements Store {
   async searchSourcePassages(query: string, limit = 6) {
     const trimmed = query.trim().slice(0, 500);
     if (!trimmed) return [];
-    if (embeddingConfiguration()) {
-      try {
-        const hits = await this.repo.vectorSearch(await embedQuery(trimmed), limit, this.userId);
-        if (hits.length) return hits;
-      } catch { /* Fall through to lexical, same as memory retrieval. */ }
-    }
-    // Lexical fallback, for a deployment with no embedding key.
+
+    // Vector and lexical run *concurrently*, not in sequence.
     //
-    // Term by term, not phrase by phrase. `searchResearch` does a single
-    // `ILIKE '%…%'`, so handing it a whole question asks the database for a
-    // document containing that exact sentence — which no document ever
-    // contains. The first version of this fallback did precisely that and
-    // therefore never matched anything, which is the same silence it was
-    // written to end.
+    // `embedQuery` is a network call to the embedding provider. Awaiting it
+    // first and only falling back on failure means a slow-but-successful
+    // embedding can spend the entire retrieval deadline, the deadline fires,
+    // and the leg yields nothing — which the UI reports as "nothing in your
+    // workspace matched". That is a latency spike wearing the costume of an
+    // empty library, and it is what made retrieval look intermittent in
+    // production: the same question grounded on one send and not the next.
+    //
+    // The lexical query is local and fast, so it is almost always there to fall
+    // back on. Vector still wins whenever it arrives, because it is the better
+    // answer; lexical is only what stops a slow provider from erasing the
+    // user's workspace.
     const words = trimmed
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, " ")
@@ -1058,21 +1059,33 @@ class NeonStore implements Store {
       // Longest first: the rarest word in a question is usually the longest.
       .sort((left, right) => right.length - left.length)
       .slice(0, 4);
-    if (!words.length) return [];
-    const perTerm = await Promise.all(words.map((word) => this.repo.searchSourceChunksLexical(this.userId, word, limit).catch(() => [])));
+
+    const lexical = words.length
+      ? Promise.all(words.map((word) => this.repo.searchSourceChunksLexical(this.userId, word, limit).catch(() => [] as StoredSourceChunk[])))
+      : Promise.resolve([] as StoredSourceChunk[][]);
+
+    const vector = embeddingConfiguration()
+      ? embedQuery(trimmed)
+        .then((embedding) => this.repo.vectorSearch(embedding, limit, this.userId))
+        .catch(() => [] as StoredSourceChunk[])
+      : Promise.resolve([] as StoredSourceChunk[]);
+
+    const [vectorHits, perTerm] = await Promise.all([vector, lexical]);
+    if (vectorHits.length) return vectorHits;
+
+    // Round-robin across terms, so one common word cannot fill the set alone.
     const seen = new Set<string>();
-    const hits: unknown[] = [];
-    // Round-robin, so one common term cannot fill the result set alone.
+    const hits: StoredSourceChunk[] = [];
     for (let rank = 0; rank < limit; rank += 1) {
       for (const rows of perTerm) {
         const row = rows[rank];
         if (!row || seen.has(row.id)) continue;
         seen.add(row.id);
         hits.push(row);
-        if (hits.length >= limit) return hits as StoredSourceChunk[];
+        if (hits.length >= limit) return hits;
       }
     }
-    return hits as StoredSourceChunk[];
+    return hits;
   }
   async searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }) {
     let embedding: number[] | undefined;

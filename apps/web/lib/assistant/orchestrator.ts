@@ -82,7 +82,13 @@ export interface OrchestrateResult {
 type TaskClass = "conversational_support" | "research_synthesis" | "document_understanding" | "code_reasoning";
 
 /** §11.3: classification 1.5s, retrieval 2.0s, page context 300ms. */
-export const DEADLINES = { classification: 1_500, retrieval: 2_000, pageContext: 300 } as const;
+/**
+ * `sources` gets its own, longer deadline: it is the only leg that can require
+ * a network round trip to the embedding provider before it queries anything,
+ * and it is the leg carrying the product's central claim. Losing it to a
+ * 2,000ms ceiling reads to the user as "your documents do not mention this".
+ */
+export const DEADLINES = { classification: 1_500, retrieval: 2_000, sources: 3_500, pageContext: 300 } as const;
 
 /** §11.3 step 7. */
 const SIMILARITY_FLOOR = 0.35;
@@ -305,7 +311,7 @@ export async function orchestrate(input: OrchestrateInput & { mode?: "auto" | "f
     // your workspace matched" and the model answered from general knowledge —
     // on a product whose headline is that the AI actually knows your work.
     plan.useSources
-      ? withDeadline("source retrieval", DEADLINES.retrieval, input.store.searchSourcePassages(input.message.slice(0, 500), 6), [], degraded)
+      ? withDeadline("source retrieval", DEADLINES.sources, input.store.searchSourcePassages(input.message.slice(0, 500), 6), [], degraded)
       : Promise.resolve([]),
   ]);
 
