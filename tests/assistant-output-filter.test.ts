@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildAcademicPrompt } from "../apps/web/lib/prompt-context";
 import {
   createOutputFilter,
   isConversationalFiller,
@@ -395,5 +396,57 @@ describe("the second production leak (structural)", () => {
     expect(out).toContain("Your biggest risk is the SQL goal");
     expect(out).not.toContain("mockScoreVariance");
     expect(out).not.toContain("Analyze the Request");
+  });
+});
+
+/**
+ * Quoting the user's own source is the product working, not a leak.
+ *
+ * The filter suppresses a reply sharing a long verbatim run with what the model
+ * was told — right for the system prompt and the output contract, and
+ * catastrophically wrong for retrieved context. Once source passages were added
+ * to the prompt, an answer that quoted the passage matched the detector and was
+ * deleted in full, and the user saw "I couldn't produce a clean answer for
+ * that" where a correct, cited answer should have been. In production, on the
+ * question the retrieval work existed to answer.
+ *
+ * The contract three lines above the filter literally asks the model to cite
+ * the supplied passage. The detector was punishing compliance.
+ */
+describe("a cited answer is not an instruction leak", () => {
+  const passage =
+    "Serial sections are different physical slices, so a CD8 cell and a TIM-3 cell can never be the same cell. "
+    + "OASIS therefore does not claim single-cell co-expression.";
+  const contract = "Answer in calm, plain Markdown, beginning with the first sentence of the answer itself. "
+    + "Refer to any record by its title. Never write an internal identifier.";
+
+  it("releases an answer that quotes the retrieved passage at length", () => {
+    const filter = createOutputFilter({ instructions: contract });
+    const answer = `Because serial sections are different physical slices, so a CD8 cell and a TIM-3 cell can never be the same cell [Source: OASIS — Technical Reference · passage 1].`;
+    const out = (filter.push(answer) ?? "") + (filter.flush() ?? "");
+    expect(out).toContain("never be the same cell");
+    expect(filter.suppressedNarration).toBe(false);
+  });
+
+  it("still suppresses a reply reciting the output contract", () => {
+    const filter = createOutputFilter({ instructions: contract });
+    const recited = "Answer in calm, plain Markdown, beginning with the first sentence of the answer itself.";
+    filter.push(recited);
+    const out = ((filter.flush() ?? "")).trim();
+    expect(out).not.toContain("calm, plain Markdown");
+  });
+
+  it("the prompt builder hands over instructions without the retrieved context", () => {
+    const built = buildAcademicPrompt({
+      surface: "assistant",
+      taskClass: "conversational_support",
+      userRequest: "Why can't OASIS claim single-cell co-expression?",
+      relevantContext: { sourcePassages: [{ reference: "OASIS · passage 1", text: passage }] },
+      outputContract: contract,
+    });
+    expect(built.instructions).toContain("calm, plain Markdown");
+    // The passage must not be in there, or the detector sees it again.
+    expect(built.instructions).not.toContain("never be the same cell");
+    expect(built.prompt).toContain("never be the same cell");
   });
 });

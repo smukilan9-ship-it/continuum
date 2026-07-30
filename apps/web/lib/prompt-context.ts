@@ -112,5 +112,18 @@ export function buildAcademicPrompt(input: AcademicPromptInput): AcademicPrompt 
     section("USER_REQUEST", input.userRequest, "untrusted", 10_000),
     section("OUTPUT_CONTRACT", input.outputContract ?? "Answer only the requested task. Keep provenance and uncertainty explicit.", "application", 4_000),
   ].filter((value): value is string => Boolean(value));
-  return { system, prompt: sections.join("\n\n---\n\n"), sections: sections.map((value) => value.split(" ")[0]!) };
+  return {
+    system,
+    prompt: sections.join("\n\n---\n\n"),
+    sections: sections.map((value) => value.split(" ")[0]!),
+    /**
+     * The persona and the output contract, with no retrieved content.
+     *
+     * This is what an instruction-leak detector may compare a reply against.
+     * Handing it the assembled prompt instead makes quoting the user's own
+     * source indistinguishable from reciting our instructions — and quoting the
+     * source is the entire point of a cited answer.
+     */
+    instructions: [system, sections.find((value) => value.startsWith("OUTPUT_CONTRACT")) ?? ""].join("\n\n"),
+  };
 }

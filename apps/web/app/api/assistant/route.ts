@@ -411,10 +411,22 @@ export async function POST(request: Request) {
     const responseStream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          // The prompt is handed to the filter so a reply that recites our own output
-          // contract back at the user is caught exactly rather than by keyword.
-          const filter = createOutputFilter({ labels: contextLabels, instructions: `${prompt.system}
-${prompt.prompt}` });
+          // Our instructions only — never the assembled prompt.
+          //
+          // The leak detector suppresses a reply that shares a long verbatim run
+          // with what it was told. That is right for the system prompt and the
+          // output contract, and catastrophically wrong for retrieved context:
+          // once the user's own source passages were in the prompt, an answer
+          // that quoted the passage — which is precisely what a grounded,
+          // citable answer does, and what the contract three lines above asks
+          // for — matched the detector and was deleted in full. The user saw
+          // "I couldn't produce a clean answer for that" in place of a correct,
+          // sourced answer.
+          //
+          // `prompt.instructions` is the persona plus the output contract and
+          // nothing else. The context lives in `prompt.prompt`, and quoting it
+          // is the product working.
+          const filter = createOutputFilter({ labels: contextLabels, instructions: prompt.instructions });
           for await (const part of streamed.result.textStream) {
             const visible = filter.push(part);
             if (visible) {
