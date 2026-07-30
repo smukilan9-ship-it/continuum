@@ -157,8 +157,14 @@ export function LandingPage() {
 
       <main id="main-content">
         {/* 1 — Hook */}
+        {/* The hero does not reveal. `html.mk-reveal [data-reveal]` starts at
+            opacity 0 and only clears once ScrollReveal has hydrated, and both of
+            these are above the fold on every width — so the animation delays the
+            first thing the visitor sees and animates in content they are already
+            looking at. Measured: it held largest-contentful-paint at 3.0s
+            against §19.9's 2.0s, of which 2.4s was render delay alone. */}
         <section className="mk-hero" aria-labelledby="hero-title">
-          <div className="mk-hero-copy" data-reveal>
+          <div className="mk-hero-copy">
             <p className="mk-eyebrow">For students and researchers</p>
             <h1 id="hero-title">Your work, and an AI that actually knows it.</h1>
             <p className="mk-lead">
@@ -182,7 +188,7 @@ export function LandingPage() {
             </p>
           </div>
 
-          <figure className="mk-hero-frame" data-reveal data-reveal-delay="1">
+          <figure className="mk-hero-frame">
             <ProductShot
               name="ask-cited"
               crop="top"
