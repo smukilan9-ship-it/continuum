@@ -82,8 +82,21 @@ export const PreviewUI: React.FC<{ local: number; seed: string }> = ({ local, se
               borderBottom: "1px solid #f0f0ec",
             }}
           >
-            <span style={{ fontSize: 14, fontFamily: "Georgia, serif", fontStyle: "italic", color: "#1c1c1a" }}>
-              s = rθ        A = ½r²θ
+            {/* The two formulas the student keeps swapping, side by side —
+                which is the joke, so they have to read as two things. A run of
+                spaces collapses in HTML; the gap has to be laid out. */}
+            <span
+              style={{
+                display: "flex",
+                gap: 34,
+                fontSize: 14,
+                fontFamily: "Georgia, serif",
+                fontStyle: "italic",
+                color: "#1c1c1a",
+              }}
+            >
+              <span>s = rθ</span>
+              <span>A = ½r²θ</span>
             </span>
             <span style={{ fontSize: 8, color: "#9a9a96" }}>(4.7)</span>
           </div>

@@ -18,23 +18,42 @@ export const WIDTH = 1920;
 export const HEIGHT = 1080;
 export const TOTAL_FRAMES = 3600;
 
-/** V1 — one gap-free chain from frame 0 to 3600. */
+/**
+ * V1 — one gap-free chain from frame 0 to 3600.
+ *
+ * Three acts, each mapped to one of the four judging criteria (PLAN §1 and
+ * §4.1). The ordering is an argument, not a tour: Act I earns educational
+ * impact, Act II earns the AI/ML score, Act III earns technical execution, and
+ * the hook and close carry the pitch.
+ *
+ * The five beats marked ★ in the plan are the ones that carry the film —
+ * cap_explain, cap_inspector, cap_honesty, cap_obsidian_perms (its second half)
+ * and cap_claude_review. Trims come out of their neighbours, never out of them.
+ */
 export const v1 = [
   { id: "S0-hook", src: "out/segments/hook.mov", recIn: 0, recOut: 420, kind: "remotion", comp: "Hook" },
-  { id: "S1-today", src: "capture/cap_today.mov", recIn: 420, recOut: 630, kind: "capture" },
-  { id: "S2a-learn", src: "capture/cap_learn.mov", recIn: 630, recOut: 1020, kind: "capture" },
-  { id: "S2b-plan", src: "capture/cap_plan.mov", recIn: 1020, recOut: 1170, kind: "capture" },
-  { id: "S2c-library", src: "capture/cap_library.mov", recIn: 1170, recOut: 1650, kind: "capture" },
-  { id: "S2d-research", src: "capture/cap_research.mov", recIn: 1650, recOut: 1770, kind: "capture" },
-  { id: "S2e-obsidian", src: "capture/cap_obsidian.mov", recIn: 1770, recOut: 2010, kind: "capture" },
-  { id: "S2f-memory", src: "capture/cap_memory.mov", recIn: 2010, recOut: 2190, kind: "capture" },
-  { id: "S2g-code", src: "capture/cap_code.mov", recIn: 2190, recOut: 2400, kind: "capture" },
-  { id: "S2h-connections", src: "capture/cap_connections.mov", recIn: 2400, recOut: 2550, kind: "capture" },
-  { id: "S3a-assistant", src: "capture/cap_assistant.mov", recIn: 2550, recOut: 2820, kind: "capture" },
-  { id: "S3b-review", src: "capture/cap_review.mov", recIn: 2820, recOut: 2910, kind: "capture" },
-  { id: "S3c-claude", src: "capture/cap_claude.mov", recIn: 2910, recOut: 3210, kind: "capture" },
-  { id: "S3d-sync", src: "capture/cap_sync.mov", recIn: 3210, recOut: 3270, kind: "capture" },
-  { id: "S4-close", src: "out/segments/close.mov", recIn: 3270, recOut: 3600, kind: "remotion", comp: "Close" },
+  { id: "S1-home", src: "capture/cap_home.mov", recIn: 420, recOut: 600, kind: "capture" },
+
+  // ACT I — "It teaches." Educational impact.
+  { id: "A1a-queue", src: "capture/cap_study_queue.mov", recIn: 600, recOut: 780, kind: "capture" },
+  { id: "A1b-check", src: "capture/cap_study_check.mov", recIn: 780, recOut: 960, kind: "capture" },
+  { id: "A1c-explain", src: "capture/cap_explain.mov", recIn: 960, recOut: 1200, kind: "capture" },
+  { id: "A1d-practice", src: "capture/cap_practice.mov", recIn: 1200, recOut: 1350, kind: "capture" },
+
+  // ACT II — "It knows your work." Creative use of AI/ML.
+  { id: "A2a-ask", src: "capture/cap_ask.mov", recIn: 1350, recOut: 1590, kind: "capture" },
+  { id: "A2b-inspector", src: "capture/cap_inspector.mov", recIn: 1590, recOut: 1800, kind: "capture" },
+  { id: "A2c-honesty", src: "capture/cap_honesty.mov", recIn: 1800, recOut: 1920, kind: "capture" },
+  { id: "A2d-discover", src: "capture/cap_discover.mov", recIn: 1920, recOut: 2160, kind: "capture" },
+
+  // ACT III — "It stays yours." Technical execution.
+  { id: "A3a-plan", src: "capture/cap_plan.mov", recIn: 2160, recOut: 2340, kind: "capture" },
+  { id: "A3b-build", src: "capture/cap_build.mov", recIn: 2340, recOut: 2520, kind: "capture" },
+  { id: "A3cd-obsidian-perms", src: "capture/cap_obsidian_perms.mov", recIn: 2520, recOut: 2820, kind: "capture" },
+  { id: "A3e-claude-review", src: "capture/cap_claude_review.mov", recIn: 2820, recOut: 3120, kind: "capture" },
+
+  { id: "S3-code", src: "capture/cap_code.mov", recIn: 3120, recOut: 3210, kind: "capture" },
+  { id: "S4-close", src: "out/segments/close.mov", recIn: 3210, recOut: 3600, kind: "remotion", comp: "Close" },
 ];
 
 /** V2 — the iris overlay; labels are appended from labels.json. */

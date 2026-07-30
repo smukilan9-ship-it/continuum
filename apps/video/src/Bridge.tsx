@@ -6,7 +6,7 @@ import {
 } from "remotion";
 
 import { mark, palette } from "./brand";
-import { Bloom } from "./vfx";
+import { DOT_SIZE, Dot } from "./Dot";
 
 /**
  * S1 · Bridge — 45 frames, rendered WITH ALPHA (PLAN §3.2, T3).
@@ -21,7 +21,7 @@ import { Bloom } from "./vfx";
 
 const WIDTH = 1920;
 const HEIGHT = 1080;
-const DOT_SIZE = 12;
+
 /** Comfortably past the frame diagonal (2202px) so the ring clears the edges. */
 const OPEN_SIZE = 2600;
 const IRIS_START = 5;
@@ -84,23 +84,18 @@ export const Bridge: React.FC = () => {
           opacity={glow}
         />
 
-        {dot > 0 ? (
-          <circle
-            cx={WIDTH / 2}
-            cy={HEIGHT / 2}
-            r={DOT_SIZE / 2}
-            fill={mark.trace}
-            opacity={dot}
-          />
-        ) : null}
       </svg>
 
-      {/* The Hook's dot carries a 340px bloom; without the same glow here the
-          cut at film frame 420 drops it in one frame. It rides the dot out
-          rather than the iris, so it is gone before the hole grows past it. */}
-      {dot > 0 ? (
-        <Bloom size={340} strength={0.85 * dot} color={mark.trace} />
-      ) : null}
+      {/* The same component the Hook hands off, so the cut at film frame 420
+          cannot show a seam. It rides its own fade rather than the iris, so it
+          is gone before the hole grows past it.
+
+          Verified: Hook f419 against Bridge f0 is pixel-identical across the
+          whole frame except the dot's own 12px rim, where the Hook blends its
+          edge against opaque canvas and this blends against the iris hole. That
+          residue is inherent to the iris starting at exactly the dot's size,
+          not a defect — and it is one frame of a 12px circle's antialiasing. */}
+      <Dot opacity={dot} />
     </AbsoluteFill>
   );
 };

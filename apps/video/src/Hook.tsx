@@ -12,7 +12,8 @@ import { mark, palette, typography } from "./brand";
 import { ProblemTypography } from "./hook/Typography";
 import { HookWindow } from "./hook/Window";
 import { DUPLICATE_COUNT, windows, type WindowSpec } from "./hook/windows-data";
-import { Bloom, LightSweep, Vignette, depthOf, motionBlur } from "./vfx";
+import { Dot } from "./Dot";
+import { LightSweep, Vignette, depthOf, motionBlur } from "./vfx";
 import {
   GlassSheen,
   GridOverlay,
@@ -341,24 +342,9 @@ export const Hook: React.FC<{ style?: HookStyle }> = ({ style = "depth" }) => {
         />
       ) : null}
 
-      {/* All that mass, compressed. The Close re-opens this exact dot. */}
-      {dotScale > 0 ? (
-        <>
-          <Bloom size={340} strength={dotScale * 0.85} color={mark.trace} />
-          <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
-            <div
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 6,
-                backgroundColor: mark.trace,
-                transform: `scale(${dotScale * breathe})`,
-                boxShadow: `0 0 ${18 * dotScale}px ${6 * dotScale}px rgba(255,176,32,0.55)`,
-              }}
-            />
-          </AbsoluteFill>
-        </>
-      ) : null}
+      {/* All that mass, compressed. `Bridge` picks this dot up on its own frame
+          0 and `Close` re-opens it — hence the shared component. */}
+      <Dot scale={dotScale} breathe={breathe} />
 
       {/* Deepens as the desktop goes cold, then ramps to nothing across the
           collapse — the third effect to do so, for the same reason as `cool`

@@ -115,7 +115,12 @@
    239px and left the title 28. It is stacked at every width rather than by
    container query, because the height is a constant `VirtualList` depends on
    and a conditional height would put every spacer out by the difference. */
-.result-row { height: 116px; box-sizing: border-box; overflow: hidden; }
+/* 156px fits the worst case the clamp allows: two lines of title, the byline,
+   the access badge and the action row. Measured, not guessed — 116px fitted a
+   one-line title at 136px natural height and sliced the Save button in half.
+   A fixed-height virtual row must fit its tallest permitted content, so short
+   titles leave space rather than tall ones being cut. */
+.result-row { height: 156px; box-sizing: border-box; overflow: hidden; }
 .result-row .row-hit {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
