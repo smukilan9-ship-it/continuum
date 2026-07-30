@@ -54,21 +54,23 @@ function stateReads(...paths: string[]): Set<string> {
   return keys;
 }
 
-describe("a screen may only read fields its view returns", () => {
-  it("Study reads nothing the learn view leaves out", () => {
-    const returned = viewKeys("learn");
-    const missing = [...stateReads(
-      "apps/web/components/study/study-view.tsx",
-      "apps/web/components/study/next-action.ts",
-    )].filter((key) => !returned.has(key));
-    expect(missing, `the learn view does not return: ${missing.join(", ")}`).toEqual([]);
-  });
+/** Every screen, the view it is rendered with, and the files that read state. */
+const SCREENS: Array<{ view: string; label: string; files: string[] }> = [
+  { view: "learn", label: "Study", files: ["apps/web/components/study/study-view.tsx", "apps/web/components/study/next-action.ts"] },
+  { view: "goal", label: "Goal", files: ["apps/web/components/goal/goal-screen.tsx"] },
+  { view: "research", label: "Projects", files: ["apps/web/components/workspace/research-screen.tsx"] },
+  { view: "today", label: "Home", files: ["apps/web/components/home/home-page.tsx"] },
+  { view: "sources", label: "Library", files: ["apps/web/components/library/library-page.tsx"] },
+];
 
-  it("the goal view returns what the goal screen reads", () => {
-    const returned = viewKeys("goal");
-    const missing = [...stateReads("apps/web/components/goal/goal-screen.tsx")].filter((key) => !returned.has(key));
-    expect(missing, `the goal view does not return: ${missing.join(", ")}`).toEqual([]);
-  });
+describe("a screen may only read fields its view returns", () => {
+  for (const screen of SCREENS) {
+    it(`${screen.label} reads nothing the ${screen.view} view leaves out`, () => {
+      const returned = viewKeys(screen.view);
+      const missing = [...stateReads(...screen.files)].filter((key) => key && !returned.has(key));
+      expect(missing, `the ${screen.view} view does not return: ${missing.join(", ")}`).toEqual([]);
+    });
+  }
 
   it("carries the concept's real title, not an id to be humanised", () => {
     // Guards the first of the three: the join, not just the field.

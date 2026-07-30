@@ -726,13 +726,19 @@ export class NeonRepository {
       return { ...empty, goals: goalRows, projects: projectRows };
     }
     if (view === "today") {
-      const [goalRows, taskRows, milestoneRows, projectRows, receiptRows, activityRows, scheduleRows, constraintRows] = await Promise.all([
+      const [goalRows, taskRows, milestoneRows, projectRows, receiptRows, activityRows, scheduleRows, constraintRows, sessionRows, eventRows] = await Promise.all([
         userGoals(), userTasks(), userMilestones(), userProjects(), userReceipts(4),
         this.db.select().from(resourceActivities).where(eq(resourceActivities.userId, userId)).orderBy(desc(resourceActivities.startedAt)).limit(8),
         this.listSchedule(userId),
         this.db.select().from(calendarConstraints).where(and(eq(calendarConstraints.userId, userId), eq(calendarConstraints.deleted, false), gt(calendarConstraints.endsAt, new Date(Date.now() - 24 * 3600_000)))).orderBy(asc(calendarConstraints.startsAt)).limit(100),
+        // "Pick up where you left off" offers four kinds of thread: material
+        // started, a conversation, an open question, a code session. Two of
+        // them were unreachable because this view returned neither sessions nor
+        // events, so the card could only ever show half of what it promises.
+        this.db.select().from(assistantSessions).where(and(eq(assistantSessions.userId, userId), eq(assistantSessions.deleted, false))).orderBy(desc(assistantSessions.lastMessageAt)).limit(8),
+        userEvents(20),
       ]);
-      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), milestones: milestoneRows.map(({ milestone }) => milestone), projects: projectRows, receipts: receiptRows, resourceActivities: activityRows, schedule: scheduleRows, calendarConstraints: constraintRows };
+      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), milestones: milestoneRows.map(({ milestone }) => milestone), projects: projectRows, receipts: receiptRows, resourceActivities: activityRows, schedule: scheduleRows, calendarConstraints: constraintRows, assistantSessions: sessionRows, events: eventView(eventRows) };
     }
     if (view === "goals") {
       const [goalRows, taskRows, milestoneRows, scheduleRows, constraintRows] = await Promise.all([
@@ -809,15 +815,19 @@ export class NeonRepository {
       };
     }
     if (view === "research") {
-      const [goalRows, taskRows, projectRows, decisionRows, claimRows, noteRows, sourceRows, paperRows] = await Promise.all([
+      const [goalRows, taskRows, projectRows, decisionRows, claimRows, noteRows, sourceRows, paperRows, receiptRows, eventRows] = await Promise.all([
         userGoals(), userTasks(), userProjects(),
         this.db.select({ decision: projectDecisions }).from(projectDecisions).innerJoin(projects, eq(projectDecisions.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(projectDecisions.deleted, false))).orderBy(desc(projectDecisions.createdAt)),
         this.db.select({ claim: researchClaims }).from(researchClaims).innerJoin(projects, eq(researchClaims.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(researchClaims.deleted, false))).orderBy(desc(researchClaims.createdAt)),
         this.db.select({ note: researchNotes }).from(researchNotes).innerJoin(projects, eq(researchNotes.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(researchNotes.deleted, false))).orderBy(desc(researchNotes.createdAt)),
         this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).orderBy(desc(sources.createdAt)),
         this.db.select({ paper: papers }).from(papers).innerJoin(projects, eq(papers.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(papers.deleted, false))).orderBy(desc(papers.updatedAt)),
+        // The project's open questions come from receipts and its activity
+        // timeline from events. Neither was returned, so both lists rendered
+        // empty on a screen whose whole claim is that it remembers the work.
+        userReceipts(20), userEvents(60),
       ]);
-      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), projects: projectRows, decisions: decisionRows.map(({ decision }) => decision), claims: claimRows.map(({ claim }) => claim), notes: noteRows.map(({ note }) => note), sources: sourceRows.map(publicSourceMetadata), papers: paperRows.map(({ paper }) => paper) };
+      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), projects: projectRows, decisions: decisionRows.map(({ decision }) => decision), claims: claimRows.map(({ claim }) => claim), notes: noteRows.map(({ note }) => note), sources: sourceRows.map(publicSourceMetadata), papers: paperRows.map(({ paper }) => paper), receipts: receiptRows, events: eventView(eventRows) };
     }
     if (view === "memory") {
       const [goalRows, taskRows, projectRows, decisionRows, claimRows, noteRows, masteryRows, memoryRows, receiptRows, eventRows, sourceRows, paperRows, scheduleRows] = await Promise.all([
