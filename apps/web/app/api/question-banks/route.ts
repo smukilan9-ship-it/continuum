@@ -164,34 +164,49 @@ async function independentModelEvaluations(input: {
 }
 
 function reconcile(deterministic: ReturnType<typeof evaluateQuestionAnswer>, modelResults: Evaluation[], answer = "", expected = "") {
-  // With nothing to corroborate it, a term-overlap "correct" is withheld unless
-  // the answer essentially is the expected one. The failure this prevents was
-  // live in production: an answer that kept every word of the marking key and
-  // asserted the opposite of it — the exact misconception the question was
-  // written to catch — came back Correct, because it shared the key's
-  // vocabulary. Telling a learner "not yet" when they were right costs them a
-  // second look; telling them "correct" when they hold the misconception is the
-  // product teaching it to them.
-  const unconfirmable = modelResults.length === 0
-    && deterministic.correct
-    && !deterministicCanConfirm(answer, expected);
+  /**
+   * One rule governs the thin-evidence cases: **any single evaluator may lower
+   * a grade, but awarding one needs either an exact match or agreement.**
+   *
+   * It is not symmetric because the two errors are not symmetric. Telling a
+   * learner "not yet" when they were right costs them a second look at an
+   * answer they can defend. Telling them "correct" when they hold the
+   * misconception the question was written to catch is the product teaching it
+   * to them, and the review schedule then pushes the concept further away.
+   *
+   * Both failures this replaces were live in production. With no model, term
+   * overlap called a negated answer Correct because it reused the marking key's
+   * vocabulary. With one model, the model was asked, answered, and then
+   * discarded — the branch returned the deterministic verdict and merely noted
+   * that a model had been available.
+   */
   if (modelResults.length < 2) {
-    const withheld = unconfirmable
+    const single = modelResults[0];
+    const confirmed = deterministicCanConfirm(answer, expected)
+      || (single ? single.verdict === "correct" : false);
+    const downgrade = deterministic.correct && !confirmed;
+    const withheld = downgrade
       ? {
         correct: false,
-        verdict: "incomplete" as const,
-        explanation: "Your answer uses the source's vocabulary, but nothing here could check what it claims — no model route was available, and matching words are not a matching answer. Compare it with the source-backed answer below.",
+        score: Math.min(deterministic.score, single ? single.score : 0.6),
+        verdict: (single?.verdict === "incorrect" ? "incorrect" : "incomplete") as "incorrect" | "incomplete",
+        incorrectPoints: single?.incorrectPoints?.length ? single.incorrectPoints.slice(0, 6) : deterministic.incorrectPoints,
+        explanation: single
+          ? `Checked against your source: ${single.explanation}`
+          : "Your answer uses the source's vocabulary, but nothing here could check what it claims — no model route was available, and matching words are not a matching answer. Compare it with the source-backed answer below.",
       }
       : {};
     return {
       ...deterministic,
       ...withheld,
+      correctPoints: single ? [...new Set([...deterministic.correctPoints, ...single.correctPoints])].slice(0, 8) : deterministic.correctPoints,
+      missingPoints: single ? [...new Set([...deterministic.missingPoints, ...single.missingPoints])].slice(0, 8) : deterministic.missingPoints,
       verification: {
-        status: modelResults.length ? "single_model_plus_source_rules" : "source_rules_only",
+        status: single ? "single_model_plus_source_rules" : "source_rules_only",
         evaluators: modelResults.map((result) => ({ provider: result.provider, model: result.model, confidence: result.confidence })),
-        note: modelResults.length
-          ? "One independent model was available. The uploaded source and deterministic coverage check remained authoritative."
-          : unconfirmable
+        note: single
+          ? "One independent model read your source. It cannot confirm an answer on its own, but it can withhold one."
+          : downgrade
             ? "No model route was available, so this answer was not confirmed — only checked against the source's vocabulary."
             : "No independent model route was available. The uploaded source and deterministic coverage check were used.",
       },
