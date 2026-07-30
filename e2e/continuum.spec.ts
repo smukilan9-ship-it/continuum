@@ -127,7 +127,7 @@ test("journey-research: a Discover result saves into the Library and shows up as
   await page.getByRole("textbox", { name: /^Search / }).fill("spatial transcriptomics reproducibility");
   await page.getByRole("button", { name: "Search", exact: true }).click();
 
-  const result = page.locator(".scholarly-result, .paper-result, .result-row").filter({ hasText: OPENALEX_TITLE }).first();
+  const result = page.locator(".result-row").filter({ hasText: OPENALEX_TITLE }).first();
   await expect(result).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText(/OpenAlex/i).first()).toBeVisible();
   // The row itself names the destination — the screen no longer decides for it.
@@ -361,7 +361,7 @@ test("journey-plan: a week is built and saved in five interactions", async ({ pa
   // A draft week appears and says so. §14.2 removed the "COMMITTED" label:
   // a draft is dashed, a committed block is solid, and the difference is stated
   // in words as well as in the border.
-  await expect(page.locator(".week-block, .draft-block, .day-block").first()).toBeVisible({ timeout: 120_000 });
+  await expect(page.locator(".plan-block").first()).toBeVisible({ timeout: 120_000 });
   expect(interactions, `took ${interactions} interactions`).toBeLessThanOrEqual(5);
 });
 
@@ -386,7 +386,7 @@ test("journey-zotero: connecting stays in one dialog and will not save an untest
   await gotoRoute(page, "/settings/connections");
 
   const url = page.url();
-  await page.getByRole("button", { name: /Connect Zotero|Set up Zotero|Configure Zotero/i }).first().click();
+  await page.getByRole("button", { name: "Connect Zotero" }).first().click();
 
   const dialog = page.getByRole("dialog", { name: /Connect your Zotero library/i });
   await expect(dialog).toBeVisible({ timeout: 30_000 });
@@ -422,20 +422,18 @@ test("journey-review: a proposal shows both sides of its change and approves in 
   await page.getByRole("link", { name: /^Review/ }).first().click();
   await page.waitForURL(/\/review$/, { timeout: 30_000 });
 
-  const card = page.locator(".proposal-card, .review-proposal, article").filter({ hasText: "Waiting" }).first();
   const queue = page.getByRole("heading", { name: /Waiting for your approval/ });
   await expect(queue).toBeVisible({ timeout: 60_000 });
   const before = Number((await queue.innerText()).match(/\((\d+)\)/)?.[1] ?? 0);
   expect(before, "the demo workspace has no proposal to approve").toBeGreaterThan(0);
 
   // AC-RV1: at least one row carries a real before *and* after, not a blank.
-  const changed = page.locator(".proposal-change-row, .change-row").first();
+  const changed = page.locator(".diff-row").filter({ has: page.locator("del") }).first();
   await expect(changed).toBeVisible({ timeout: 30_000 });
-  const beforeCell = changed.locator("del, .change-before").first();
+  const beforeCell = changed.locator("del").first();
   await expect(beforeCell).toBeVisible();
   await expect(beforeCell).not.toHaveText("—");
 
   await page.getByRole("button", { name: "Approve" }).first().click();
   await expect(queue).toContainText(`(${before - 1})`, { timeout: 60_000 });
-  void card;
 });
