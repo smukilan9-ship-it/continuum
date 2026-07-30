@@ -126,3 +126,44 @@ describe("passage retrieval does not go through the mixed search", () => {
     expect(returned).toMatch(/\.slice\(0, bounded\)/);
   });
 });
+
+/**
+ * A read endpoint may not statically import a heavy native or parsing module.
+ *
+ * `GET /api/sources` — the request Library makes to list what you already have
+ * — returned a 500 HTML page in production for a workspace with three indexed
+ * sources. The cause was `sharp`, a native module that failed to dlopen on
+ * Vercel's linux-x64 runtime (`libvips-cpp.so.8.18.3: cannot open shared object
+ * file`). It is used only by the image-upload path in the same file, but a
+ * static import fails at *module scope*, so it took every export down with it,
+ * including three GET branches that never touch an image.
+ *
+ * The same shape hid `unpdf` and `mammoth` behind it. All three now load inside
+ * the branch that needs them, so an unavailable parser produces a message about
+ * parsing rather than an unavailable Library.
+ */
+describe("a read endpoint does not import the write path's dependencies", () => {
+  const HEAVY = ["sharp", "unpdf", "mammoth", "image-question-extraction"];
+  const routes = ["apps/web/app/api/sources/route.ts"];
+
+  for (const route of routes) {
+    it(`${route.split("/").slice(-2)[0]} loads heavy modules on demand`, () => {
+      const source = read(route);
+      // Static import lines only — `await import("…")` is the fix, not the bug.
+      const statics = [...source.matchAll(/^import\s[^;]*?from\s+"([^"]+)";/gm)].map((match) => match[1]!);
+      const offenders = statics.filter((specifier) => HEAVY.some((name) => specifier.includes(name)));
+      expect(offenders, `statically imported: ${offenders.join(", ")}`).toEqual([]);
+    });
+
+    it(`${route.split("/").slice(-2)[0]} still reaches them dynamically`, () => {
+      // The fix must not have silently removed the capability.
+      expect(read(route)).toMatch(/await import\(|=> import\(/);
+    });
+  }
+
+  it("keeps sharp itself behind a lazy loader", () => {
+    const module = read("apps/web/lib/image-question-extraction.ts");
+    expect(module).not.toMatch(/^import sharp from/m);
+    expect(module).toMatch(/import\("sharp"\)/);
+  });
+});

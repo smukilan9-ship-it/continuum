@@ -1,7 +1,29 @@
 import { createHash } from "node:crypto";
 import { geminiApiKeys, selectGeminiModel } from "@continuum/ai";
 import type { QuestionBankQuestion } from "@continuum/db";
-import sharp from "sharp";
+/**
+ * `sharp` is loaded on demand, not imported.
+ *
+ * It is a native module, and on Vercel's linux-x64 runtime it failed to
+ * dlopen: `libvips-cpp.so.8.18.3: cannot open shared object file`. Because it
+ * was a static import, that failure happened at module scope — so every route
+ * that touched this file died, including `GET /api/sources`, the read that
+ * Library calls to list what you already have. A user with three indexed
+ * sources saw "We couldn't load your sources", and the cause was an image
+ * pipeline that request never invokes.
+ *
+ * Loading it here means the image path fails with a message about images, and
+ * nothing else fails at all.
+ */
+type Sharp = typeof import("sharp").default;
+let sharpModule: Promise<Sharp> | undefined;
+const loadSharp = async (): Promise<Sharp> => {
+  sharpModule ??= import("sharp").then((module) => module.default).catch((cause) => {
+    sharpModule = undefined;
+    throw new Error(`Image processing is unavailable on this deployment: ${cause instanceof Error ? cause.message : String(cause)}`);
+  });
+  return sharpModule;
+};
 import { getDocumentProxy, renderPageAsImage } from "unpdf";
 import { z } from "zod";
 
@@ -91,6 +113,7 @@ export function detectQuestionImageType(bytes: Uint8Array) {
 }
 
 async function normalizePage(input: Uint8Array, page: number): Promise<NormalizedQuestionPage> {
+  const sharp = await loadSharp();
   const pipeline = sharp(input, {
     failOn: "error",
     limitInputPixels: imageQuestionLimits.pixels,

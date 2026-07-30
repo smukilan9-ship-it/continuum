@@ -6,7 +6,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getStore } from "@/lib/store";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
-import { detectQuestionImageType, extractContextFromImages, normalizeQuestionDocument } from "@/lib/image-question-extraction";
 
 export const runtime = "nodejs";
 
@@ -23,6 +22,7 @@ export const runtime = "nodejs";
  * A read endpoint must not be able to fail because a parser it never uses
  * cannot start.
  */
+const imageTools = () => import("@/lib/image-question-extraction");
 const pdfText = async (bytes: Uint8Array) => {
   const { extractText } = await import("unpdf");
   return (await extractText(bytes, { mergePages: true })).text;
@@ -143,12 +143,13 @@ export async function POST(request: Request) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (isPdf && new TextDecoder("ascii").decode(bytes.slice(0, 5)) !== "%PDF-") return NextResponse.json({ error: "The uploaded file is not a valid PDF" }, { status: 415 });
   if (isDocx && new TextDecoder("ascii").decode(bytes.slice(0, 2)) !== "PK") return NextResponse.json({ error: "The uploaded file is not a valid DOCX document" }, { status: 415 });
-  const detectedImageType = isImageName ? detectQuestionImageType(bytes) : undefined;
+  const detectedImageType = isImageName ? (await imageTools()).detectQuestionImageType(bytes) : undefined;
   if (isImageName && (!detectedImageType || detectedImageType === "application/pdf")) return NextResponse.json({ error: "The uploaded file is not a valid PNG, JPEG, or WebP image" }, { status: 415 });
   let rawText: string;
   let injectionDetected = false;
   try {
     if (detectedImageType) {
+      const { extractContextFromImages, normalizeQuestionDocument } = await imageTools();
       const extracted = await extractContextFromImages(await normalizeQuestionDocument(bytes, detectedImageType));
       rawText = [`# ${extracted.title}`, extracted.extractedText, "## Visual context", extracted.visualSummary].filter(Boolean).join("\n\n");
       injectionDetected = extracted.injectionDetected;
