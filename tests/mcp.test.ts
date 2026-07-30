@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { continuumResources, continuumTools, discoverableTools, executeTool } from "../packages/mcp/src";
+import { continuumResources, continuumTools, discoverableTools, executeTool , registrationShape} from "../packages/mcp/src";
 
 const now = "2026-07-18T09:00:00+05:30";
 
@@ -240,5 +240,47 @@ describe("read-after-write continuity through real dispatch", () => {
 
     const resumed = await executeTool("whats_changed", {}, shared(["memory:read"]));
     expect((resumed.data as { lastSession: { summary: string } }).lastSession.summary).toBe("Passed the checkpoint.");
+  });
+});
+
+/**
+ * The regression the §12.6 procedure caught against a live deployment.
+ *
+ * `McpServer.registerTool` takes a Zod *shape*, not a schema, and reading
+ * `.shape` off a `z.discriminatedUnion` yields `undefined`. `save_to_continuum`
+ * was therefore registered with no input schema at all, and every call to it
+ * failed with "No matching discriminator" before its handler ran — so the
+ * additive write in §12.3, one of the six composite workflows, was dead for
+ * every MCP client while every unit test here passed.
+ */
+describe("MCP tool registration shapes", () => {
+  it("gives every discoverable tool a non-empty registration shape", () => {
+    for (const tool of discoverableTools) {
+      const shape = registrationShape(tool);
+      // Tools that genuinely take no arguments are the only permitted empties.
+      const takesNoArguments = Object.keys((tool.inputJsonSchema as { properties?: object }).properties ?? {}).length === 0;
+      expect(Object.keys(shape).length > 0 || takesNoArguments, `${tool.name} registered with an empty shape`).toBe(true);
+    }
+  });
+
+  it("flattens a discriminated union, keeping the discriminator required", () => {
+    const save = discoverableTools.find((tool) => tool.name === "save_to_continuum")!;
+    const shape = registrationShape(save);
+    expect(Object.keys(shape)).toContain("kind");
+    expect(Object.keys(shape)).toContain("projectId");
+    expect(Object.keys(shape)).toContain("text");
+    // The discriminator stays required; everything else becomes optional,
+    // because it depends on which branch the caller picked.
+    expect(shape.kind!.safeParse(undefined).success).toBe(false);
+    expect(shape.projectId!.safeParse(undefined).success).toBe(true);
+  });
+
+  it("still validates the union strictly server-side", async () => {
+    // Registration is permissive so the client can express any branch; the
+    // union is what actually decides, inside executeTool.
+    await expect(executeTool("save_to_continuum", { kind: "note" }, {
+      scopes: ["research:write"], now: new Date().toISOString(),
+      read: () => ({}), write: () => ({ data: {}, entityIds: [], summary: "" }),
+    })).rejects.toThrow();
   });
 });

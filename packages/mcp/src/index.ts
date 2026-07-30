@@ -321,6 +321,36 @@ export const continuumTools: ContinuumTool[] = [...outcomeTools, ...legacyTools]
 /** What a client discovers: outcome-shaped, current, and remotely allowed. */
 export const discoverableTools = continuumTools.filter((candidate) => candidate.remoteAccessible !== false && !candidate.deprecated);
 
+/**
+ * The Zod shape an MCP server registers a tool with.
+ *
+ * `registerTool` takes a *shape*, not a schema, and reading `.shape` off a
+ * `z.discriminatedUnion` yields `undefined` — so `save_to_continuum` was
+ * registered with no input schema at all and every call to it failed with
+ * "No matching discriminator" before its handler ran. It is the additive write
+ * in §12.3, so the whole workflow was dead for every MCP client.
+ *
+ * A union is registered as the merged shape of its options, with everything
+ * except the discriminator optional. The union itself still validates strictly
+ * inside `executeTool`, so nothing is loosened server-side — only what the
+ * client is told about the argument surface.
+ */
+export function registrationShape(tool: ContinuumTool): z.ZodRawShape {
+  const schema = tool.inputSchema as unknown as { shape?: z.ZodRawShape; def?: { options?: unknown[]; discriminator?: string } };
+  if (schema.shape) return schema.shape;
+  const options = schema.def?.options as Array<{ shape: z.ZodRawShape }> | undefined;
+  if (!options?.length) return {};
+  const discriminator = schema.def?.discriminator;
+  const merged: Record<string, z.ZodType> = {};
+  for (const option of options) {
+    for (const [key, value] of Object.entries(option.shape)) {
+      if (key === discriminator) { merged[key] = merged[key] ?? (value as z.ZodType); continue; }
+      merged[key] = (value as z.ZodType).optional();
+    }
+  }
+  return merged;
+}
+
 export const continuumResources = [
   "continuum://profile",
   "continuum://goals/active",

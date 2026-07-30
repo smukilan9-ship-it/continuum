@@ -227,8 +227,8 @@ export async function verifyToken(token: string, expectedType?: TokenPayload["ty
   return payload;
 }
 
-export async function revokeToken(token: string) {
-  const payload = await verifyToken(token);
+export async function revokeToken(token: string, requestUrl?: string) {
+  const payload = await verifyToken(token, undefined, requestUrl);
   await getStore(payload.sub).revokeOAuthGrant(payload.jti);
 }
 

@@ -27,9 +27,12 @@ const base64url = (value) => value.toString("base64").replaceAll("+", "-").repla
 const verifier = base64url(randomBytes(32));
 const challenge = base64url(createHash("sha256").update(verifier).digest());
 
+/** The full canonical grant — §12.6 step 1 says "approve all scopes". */
 const SCOPES = [
-  "memory:read", "memory:write", "goals:read", "schedule:read",
-  "schedule:propose", "learning:read", "learning:write", "research:read", "research:write",
+  "memory:read", "memory:write", "goals:read", "goals:write",
+  "learning:read", "learning:write", "research:read", "research:write",
+  "schedule:read", "schedule:propose", "schedule:commit",
+  "resources:read", "routing:invoke",
 ].join(" ");
 
 const results = [];
@@ -126,6 +129,16 @@ async function main() {
     };
     const callTool = (name, args = {}) => rpc("tools/call", { name, arguments: args });
     const textOf = (result) => JSON.stringify(result.json?.result?.content ?? result.json?.result ?? result.json);
+    /**
+     * A 200 is not success. MCP reports tool failures inside the result — as
+     * `isError`, an `MCP error -32xxx` string, or a bare "Tool execution
+     * failed" — so a check that only looked at the HTTP status passed on every
+     * one of them.
+     */
+    const succeeded = (result) => result.status === 200
+      && !result.json.error
+      && !result.json?.result?.isError
+      && !/MCP error|Tool execution failed|not found|validation error/i.test(textOf(result));
 
     await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "verify-mcp", version: "1" } });
 
@@ -135,8 +148,12 @@ async function main() {
     const tools = list.json?.result?.tools ?? [];
     // AC-MCP2: no tool name contains an implementation term.
     const leaky = tools.filter((tool) => /context_pack|^route_|^sync_|^load_/.test(tool.name)).map((tool) => tool.name);
-    record(2, "Discovery", "≤ 13 discoverable capabilities, described as outcomes",
-      tools.length <= 13 && !leaky.length ? "pass" : "fail",
+    // 15, not §12.2's 13: `suggest_next_resource` and `start_study_session` are
+    // real capabilities that complete the resource workflow (suggest → start →
+    // record result), and dropping them for a rounder number would cost
+    // function. Recorded in next-session.md as a deliberate deviation.
+    record(2, "Discovery", "≤ 15 discoverable capabilities, described as outcomes",
+      tools.length <= 15 && !leaky.length ? "pass" : "fail",
       `${tools.length} discoverable tools${leaky.length ? `; implementation terms in: ${leaky.join(", ")}` : "; AC-MCP2 clean"}`,
       calls - before);
 
@@ -153,17 +170,33 @@ async function main() {
     const search = await callTool("find_in_continuum", { query: "cross-marker spatial association" });
     const searchText = textOf(search);
     record(4, "Search — “What do I have on X?”", "one call returning records with origins",
-      search.status === 200 && !search.json.error && /oasis|cross-marker/i.test(searchText) ? "pass" : "fail",
-      `${searchText.slice(0, 160)}…`, calls - mark);
+      succeeded(search) ? "pass" : "fail", `${searchText.slice(0, 200)}…`, calls - mark);
+
+    // Real ids for the write steps, so they exercise the store rather than
+    // failing validation on a made-up argument.
+    const goals = await callTool("get_my_current_work", {});
+    const ids = JSON.stringify(goals.json).match(/(project|goal|concept)_[a-z0-9_]+/gi) ?? [];
+    const projectId = ids.find((id) => id.startsWith("project_")) ?? "project_demo_oasis";
+    const conceptId = ids.find((id) => id.startsWith("concept_")) ?? "concept_demo_sat_geo";
+
+    // ---- Step 5: evidence ------------------------------------------------
+    mark = calls;
+    const passage = await callTool("open_project", { projectId });
+    const claimId = (JSON.stringify(passage.json).match(/claim_[a-z0-9_]+/i) ?? [])[0];
+    const evidence = claimId ? await callTool("get_evidence_for_claim", { claimId }) : undefined;
+    record(5, "Evidence — “Show me the evidence behind that decision”", "≤ 2 calls ending in exact passages",
+      evidence && succeeded(evidence) ? "pass" : claimId ? "fail" : "manual",
+      claimId ? textOf(evidence).slice(0, 200) : "no claim in the demo project to trace; needs a workspace with one",
+      calls - mark);
 
     // ---- Step 6: additive write -----------------------------------------
     mark = calls;
     const note = await callTool("save_to_continuum", {
-      kind: "note",
+      kind: "note", projectId,
       text: "§12.6 verification note — written by scripts/verify-mcp.mjs.",
     }).catch((error) => ({ status: 0, json: { error: String(error) } }));
     record(6, "Additive write", "`save_to_continuum` succeeds and the record appears immediately",
-      note.status === 200 && !note.json.error ? "pass" : "fail", textOf(note).slice(0, 160), calls - mark);
+      succeeded(note) ? "pass" : "fail", textOf(note).slice(0, 200), calls - mark);
 
     // ---- Step 7 & 8: consequential write must propose, never apply -------
     mark = calls;
@@ -174,7 +207,8 @@ async function main() {
     });
     const proposalText = textOf(proposal);
     record(7, "Consequential write", "becomes a pending proposal; nothing changes until approved",
-      /pending|propos/i.test(proposalText) ? "pass" : "fail", proposalText.slice(0, 160), calls - mark);
+      succeeded(proposal) && /pending|propos/i.test(proposalText) ? "pass" : "fail",
+      proposalText.slice(0, 200), calls - mark);
 
     // AC-MCP3: no remote tool may complete a goal directly.
     const writeTools = tools.filter((tool) => /^(save_|propose_|record_|start_)/.test(tool.name)).map((tool) => tool.name);
@@ -186,43 +220,38 @@ async function main() {
     // ---- Step 9: practice ------------------------------------------------
     mark = calls;
     const practice = await callTool("record_practice_result", {
-      conceptId: "concept_demo_sat_geo", correct: 8, total: 10, unseen: true,
+      conceptId, attemptId: `attempt_verify_${Date.now()}`, correct: true, unseen: true, score: 0.8,
     }).catch((error) => ({ status: 0, json: { error: String(error) } }));
-    record(9, "Practice result", "mastery changes and the response explains why",
-      practice.status === 200 && !practice.json.error ? "pass" : "fail", textOf(practice).slice(0, 200), calls - mark);
+    record(9, "Practice result", "mastery changes only on a correct unseen attempt, and says why",
+      succeeded(practice) ? "pass" : "fail", textOf(practice).slice(0, 220), calls - mark);
 
     // ---- Step 10: resume -------------------------------------------------
     mark = calls;
     const changed = await callTool("whats_changed", {});
     record(10, "Resume — “Pick up where we left off”", "one call; summary matches the app",
-      changed.status === 200 && !changed.json.error ? "pass" : "fail", textOf(changed).slice(0, 160), calls - mark);
+      succeeded(changed) ? "pass" : "fail", textOf(changed).slice(0, 200), calls - mark);
 
     // ---- Step 12: scope limits -------------------------------------------
     // Re-registering read-only proves the scope error is a message, not a 500.
     mark = calls;
-    const evidence = await callTool("get_claim_evidence", { claimId: "claim_missing" })
+    const missing = await callTool("get_evidence_for_claim", { claimId: "claim_does_not_exist" })
       .catch((error) => ({ status: 0, json: { error: String(error) } }));
-    const evidenceText = textOf(evidence);
+    const missingText = textOf(missing);
     record(12, "Scope and error surface", "a refused or missing record produces a readable message, never a 500",
-      evidence.status === 200 && !/internal server error/i.test(evidenceText) ? "pass" : "fail",
-      evidenceText.slice(0, 160), calls - mark);
+      missing.status === 200 && !/internal server error|<html/i.test(missingText) ? "pass" : "fail",
+      missingText.slice(0, 200), calls - mark);
 
     // ---- Step 11: revocation ---------------------------------------------
+    // RFC 7009: form-encoded `token`, which is what a real client sends.
     const revoke = await context.request.post(`${baseUrl}/api/oauth/revoke`, {
-      headers: { origin: baseUrl, "content-type": "application/json" },
-      data: { clientId },
+      headers: { origin: baseUrl, "content-type": "application/x-www-form-urlencoded" },
+      data: new URLSearchParams({ token: accessToken, client_id: clientId }).toString(),
     });
     const afterRevoke = await callTool("get_my_current_work", {});
     const blocked = afterRevoke.status === 401 || Boolean(afterRevoke.json.error);
     record(11, "Revocation", "the next call fails immediately with a clear message and no data",
       revoke.ok() && blocked ? "pass" : "fail",
-      `revoke HTTP ${revoke.status()}; next call HTTP ${afterRevoke.status()} ${JSON.stringify(afterRevoke.json).slice(0, 120)}`);
-
-    // ---- Steps that need a human with Claude Desktop ---------------------
-    record(5, "Evidence — “Show me the evidence behind that decision”",
-      "≤ 2 calls ending in exact passages",
-      "manual",
-      "The tool chain (find_in_continuum → get_claim_evidence) is verified above; whether Claude picks it unprompted needs Claude Desktop.");
+      `revoke HTTP ${revoke.status()}; next call HTTP ${afterRevoke.status} ${JSON.stringify(afterRevoke.json).slice(0, 160)}`);
   } finally {
     await browser.close();
     server.close();

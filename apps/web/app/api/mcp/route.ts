@@ -1,11 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { continuumResources, discoverableTools, executeTool } from "@continuum/mcp";
-import { z } from "zod";
+import { continuumResources, discoverableTools, executeTool, registrationShape } from "@continuum/mcp";
 import { authorizedMcpIdentity, type AuthorizedMcpIdentity } from "@/lib/oauth";
 import { enforceRateLimit } from "@/lib/auth";
 import { getStore } from "@/lib/store";
-import { publicErrorMessage } from "@/lib/api-errors";
+import { logRequestFailure, publicErrorMessage } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +28,7 @@ function createServer(identity: AuthorizedMcpIdentity) {
   // callable by name through executeTool so an in-flight request does not fail,
   // but a client selecting a tool chooses from the current surface.
   for (const tool of discoverableTools.filter((candidate) => identity.scopes.includes(candidate.requiredScope))) {
-    const shape = (tool.inputSchema as z.ZodObject<z.ZodRawShape>).shape;
+    const shape = registrationShape(tool);
     server.registerTool(tool.name, {
       title: tool.title,
       description: `${tool.description} Required scope: ${tool.requiredScope}.`,
@@ -55,6 +54,10 @@ function createServer(identity: AuthorizedMcpIdentity) {
           structuredContent: result as unknown as Record<string, unknown>,
         };
       } catch (error) {
+        // The client gets a safe message; the operator gets the real one. Without
+        // this, a failing tool produced "Tool execution failed" and no log line
+        // anywhere, so the cause could only be found by reading the source.
+        logRequestFailure("mcp_tool_failed", { tool: tool.name, clientId: identity.clientId }, error);
         return { isError: true, content: [{ type: "text" as const, text: publicErrorMessage(error, "Tool execution failed") }] };
       }
     });
