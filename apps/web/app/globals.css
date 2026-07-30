@@ -208,9 +208,26 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   box-shadow: var(--shadow-2);
   transition: box-shadow var(--d-base) var(--e-out), transform var(--d-base) var(--e-out), border-color var(--d-base) var(--e-out);
 }
-.card-interactive:hover { box-shadow: var(--shadow-3); transform: translateY(-2px); border-color: var(--line-strong); }
+/* A one-pixel highlight along the top edge, brightest in the middle.
+   It is what makes a flat rectangle read as a surface catching light rather
+   than a div with a border — the whole trick is that it is asymmetric, so the
+   eye infers a light source above. Sits in ::before so it rides the radius,
+   and is inert to pointers so it never eats a click. */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .9) 22%, rgba(255, 255, 255, .9) 78%, transparent);
+  pointer-events: none;
+}
+.card-interactive:hover {
+  box-shadow: var(--shadow-3), 0 0 0 1px var(--brand-glow);
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+}
 .button-large { min-height: 46px; padding: 0 20px; border-radius: var(--r-lg); }
-.button-large { min-height: 46px; padding: 0 20px; }
 .badge { width: fit-content; min-height: 24px; padding: 4px 9px; display: inline-flex; align-items: center; border-radius: 999px; font-size: 11px; font-weight: 750; line-height: 1.1; white-space: nowrap; }
 .badge-neutral { color: var(--ink-2); background: var(--surface-sunken); }
 .badge-blue, .badge-purple { color: var(--accent-hover); background: var(--accent-quiet); }

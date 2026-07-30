@@ -20,12 +20,29 @@
   gap: var(--s-3);
 }
 
+/* The jade tick carries the rhythm down the page: four sections, four marks in
+   the same left gutter, so the eye can find the next heading without reading.
+   It is drawn on ::before rather than as an icon per heading because it is
+   decoration — a screen reader should hear "Due today", not "bullet Due
+   today". */
 .study-section-heading {
+  position: relative;
   margin: 0;
+  padding-left: var(--s-4);
   font-size: var(--t-h2);
   line-height: var(--t-h2-lh);
   font-weight: 600;
   color: var(--ink);
+}
+.study-section-heading::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .28em;
+  bottom: .28em;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--brand-hover), var(--brand-strong));
 }
 
 /* --- Continue ------------------------------------------------------------- */
