@@ -908,6 +908,11 @@
 .list { container-type: inline-size; }
 
 @container (max-width: 430px) {
+  /* Virtualised rows are excluded: their height is a constant the windowing
+     maths depends on, so a wrapped line is clipped rather than shown. They
+     stack unconditionally instead, at a height that fits — see
+     `.result-row` in library.css. */
+  .library-virtual > .row { flex-wrap: nowrap; }
   .row { flex-wrap: wrap; align-items: flex-start; }
   .row-hit { flex: 1 1 100%; grid-template-columns: auto minmax(0, 1fr); }
   /* The trailing badge drops under the copy instead of competing with it. */

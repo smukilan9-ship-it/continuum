@@ -47,11 +47,24 @@ const BUILD_START = 18;
 const BUILD_END = 102;
 /**
  * A one-frame hard cut, not a crossfade. Both layers draw identical bars here,
- * so dissolving them stacks two 50%-opacity copies of the same dark shape and
- * the bars visibly wash out to grey mid-fade. Cutting is genuinely invisible.
+ * so dissolving them stacks two 50%-opacity copies of the same shape and the
+ * bars visibly wash out mid-fade. Cutting is genuinely invisible — but only if
+ * the pre-phase holds nothing `BrandMark` does not also draw.
+ *
+ * Two constraints pin these frames:
+ *   - `BrandMark` must be drawing tile + bars and nothing else, i.e. progress
+ *     0.28–0.55, i.e. frames 41.5–64.2.
+ *   - every seed must already be dead, or it pops out of existence on the cut.
+ *     The last seed finishes at SEED_FADE_AT + 15 + 10 = frame 63.
+ *
+ * At 58/59 the last two seeds were still alive and the swap dropped them a
+ * frame early: 3,209 bytes differing, peak delta 225. Verified invisible here.
  */
-const SWAP_START = 58;
-const SWAP_END = 59;
+const SWAP_START = 63;
+const SWAP_END = 64;
+
+/** Seed i begins fading at SEED_FADE_AT + 5i, over 10 frames. */
+const SEED_FADE_AT = 38;
 
 /**
  * Offset from the finished lockup's mark position to frame centre, so the dot
@@ -59,11 +72,15 @@ const SWAP_END = 59;
  * eases into its header position as the wordmark arrives.
  *
  * Measured off a render of frame 320 (the finished end slate): the tile's
- * bounding box sits at x 412–611, y 329–528, i.e. centre (511.5, 428.5).
- * Re-measure if MARK_SIZE, the wordmark size, or the sub-lines change.
+ * bounding box sits at x 414–613, y 332–531, i.e. centre (513.5, 431.5).
+ *
+ * Re-measure with `node scripts/measure-lockup.mjs` whenever MARK_SIZE, the
+ * wordmark's typeface, or the end-slate copy changes. All three moved in v4 —
+ * DM Sans to Inter, and both sub-lines rewritten — which walked these 2px in X
+ * and 3px in Y from where they were.
  */
-const LOCKUP_SHIFT_X = 448.5;
-const LOCKUP_SHIFT_Y = 111.5;
+const LOCKUP_SHIFT_X = 446.5;
+const LOCKUP_SHIFT_Y = 108.5;
 
 /** Bar centres, baselines and opacities, in viewBox units. */
 const seats = bars.map((bar) => ({
@@ -176,11 +193,17 @@ export const Close: React.FC = () => {
           <div style={{ position: "relative", width: MARK_SIZE, height: MARK_SIZE }}>
             {/* Pre-phase: the dot, its four seeds, the tile, and the rising
                 bars — all in BrandMark's coordinate space. */}
+            {/* Wrapper and svg style mirror `BrandMark`'s exactly — opacity on
+                a positioned div, `overflow: visible` on the svg. Carrying the
+                opacity on the svg itself instead put the two layers on
+                different compositing paths and shifted the tile's antialiased
+                outline by up to 61/255 across the cut. */}
+            <div style={{ position: "absolute", inset: 0, opacity: preOpacity }}>
             <svg
               viewBox={`0 0 ${VIEW_BOX} ${VIEW_BOX}`}
               width={MARK_SIZE}
               height={MARK_SIZE}
-              style={{ position: "absolute", inset: 0, opacity: preOpacity }}
+              style={{ overflow: "visible" }}
             >
               <defs>
                 <MarkGradient id="close-mark-field" />
@@ -222,7 +245,7 @@ export const Close: React.FC = () => {
                   extrapolateRight: "clamp",
                 });
                 // Seed 4's bar is the last to move, so its seed waits longest.
-                const fadeAt = 40 + index * 5;
+                const fadeAt = SEED_FADE_AT + index * 5;
                 const seedAlive = interpolate(frame, [fadeAt, fadeAt + 10], [1, 0], {
                   extrapolateLeft: "clamp",
                   extrapolateRight: "clamp",
@@ -254,6 +277,7 @@ export const Close: React.FC = () => {
                 />
               ) : null}
             </svg>
+            </div>
 
             <div style={{ position: "absolute", inset: 0, opacity: markOpacity }}>
               <BrandMark progress={build} size={MARK_SIZE} title="Continuum" />

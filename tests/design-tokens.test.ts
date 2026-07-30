@@ -316,3 +316,37 @@ describe("mobile-only actually hides", () => {
     expect(kit.lastIndexOf("width: 44px; height: 44px; display: grid")).toBe(-1);
   });
 });
+
+/**
+ * A virtualised row's height lives in two places and must agree.
+ *
+ * `VirtualList` computes which rows are on screen, and the size of the spacers
+ * above and below them, from a `rowHeight` prop. The row's actual height comes
+ * from CSS. If they drift, every spacer is out by the difference and the list
+ * scrolls to the wrong place — and because the row is `overflow: hidden`,
+ * content past the CSS height is silently clipped rather than shown, which is
+ * how the Save button and access badge ended up invisible under every result.
+ */
+describe("virtualised row heights agree between CSS and JS", () => {
+  const pairs = [
+    { css: "components/library/library.css", selector: ".result-row", tsx: "components/workspace/scholarly-search.tsx" },
+    { css: "components/library/library.css", selector: ".source-row", tsx: "components/library/sources-tab.tsx" },
+  ];
+
+  for (const pair of pairs) {
+    it(`${pair.selector} matches the rowHeight passed to VirtualList`, () => {
+      const css = read(pair.css);
+      const rule = css.slice(css.indexOf(`${pair.selector} {`));
+      const cssHeight = Number(rule.match(/height:\s*(\d+)px/)?.[1]);
+      const jsHeight = Number(read(pair.tsx).match(/rowHeight=\{(\d+)\}/)?.[1]);
+      expect(cssHeight, `no height found for ${pair.selector}`).toBeGreaterThan(0);
+      expect(jsHeight, `no rowHeight found in ${pair.tsx}`).toBeGreaterThan(0);
+      expect(jsHeight, `${pair.selector} is ${cssHeight}px but VirtualList is told ${jsHeight}px`).toBe(cssHeight);
+    });
+  }
+
+  it("keeps virtualised rows out of the container-query stack", () => {
+    // They cannot grow, so wrapping clips them instead of reflowing them.
+    expect(read("components/ui/kit.css")).toMatch(/\.library-virtual\s*>\s*\.row\s*\{\s*flex-wrap:\s*nowrap/);
+  });
+});

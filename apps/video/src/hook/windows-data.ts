@@ -3,10 +3,15 @@ import type { AppId } from "./AppIcon";
 /**
  * The hook's desktop, as data (PLAN §3.2 S0 beat map).
  *
- * These are the *named real apps* a second-year EE actually has open the week
- * before an exam — Safari, ChatGPT, Claude, Gemini, Preview, Notion, Anki,
- * Terminal, Calendar. Recognition is what makes the fragmentation argument
- * land: a judge should see their own desktop, not an abstraction of one.
+ * These are the *named real apps* a Class 12 student actually has open while
+ * cramming for the SAT — Safari, ChatGPT, Claude, Gemini, Preview, Notion,
+ * Anki, Terminal, Calendar. Recognition is what makes the fragmentation
+ * argument land: a judge should see their own desktop, not an abstraction of
+ * one.
+ *
+ * The persona is Mukilan, the same student the seeded demo account belongs to,
+ * so the desktop in the hook and the workspace in the captures are one person's
+ * week rather than two unrelated fictions.
  *
  * None of them may resemble Continuum's UI. The hook is the world *before* the
  * product, and a judge who mistakes a hook window for the product loses the
@@ -57,23 +62,29 @@ export type WindowSpec = {
 
 /** The one line the student types before the pile-up starts. */
 export const OPENING_QUESTION =
-  "Can you explain electric potential? Exam on Friday.";
+  "Can you explain arc length vs sector area? SAT on Oct 3.";
 
 /**
  * The thesis of the hook: the human is the sync layer. This exact block is
  * pasted into two different chat windows (f120 and f213) — the repetition is
  * the argument, so the copy must be identical in both.
+ *
+ * The weakness it names is load-bearing beyond this segment. It is the same one
+ * the review queue catches at 0:20, the explain-back grader corrects at 0:32,
+ * the Assistant cites at 0:45, and Claude names over MCP — unprompted — at
+ * 1:34. That chain is the film's spine (PLAN §4.2), and it only reads if the
+ * words here match the seeded `misc_demo_sat_geo` the captures will show.
  */
 export const CONTEXT_PASTE =
-  "Context (again): 2nd-year EE. Exam Friday. Weak areas: boundary conditions, image charges. Working from Griffiths ch.2 + lecture 4 notes. Please don't make me repeat this.";
+  "Context (again): Class 12, CBSE. SAT on Oct 3. Weak areas: arc length vs sector area, circles in the coordinate plane. Working from my error log + Bluebook mock 4. Please don't make me repeat this.";
 
 export const BROWSER_TABS = [
-  "Electric Potential in 21 min",
-  "StackExchange",
-  "Chegg",
+  "SAT Circles & Parabolas in 21 min",
+  "Khan Academy",
+  "College Board",
   "Quizlet",
-  "arXiv",
-  "Google Scholar",
+  "r/SAT",
+  "Desmos",
   "Reddit",
   "Gmail",
   "Docs",
@@ -83,8 +94,8 @@ export const TERMINAL_LINES = [
   { text: "$ python practice.py", tone: "prompt" as const },
   { text: "Traceback (most recent call last):", tone: "error" as const },
   { text: '  File "practice.py", line 42, in <module>', tone: "dim" as const },
-  { text: "    potential = solve_boundary(charges)", tone: "dim" as const },
-  { text: "ValueError: boundary conditions unresolved", tone: "error" as const },
+  { text: "    area = sector_area(radius, theta)", tone: "dim" as const },
+  { text: "ValueError: sector area formula not defined", tone: "error" as const },
 ];
 
 export const windows: WindowSpec[] = [
@@ -106,8 +117,8 @@ export const windows: WindowSpec[] = [
     id: "pdf",
     kind: "pdf",
     app: "preview",
-    title: "griffiths_ch2_electrostatics.pdf",
-    subtitle: "Page 3 of 41",
+    title: "bluebook_mock4_review.pdf",
+    subtitle: "Page 12 of 48",
     arriveAt: 66,
     x: 64,
     y: 48,
@@ -121,7 +132,7 @@ export const windows: WindowSpec[] = [
     kind: "notes",
     app: "notion",
     title: "Notion",
-    subtitle: "exam_notes_FINAL_v3",
+    subtitle: "sat_error_log_FINAL_v3",
     arriveAt: 96,
     x: 1346,
     y: 64,
@@ -150,7 +161,7 @@ export const windows: WindowSpec[] = [
     id: "browser",
     kind: "browser",
     app: "safari",
-    title: "Electric Potential in 21 min",
+    title: "SAT Circles & Parabolas in 21 min",
     subtitle: "9 tabs",
     arriveAt: 150,
     x: 180,
@@ -165,7 +176,7 @@ export const windows: WindowSpec[] = [
     kind: "flashcards",
     app: "anki",
     title: "Anki",
-    subtitle: "EE-201 · Electrostatics",
+    subtitle: "SAT · Advanced Geometry",
     arriveAt: 174,
     x: 1448,
     y: 650,

@@ -656,7 +656,7 @@ export function ScholarlySearch({
               {kind === "works" ? (
                 <VirtualList
                   items={works}
-                  rowHeight={72}
+                  rowHeight={116}  /* must match `.result-row` height in library.css */
                   label="Search results"
                   className="scholarly-result-viewport"
                   renderItem={(work, position) => (
