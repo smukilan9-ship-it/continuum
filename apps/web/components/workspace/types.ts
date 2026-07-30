@@ -3,6 +3,9 @@ export type Row = Record<string, unknown>;
 export type WorkspaceState = {
   goals: Row[];
   tasks: Row[];
+  taskDependencies: Row[];
+  /** Fetched by the today/goals/goal views; previously dropped on the floor here. */
+  milestones: Row[];
   projects: Row[];
   decisions: Row[];
   claims: Row[];
@@ -15,6 +18,8 @@ export type WorkspaceState = {
   events: Row[];
   proposals: Row[];
   resourceActivities: Row[];
+  questionBanks: Row[];
+  assistantSessions: Row[];
   schedule: Row[];
   modelRoutes: Row[];
   calendarConstraints: Row[];
@@ -23,6 +28,8 @@ export type WorkspaceState = {
 const keys: Array<keyof WorkspaceState> = [
   "goals",
   "tasks",
+  "taskDependencies",
+  "milestones",
   "projects",
   "decisions",
   "claims",
@@ -35,6 +42,8 @@ const keys: Array<keyof WorkspaceState> = [
   "events",
   "proposals",
   "resourceActivities",
+  "questionBanks",
+  "assistantSessions",
   "schedule",
   "modelRoutes",
   "calendarConstraints",
@@ -58,10 +67,10 @@ export function list(row: Row | undefined, key: string) {
   return Array.isArray(row?.[key]) ? (row[key] as unknown[]).map(String) : [];
 }
 
-export function formatDate(value: unknown, options: Intl.DateTimeFormatOptions = { dateStyle: "medium", timeStyle: "short" }) {
+export function formatDate(value: unknown, options: Intl.DateTimeFormatOptions = { dateStyle: "medium", timeStyle: "short" }, timeZone?: string) {
   if (typeof value !== "string" && !(value instanceof Date)) return "Not scheduled";
   const parsed = new Date(value);
-  return Number.isNaN(parsed.valueOf()) ? "Not scheduled" : new Intl.DateTimeFormat(undefined, options).format(parsed);
+  return Number.isNaN(parsed.valueOf()) ? "Not scheduled" : new Intl.DateTimeFormat("en-IN", { ...options, timeZone }).format(parsed);
 }
 
 export async function postState(type: string, summary: string, payload: Row) {

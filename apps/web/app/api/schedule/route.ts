@@ -5,14 +5,31 @@ import { z } from "zod";
 import { scheduleSeed } from "@/lib/demo-data";
 import { getStore } from "@/lib/store";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
+import { logRequestFailure, publicErrorMessage } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 
+const scheduleIntakeSchema = z.object({
+  wakeTime: z.string().regex(/^\d{2}:\d{2}$/),
+  sleepTime: z.string().regex(/^\d{2}:\d{2}$/),
+  fixedCommitments: z.string().max(4000).default(""),
+  weekdayFree: z.string().regex(/^\d{2}:\d{2}-\d{2}:\d{2}$/),
+  weekendFree: z.string().regex(/^\d{2}:\d{2}-\d{2}:\d{2}$/),
+  priorities: z.string().max(3000).default(""),
+  deadlines: z.string().max(3000).default(""),
+  sessionLength: z.number().int().min(15).max(180),
+  breakMinutes: z.number().int().min(0).max(60),
+  noDays: z.array(z.number().int().min(0).max(6)).max(7).default([]),
+  maxDailyMinutes: z.number().int().min(15).max(720),
+});
+
 const requestSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("propose") }),
+  z.object({ action: z.literal("propose"), intake: scheduleIntakeSchema }),
   z.object({ action: z.literal("replan"), current: scheduleProposalSchema, missedBlockId: z.string().min(3) }),
-  z.object({ action: z.literal("commit"), proposalId: z.string().min(3), confirmedAt: z.string().datetime({ offset: true }) }),
+  z.object({ action: z.literal("commit"), proposalId: z.string().min(3), confirmedAt: z.string().datetime({ offset: true }), blocks: scheduleProposalSchema.shape.blocks.min(1).max(200) }),
 ]);
+
+type ScheduleIntake = z.infer<typeof scheduleIntakeSchema>;
 
 type Row = Record<string, unknown>;
 
@@ -45,7 +62,44 @@ function demoInput(): ScheduleInput {
   };
 }
 
-function userInput(snapshot: Record<string, unknown>, timezone: string, now: string): { input: ScheduleInput; tasks: Row[] } {
+function localIso(date: Date, time: string, timezone: string) {
+  const [hour, minute] = time.split(":").map(Number);
+  const guess = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(guess));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const represented = Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day), Number(values.hour), Number(values.minute));
+  return new Date(guess - (represented - guess)).toISOString();
+}
+
+function freeWindow(value: string) {
+  const [start, end] = value.split("-");
+  return { start: start!, end: end! };
+}
+
+const weekdayIndex: Record<string, number> = { sun: 0, sunday: 0, mon: 1, monday: 1, tue: 2, tuesday: 2, wed: 3, wednesday: 3, thu: 4, thursday: 4, fri: 5, friday: 5, sat: 6, saturday: 6 };
+
+function intakeConstraints(intake: ScheduleIntake, dates: Date[], timezone: string) {
+  return intake.fixedCommitments.split("\n").flatMap((line, index) => {
+    const match = line.trim().match(/^(sun(?:day)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?)\s+(\d{2}:\d{2})-(\d{2}:\d{2})\s+(.+)$/i);
+    if (!match) return [];
+    const day = weekdayIndex[match[1]!.toLowerCase()];
+    const date = dates.find((candidate) => candidate.getDay() === day);
+    if (!date) return [];
+    const start = localIso(date, match[2]!, timezone);
+    const end = localIso(date, match[3]!, timezone);
+    return Date.parse(start) < Date.parse(end) ? [{ id: `intake_fixed_${index}`, title: match[4]!, start, end, hard: true }] : [];
+  });
+}
+
+function userInput(snapshot: Record<string, unknown>, timezone: string, now: string, intake?: ScheduleIntake): { input: ScheduleInput; tasks: Row[] } {
   const rows = Array.isArray(snapshot.tasks) ? snapshot.tasks as Row[] : [];
   const goals = new Map((Array.isArray(snapshot.goals) ? snapshot.goals as Row[] : []).map((goal) => [String(goal.id), goal]));
   const deadline = (value: unknown) => {
@@ -63,22 +117,34 @@ function userInput(snapshot: Record<string, unknown>, timezone: string, now: str
       id: String(task.id), goalId: String(task.goalId), title: String(task.title), status, estimatedMinutes: estimate,
       deadline: deadline(task.deadline) ?? deadline(goal?.targetDate) ?? deadline(goal?.date),
       priority: Math.max(1, Math.min(5, Math.round(Number(task.priority ?? 3)))), energyRequired: energy, dependencies: [],
-      minimumBlockMinutes: Math.min(estimate, 25), maximumBlockMinutes: Math.min(estimate, 90), splittable: estimate > 45,
+      minimumBlockMinutes: Math.min(estimate, 15), maximumBlockMinutes: Math.min(estimate, intake?.sessionLength ?? 90), splittable: estimate > (intake?.sessionLength ?? 45),
       completionEvidence: typeof task.completionEvidence === "string" ? task.completionEvidence : undefined, resourceIds: [],
     });
   });
-  const start = Date.parse(now) + 10 * 60_000;
-  const availability = Array.from({ length: 7 }, (_, day) => ({
-    start: new Date(start + day * 24 * 3600_000).toISOString(),
-    end: new Date(start + day * 24 * 3600_000 + (day === 0 ? 8 : 6) * 3600_000).toISOString(),
-    energy: day === 0 ? "high" as const : "medium" as const,
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const dates = Array.from({ length: 7 }, (_, day) => new Date(today.getTime() + day * 24 * 3600_000));
+  const availability = intake ? dates.flatMap((date) => {
+    if (intake.noDays.includes(date.getDay())) return [];
+    const window = freeWindow([0, 6].includes(date.getDay()) ? intake.weekendFree : intake.weekdayFree);
+    const boundedStart = window.start < intake.wakeTime ? intake.wakeTime : window.start;
+    const boundedEnd = intake.sleepTime > intake.wakeTime && window.end > intake.sleepTime ? intake.sleepTime : window.end;
+    const start = localIso(date, boundedStart, timezone);
+    const windowEnd = localIso(date, boundedEnd, timezone);
+    const end = new Date(Math.min(Date.parse(windowEnd), Date.parse(start) + intake.maxDailyMinutes * 60_000)).toISOString();
+    return Date.parse(start) < Date.parse(end) ? [{ start, end, energy: "medium" as const }] : [];
+  }) : dates.map((date, day) => ({
+    start: new Date(Date.parse(now) + 10 * 60_000 + day * 24 * 3600_000).toISOString(),
+    end: new Date(Date.parse(now) + 10 * 60_000 + day * 24 * 3600_000 + 6 * 3600_000).toISOString(),
+    energy: "medium" as const,
   }));
-  const constraints = (Array.isArray(snapshot.calendarConstraints) ? snapshot.calendarConstraints as Row[] : []).flatMap((constraint) => {
+  const savedConstraints = (Array.isArray(snapshot.calendarConstraints) ? snapshot.calendarConstraints as Row[] : []).flatMap((constraint) => {
     const start = constraint.startsAt instanceof Date ? constraint.startsAt.toISOString() : String(constraint.startsAt ?? "");
     const end = constraint.endsAt instanceof Date ? constraint.endsAt.toISOString() : String(constraint.endsAt ?? "");
     return Number.isFinite(Date.parse(start)) && Number.isFinite(Date.parse(end)) && Date.parse(start) < Date.parse(end) ? [{ id: String(constraint.id), title: String(constraint.title ?? "Busy"), start, end, hard: constraint.hard !== false }] : [];
   });
-  return { input: { tasks, availability, constraints, timezone, bufferMinutes: 10, now }, tasks: rows };
+  const constraints = [...savedConstraints, ...(intake ? intakeConstraints(intake, dates, timezone) : [])];
+  return { input: { tasks, availability, constraints, timezone, bufferMinutes: intake?.breakMinutes ?? 10, now }, tasks: rows };
 }
 
 export async function POST(request: Request) {
@@ -94,17 +160,26 @@ export async function POST(request: Request) {
 
   if (parsed.data.action === "commit") {
     try {
-      await store.write("confirm_proposal", { proposalId: parsed.data.proposalId, confirmedBy: user.id, confirmedAt: parsed.data.confirmedAt }, now, "standalone_app");
-      const committed = await store.write("commit_schedule_change", { proposalId: parsed.data.proposalId, confirmation: { confirmedBy: user.id, confirmedAt: parsed.data.confirmedAt } }, now, "standalone_app");
+      const edited = await store.write("propose_schedule_change", {
+        summary: "Save the edited weekly schedule",
+        reason: "The user directly edited and confirmed this draft.",
+        changes: { blocks: parsed.data.blocks, timezone: user.timezone },
+      }, now, "standalone_app");
+      const editedProposalId = String((edited.data as { id?: string }).id ?? "");
+      if (!editedProposalId) throw new Error("The edited schedule could not be saved as a proposal");
+      await store.write("confirm_proposal", { proposalId: editedProposalId, confirmedBy: user.id, confirmedAt: parsed.data.confirmedAt }, now, "standalone_app");
+      const committed = await store.write("commit_schedule_change", { proposalId: editedProposalId, confirmation: { confirmedBy: user.id, confirmedAt: parsed.data.confirmedAt } }, now, "standalone_app");
+      await store.write("reject_proposal", { proposalId: parsed.data.proposalId }, now, "standalone_app").catch(() => undefined);
       return NextResponse.json({ committed: committed.data, schedule: await store.read("load_schedule", { maxTokens: 4000 }) });
     } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : "Schedule could not be committed" }, { status: 409 });
+      logRequestFailure("schedule_commit_failed", {}, error);
+    return NextResponse.json({ error: publicErrorMessage(error, "Schedule could not be committed") }, { status: 409 });
     }
   }
 
   const snapshot = await store.workspace("goals");
   const useSeed = user.id === "user_maya" && (!Array.isArray(snapshot.tasks) || snapshot.tasks.length === 0);
-  const prepared = useSeed ? { input: demoInput(), tasks: scheduleSeed.tasks as unknown as Row[] } : userInput(snapshot, user.timezone, now);
+  const prepared = useSeed ? { input: demoInput(), tasks: scheduleSeed.tasks as unknown as Row[] } : userInput(snapshot, user.timezone, now, parsed.data.action === "propose" ? parsed.data.intake : undefined);
   const scheduler = new DeterministicScheduler();
   let proposal = scheduler.propose(prepared.input);
   if (parsed.data.action === "replan") {
@@ -124,6 +199,6 @@ export async function POST(request: Request) {
     proposal,
     proposalId: durableProposalId,
     items: displayItems(proposal, prepared.tasks, user.timezone),
-    assumptions: useSeed ? ["No user tasks were available, so local development used the documented seeded planning input.", "No external calendar events were read or written."] : ["Continuum uses seven flexible study windows starting from now and subtracts connected calendar commitments.", "The proposal changes only after confirmation. Connected calendar export happens on the user's next explicit sync."],
+    assumptions: useSeed ? ["No user tasks were available, so local development used the documented seeded planning input."] : parsed.data.action === "propose" ? ["This draft uses the wake, sleep, free-time, break, no-day, and workload limits you entered.", "Fixed commitments you entered are protected from overlap.", "Nothing changes until you edit and save the draft."] : ["Only the affected part of the draft was regenerated."],
   });
 }

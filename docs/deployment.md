@@ -28,16 +28,16 @@ For local work, put values in `.env.local`, which is ignored. For a hosted deplo
 
 Minimum production values are documented in `.env.example`. Generate independent high-entropy values for `MCP_JWT_SIGNING_SECRET` and `SESSION_PRIVACY_SALT`, plus a 32-byte base64url or 64-hex `INTEGRATION_CREDENTIAL_ENCRYPTION_KEY` for delegated connection credentials. Do not reuse provider keys across environments. The exact local and Vercel locations, provider instructions, and first-party links are in [integration setup](integrations.md).
 
-Password registration is closed by default in production. Enable `PUBLIC_REGISTRATION_ENABLED=true` only after adding the intended email-verification, recovery, abuse-monitoring, and user-support process. A configured Google OAuth web client enables the separate verified Google sign-in path without enabling password registration.
+Hackathon deployments use open native username/password registration by default. Set `PUBLIC_REGISTRATION_ENABLED=false` to close account creation. Email verification and self-service recovery are post-hackathon work; no email provider is required by the current release.
 
 ## Featherless
 
-Set `FEATHERLESS_API_KEY` and optionally `FEATHERLESS_API_KEY_1` through `_3`.
-The router identifies them only as `primary`, `key_1`, `key_2`, and `key_3`, chooses
-the least-busy healthy credential, and uses bounded failover/backoff. It never returns
-or logs the values. The router ranks models by task, context, hot availability,
-likely concurrency-unit cost, model specialization, and operator allowlist. Optional
-task-class overrides are:
+Set `FEATHERLESS_API_KEY_PRIMARY` and `FEATHERLESS_API_KEY_SECONDARY` only in
+the server's encrypted environment store. The router identifies them only as
+`primary` and `secondary`, chooses the least-busy healthy credential, and uses
+bounded failover/backoff. It never returns or logs the values. The central
+gateway ranks models by task, remaining shared budget, capability, and cost.
+Optional task-class overrides are:
 
 - `FEATHERLESS_FAST_MODEL`
 - `FEATHERLESS_REASONING_MODEL`
@@ -46,7 +46,14 @@ task-class overrides are:
 
 When pinning a model, set `FEATHERLESS_MODEL_CONCURRENCY_COST` accurately. Featherless documents four concurrency units on Premium: models below 16B consume one unit, models below 34B consume two, and models at 70B or above consume four. That corresponds to four small, two medium, or one large request at once; excess work may receive HTTP 429. Continuum favors one-unit models for bounded work and retries/falls back, but the provider remains the final account-wide concurrency authority across multiple server instances.
 
-If live catalog discovery is degraded, generation uses the reviewed task set: `Qwen/Qwen3.5-9B` for fast work, `Qwen/Qwen3.6-27B` for reasoning, `Qwen/Qwen3-Coder-Next` for code, and `openai/gpt-oss-20b` for verification. An explicit `FEATHERLESS_FALLBACK_MODEL` overrides that task set. Featherless embeddings default to `Qwen/Qwen3-Embedding-8B` with 1,536 output dimensions so vectors match the database column. Pin different models only after a provider smoke test and dimension check.
+If live catalog discovery is degraded, generation uses the reviewed task set:
+`Qwen/Qwen2.5-7B-Instruct` for fast work,
+`Qwen/Qwen2.5-72B-Instruct` for reasoning and verification, and
+`Qwen/Qwen2.5-Coder-32B-Instruct` for code. An explicit
+`FEATHERLESS_FALLBACK_MODEL` overrides that task set. Featherless embeddings
+default to `Qwen/Qwen3-Embedding-8B` with 1,536 output dimensions so vectors
+match the database column. Pin different models only after a provider smoke test
+and dimension check.
 
 ## Groq
 
@@ -81,7 +88,7 @@ Server-side Ollama embeddings/generation can use `OLLAMA_BASE_URL`. Non-loopback
 - Registration/login/logout and tenant isolation pass against production-like infrastructure.
 - Google sign-in validates state, PKCE, exact callback, and a verified Google email before creating or resuming an account.
 - Claude connects through OAuth, loads real context, syncs a receipt, and revocation fails the next call.
-- Google Calendar OAuth uses the exact production callback, imports constraints, creates one idempotent committed block, and disconnect revokes local access.
+- Continuum’s internal schedule can be drafted, edited, checked for overlap, and saved without an external-calendar connection.
 - A Zotero read-only key is validated, encrypted, synced without attachment overclaiming, and revocable.
 - External-resource start/return/verify creates a receipt and a schedule block.
 - Provider failure degrades to another configured provider or a clear error; it does not fabricate output.

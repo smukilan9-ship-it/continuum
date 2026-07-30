@@ -7,10 +7,8 @@
     "BLOB_READ_WRITE_TOKEN",
     "BLOB_STORE_ID",
     "VERCEL_OIDC_TOKEN",
-    "FEATHERLESS_API_KEY",
-    "FEATHERLESS_API_KEY_1",
-    "FEATHERLESS_API_KEY_2",
-    "FEATHERLESS_API_KEY_3",
+    "FEATHERLESS_API_KEY_PRIMARY",
+    "FEATHERLESS_API_KEY_SECONDARY",
     "FEATHERLESS_MODEL",
     "FEATHERLESS_FAST_MODEL",
     "FEATHERLESS_REASONING_MODEL",
@@ -86,12 +84,25 @@
     "CONTINUUM_SEED_DEMO",
     "PER_USER_DAILY_TOKEN_CAP",
     "MCP_REQUESTS_PER_MINUTE",
-    "AI_REQUESTS_PER_MINUTE"
+    "AI_PER_USER_REQUESTS_PER_MINUTE",
+    "AI_PER_USER_REQUESTS_PER_DAY",
+    "AI_MAX_INPUT_TOKENS",
+    "AI_MAX_OUTPUT_TOKENS",
+    "AI_REQUEST_TIMEOUT_MS",
+    "AI_GLOBAL_CONCURRENCY_LIMIT",
+    "AI_GLOBAL_DAILY_TOKEN_CAP",
+    "AI_SHARED_MONTHLY_BUDGET_USD",
+    "AI_EMERGENCY_CUTOFF",
+    "AI_SAFE_CACHE_TTL_SECONDS"
   ],
   "tasks": {
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      // Turbo's strict env mode filters the parent environment, so `PORT` never
+      // reached `next dev` and the dev server ignored the port its supervisor
+      // had assigned it.
+      "passThroughEnv": ["PORT"]
     },
     "build": {
       "dependsOn": ["^build"],

@@ -1,9 +1,14 @@
+import { randomUUID } from "node:crypto";
 import { and, asc, cosineDistance, desc, eq, gt, ilike, inArray, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import type { MasteryState, MemoryEvent, OutcomeReceipt, ResourceActivity, ResourceRegistryEntry } from "@continuum/schemas";
 import { getDatabase } from "./client";
+import { deriveConversationTitle } from "./conversation-title";
 import {
   auditLog,
-  authIdentities,
+  aiRequestLeases,
+  assistantMessages,
+  assistantSessions,
+  authTokens,
   artifacts,
   appSessions,
   calendarConstraints,
@@ -14,6 +19,7 @@ import {
   curriculumNodes,
   entitySummaries,
   goals,
+  imageExtractions,
   integrationTokens,
   integrations,
   learningStates,
@@ -24,12 +30,17 @@ import {
   milestones,
   modelRoutes,
   modelUsage,
+  oauthConnections,
+  oauthClients,
   oauthGrants,
   papers,
+  passwordHistory,
   profiles,
   taskDependencies,
   projectDecisions,
   projects,
+  questionBankAttempts,
+  questionBanks,
   rateLimitBuckets,
   resourceActivities,
   resourceRegistry,
@@ -61,10 +72,29 @@ function demoSeedEnabled(env: NodeJS.ProcessEnv = process.env) {
   return env.NODE_ENV !== "production";
 }
 
+/**
+ * The Blob URL never leaves the server; `hasStoredOriginal` is what the client
+ * needs, and all it needs, to know whether a Download can succeed (§13.2).
+ * Without it the Library could only guess, which is why that menu item shipped
+ * permanently disabled.
+ */
 function publicSourceMetadata(source: typeof sources.$inferSelect) {
   const { storagePath, ...metadata } = source;
-  void storagePath;
-  return metadata;
+  return { ...metadata, hasStoredOriginal: Boolean(storagePath) };
+}
+
+function publicQuestionBankSummary(bank: typeof questionBanks.$inferSelect) {
+  return {
+    ...bank,
+    questions: bank.questions.map((question) => ({
+      id: question.id,
+      prompt: question.prompt,
+      type: question.type,
+      choices: question.choices,
+      difficulty: question.difficulty,
+      sourceChunkIds: question.sourceChunkIds,
+    })),
+  };
 }
 
 export type SourceChunkWrite = {
@@ -86,6 +116,11 @@ export type SourceWrite = {
   contentHash: string;
   sourceVersion: number;
   parserVersion: string;
+  /**
+   * §11.4 / §13.3. `session` material is used by the conversation that attached
+   * it and is never listed in the Library; `library` is the durable default.
+   */
+  retention?: "library" | "session";
   chunks: SourceChunkWrite[];
 };
 
@@ -97,6 +132,83 @@ export type PaperWrite = {
   authors: string[];
   doi?: string;
   year?: number;
+};
+
+export type QuestionBankQuestion = {
+  id: string;
+  prompt: string;
+  expectedAnswer: string;
+  explanation: string;
+  type:
+    | "short_answer"
+    | "long_answer"
+    | "multiple_choice"
+    | "multiple_select"
+    | "true_false"
+    | "fill_blank"
+    | "assertion_reason"
+    | "matching"
+    | "case_study"
+    | "passage"
+    | "calculation"
+    | "diagram_labeling"
+    | "table"
+    | "flashcard";
+  choices?: string[];
+  difficulty: number;
+  sourceChunkIds: string[];
+  confidence?: number;
+  answerKeyProvenance?: "extracted_from_source" | "user_provided" | "model_inferred" | "not_available";
+  reviewRequired?: boolean;
+  sourceRegion?: { page: number; x: number; y: number; width: number; height: number };
+  diagramAsset?: { extractionId: string; page: number; x: number; y: number; width: number; height: number; alt?: string };
+};
+
+export type ImageExtractionWrite = {
+  id: string;
+  userId: string;
+  contentHash: string;
+  sourceId?: string;
+  status: string;
+  structure: Record<string, unknown>;
+  assetPaths: string[];
+  injectionDetected?: boolean;
+  error?: string;
+};
+
+export type QuestionBankWrite = {
+  id: string;
+  userId: string;
+  sourceId: string;
+  conceptId?: string;
+  title: string;
+  status: string;
+  mode: string;
+  questions: QuestionBankQuestion[];
+  injectionDetected?: boolean;
+};
+
+export type QuestionBankAttemptWrite = {
+  id: string;
+  userId: string;
+  questionBankId: string;
+  mode: string;
+  answers: Array<Record<string, unknown>>;
+  evaluations: Array<Record<string, unknown>>;
+  score: number;
+  currentIndex: number;
+  completedAt?: string;
+};
+
+export type AssistantSessionMemory = {
+  summary?: string;
+  decisions?: string[];
+  unresolvedQuestions?: string[];
+  createdTasks?: string[];
+  importantFacts?: string[];
+  linkedEntityIds?: string[];
+  memoryExcluded?: boolean;
+  status?: "active" | "saved" | "archived";
 };
 
 export type StoredSourceChunk = {
@@ -126,7 +238,24 @@ export type StoredMemoryChunk = {
   metadata: Record<string, unknown>;
 };
 
-export type AuthUser = { id: string; email: string; displayName: string; timezone: string; educationLevel?: string };
+/** One row in the cross-object search (§8.4). `parentId` is the owning goal or
+ *  project where one exists, so the caller can build a deep link without a
+ *  second read. */
+export type WorkspaceSearchHit = {
+  kind: "goal" | "task" | "project" | "source" | "paper" | "conversation" | "concept" | "note" | "memory";
+  id: string;
+  title: string;
+  snippet: string;
+  context: string;
+  parentId?: string;
+  updatedAt: string;
+};
+
+export type AuthUser = { id: string; username: string; displayName: string; timezone: string; educationLevel?: string };
+
+function publicUsername(identifier: string) {
+  return identifier.includes("@") ? identifier.slice(0, identifier.indexOf("@")) : identifier;
+}
 
 export class NeonRepository {
   private readonly db = getDatabase();
@@ -315,11 +444,244 @@ export class NeonRepository {
     };
   }
 
+  /**
+   * Everything the shell chrome needs, and nothing else (§8.1).
+   *
+   * The sidebar's goal list and the Review badge used to be read out of
+   * whichever screen's snapshot happened to be loaded, so they went blank on
+   * any view that does not select goals — Library, Connections, Settings — and
+   * the client kept a `Map<view, state>` cache partly to paper over it (C25).
+   * The chrome now has its own small read that every route can make.
+   */
+  async getShellData(userId: string) {
+    await this.ensureDemoSeed();
+    const [goalRows, projectRows, pending] = await Promise.all([
+      this.db.select({ id: goals.id, title: goals.title, progress: goals.progress, targetDate: goals.targetDate, status: goals.status })
+        .from(goals).where(and(eq(goals.userId, userId), eq(goals.deleted, false))).orderBy(asc(goals.targetDate)),
+      this.db.select({ id: projects.id, title: projects.title, goalId: projects.goalId })
+        .from(projects).where(and(eq(projects.userId, userId), eq(projects.deleted, false))).orderBy(desc(projects.updatedAt)).limit(30),
+      this.db.select({ id: memoryProposals.id }).from(memoryProposals)
+        .where(and(eq(memoryProposals.userId, userId), eq(memoryProposals.status, "pending"), gt(memoryProposals.expiresAt, new Date()))),
+    ]);
+    return {
+      goals: goalRows.map((goal) => ({ ...goal, targetDate: goal.targetDate.toISOString() })),
+      projects: projectRows,
+      pendingProposals: pending.length,
+    };
+  }
+
+  /**
+   * `GET /api/home` (§9.4). One decided next action, today's blocks, goal
+   * standing, what can be resumed, and the week in one line.
+   */
+  async getHomeData(userId: string) {
+    await this.ensureDemoSeed();
+    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 3_600_000);
+    const [goalRows, taskRows, milestoneRows, scheduleRows, receiptRows, activityRows] = await Promise.all([
+      this.db.select().from(goals).where(and(eq(goals.userId, userId), eq(goals.deleted, false))).orderBy(asc(goals.targetDate)),
+      this.db.select({ task: tasks }).from(tasks).innerJoin(goals, eq(tasks.goalId, goals.id))
+        .where(and(eq(goals.userId, userId), eq(goals.deleted, false), eq(tasks.deleted, false)))
+        .orderBy(desc(tasks.priority), asc(tasks.deadline)),
+      this.db.select({ milestone: milestones }).from(milestones).innerJoin(goals, eq(milestones.goalId, goals.id))
+        .where(and(eq(goals.userId, userId), eq(goals.deleted, false), eq(milestones.deleted, false))).orderBy(asc(milestones.order)),
+      this.listSchedule(userId, dayStart.toISOString(), new Date(dayStart.getTime() + 8 * 24 * 3_600_000).toISOString()),
+      this.db.select().from(sessionReceipts).where(eq(sessionReceipts.userId, userId)).orderBy(desc(sessionReceipts.createdAt)).limit(4),
+      this.db.select().from(resourceActivities).where(eq(resourceActivities.userId, userId)).orderBy(desc(resourceActivities.startedAt)).limit(8),
+    ]);
+    const open = taskRows.map(({ task }) => task).filter((task) => task.status !== "done");
+    const todayBlocks = (scheduleRows as Array<Record<string, unknown>>).filter((block) => {
+      const start = Date.parse(String(block.start ?? block.startsAt ?? ""));
+      return Number.isFinite(start) && start >= dayStart.getTime() && start < dayEnd.getTime();
+    });
+    return {
+      // The one decided next step (§9.4, fixes C11): the first block scheduled
+      // today, or the highest-priority open task when nothing is scheduled.
+      nextTask: open[0] ?? null,
+      todayBlocks,
+      weekBlocks: scheduleRows,
+      goals: goalRows,
+      milestones: milestoneRows.map(({ milestone }) => milestone),
+      tasks: taskRows.map(({ task }) => task),
+      resumeItems: activityRows.filter((activity) => activity.status !== "verified").slice(0, 3),
+      receipts: receiptRows,
+      weekSummary: {
+        scheduledBlocks: (scheduleRows as unknown[]).length,
+        openTasks: open.length,
+        goals: goalRows.filter((goal) => goal.status === "active").length,
+      },
+    };
+  }
+
+  /**
+   * The write behind the goal page's `⋯` menu (§9.6).
+   *
+   * Deleting is a soft delete of the goal and everything hanging off it — the
+   * schema's `deleted` flag is what every read already filters on, so a
+   * restore stays possible and nothing referencing a task id dangles. Archiving
+   * is a status change, which is why it is the same call.
+   */
+  async updateGoal(goalId: string, userId: string, changes: { title?: string; outcome?: string; targetDate?: string; status?: string; deleted?: boolean }) {
+    await this.ensureDemoSeed();
+    const goal = await this.ownedGoal(goalId, userId);
+    if (!goal) return undefined;
+    const now = new Date();
+    await this.db.update(goals).set({
+      ...(changes.title !== undefined ? { title: changes.title } : {}),
+      ...(changes.outcome !== undefined ? { outcome: changes.outcome } : {}),
+      ...(changes.targetDate !== undefined ? { targetDate: new Date(changes.targetDate) } : {}),
+      ...(changes.status !== undefined ? { status: changes.status } : {}),
+      ...(changes.deleted !== undefined ? { deleted: changes.deleted } : {}),
+      updatedAt: now,
+    }).where(eq(goals.id, goalId));
+    if (changes.deleted) {
+      await Promise.all([
+        this.db.update(tasks).set({ deleted: true, updatedAt: now }).where(eq(tasks.goalId, goalId)),
+        this.db.update(milestones).set({ deleted: true, updatedAt: now }).where(eq(milestones.goalId, goalId)),
+      ]);
+    }
+    const [updated] = await this.db.select().from(goals).where(eq(goals.id, goalId)).limit(1);
+    return updated ? { ...updated, targetDate: updated.targetDate.toISOString() } : undefined;
+  }
+
+  /** Ownership check shared by every per-goal read (§16.10). */
+  private async ownedGoal(goalId: string, userId: string) {
+    const [goal] = await this.db.select().from(goals)
+      .where(and(eq(goals.id, goalId), eq(goals.userId, userId), eq(goals.deleted, false))).limit(1);
+    return goal;
+  }
+
+  /**
+   * `GET /api/goals/[id]?view=` (§9.6). Each branch returns only the view's
+   * own data, so switching tabs does not refetch the header (AC-G3) and no
+   * object from another goal can appear (AC-G1).
+   */
+  async getGoalView(goalId: string, userId: string, view: "overview" | "plan" | "study" | "sources") {
+    await this.ensureDemoSeed();
+    const goal = await this.ownedGoal(goalId, userId);
+    if (!goal) return undefined;
+    const header = { ...goal, targetDate: goal.targetDate.toISOString() };
+
+    if (view === "plan") {
+      const [taskRows, dependencyRows, scheduleRows] = await Promise.all([
+        this.db.select().from(tasks).where(and(eq(tasks.goalId, goalId), eq(tasks.deleted, false))).orderBy(desc(tasks.priority), asc(tasks.deadline)),
+        this.listTaskDependencies(userId),
+        this.listSchedule(userId),
+      ]);
+      const goalTaskIds = new Set(taskRows.map((task) => task.id));
+      return {
+        goal: header,
+        tasks: taskRows,
+        taskDependencies: dependencyRows.filter((row) => goalTaskIds.has(row.taskId)),
+        // AC-G1: the mini week shows this goal's blocks, not the whole week's.
+        schedule: (scheduleRows as Array<Record<string, unknown>>).filter((block) => goalTaskIds.has(String(block.taskId))),
+      };
+    }
+
+    if (view === "study") {
+      const [conceptRows, bankRows, activityRows] = await Promise.all([
+        this.db.select({ concept: concepts, state: learningStates }).from(learningStates)
+          .innerJoin(concepts, eq(learningStates.conceptId, concepts.id))
+          .where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false), eq(concepts.deleted, false)))
+          .orderBy(desc(learningStates.updatedAt)),
+        this.db.select().from(questionBanks).where(and(eq(questionBanks.userId, userId), eq(questionBanks.deleted, false))).orderBy(desc(questionBanks.updatedAt)).limit(20),
+        this.db.select().from(resourceActivities).where(and(eq(resourceActivities.userId, userId), eq(resourceActivities.goalId, goalId))).orderBy(desc(resourceActivities.startedAt)).limit(10),
+      ]);
+      return {
+        goal: header,
+        concepts: conceptRows.map(({ concept, state }) => ({ ...concept, mastery: state })),
+        learningStates: conceptRows.map(({ state }) => state),
+        questionBanks: bankRows.map(publicQuestionBankSummary),
+        resourceActivities: activityRows,
+      };
+    }
+
+    if (view === "sources") {
+      const projectRows = await this.db.select({ id: projects.id, title: projects.title }).from(projects)
+        .where(and(eq(projects.userId, userId), eq(projects.goalId, goalId), eq(projects.deleted, false)));
+      const projectIds = projectRows.map((project) => project.id);
+      const [sourceRows, paperRows] = await Promise.all([
+        // A source belongs to this goal when it belongs to one of its projects.
+        projectIds.length
+          ? this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false), eq(sources.retention, "library"), inArray(sources.projectId, projectIds))).orderBy(desc(sources.createdAt))
+          : [],
+        projectIds.length
+          ? this.db.select().from(papers).where(and(eq(papers.deleted, false), inArray(papers.projectId, projectIds))).orderBy(desc(papers.updatedAt))
+          : [],
+      ]);
+      return { goal: header, projects: projectRows, sources: sourceRows.map(publicSourceMetadata), papers: paperRows };
+    }
+
+    const [milestoneRows, taskRows, projectRows, eventRows, receiptRows, conceptRows, dependencyRows] = await Promise.all([
+      this.db.select().from(milestones).where(and(eq(milestones.goalId, goalId), eq(milestones.deleted, false))).orderBy(asc(milestones.order)),
+      this.db.select().from(tasks).where(and(eq(tasks.goalId, goalId), eq(tasks.deleted, false))).orderBy(desc(tasks.priority), asc(tasks.deadline)),
+      this.db.select().from(projects).where(and(eq(projects.userId, userId), eq(projects.goalId, goalId), eq(projects.deleted, false))),
+      this.db.select().from(memoryEvents).where(and(eq(memoryEvents.userId, userId), eq(memoryEvents.goalId, goalId))).orderBy(desc(memoryEvents.occurredAt)).limit(5),
+      this.db.select().from(sessionReceipts).where(and(eq(sessionReceipts.userId, userId), eq(sessionReceipts.goalId, goalId))).orderBy(desc(sessionReceipts.createdAt)).limit(10),
+      this.db.select({ concept: concepts, state: learningStates }).from(learningStates)
+        .innerJoin(concepts, eq(learningStates.conceptId, concepts.id))
+        .where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false), eq(concepts.deleted, false))),
+      // The concept map draws prerequisite edges from saved dependencies only,
+      // so it needs them to render anything but a flat list.
+      this.listTaskDependencies(userId),
+    ]);
+    const goalTaskIds = new Set(taskRows.map((task) => task.id));
+    return {
+      goal: header,
+      milestones: milestoneRows,
+      tasks: taskRows,
+      taskDependencies: dependencyRows.filter((row) => goalTaskIds.has(row.taskId)),
+      projects: projectRows,
+      concepts: conceptRows.map(({ concept, state }) => ({ ...concept, mastery: state })),
+      events: eventRows.map((event) => ({
+        id: event.id,
+        type: event.type,
+        entityIds: event.entityId ? [event.entityId] : [],
+        summary: typeof event.payload.summary === "string" ? event.payload.summary : event.type.replaceAll(".", " "),
+        occurredAt: event.occurredAt.toISOString(),
+      })),
+      // §9.6 "Open questions" — from this goal's receipts, not every receipt.
+      openQuestions: receiptRows.flatMap((receipt) => receipt.unresolvedQuestions).slice(0, 8),
+      receipts: receiptRows,
+    };
+  }
+
+  /** `GET /api/projects/[id]?view=` (§13.1). */
+  async getProjectView(projectId: string, userId: string, view: "overview" | "claims" | "sources" | "decisions") {
+    await this.ensureDemoSeed();
+    const [project] = await this.db.select().from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.userId, userId), eq(projects.deleted, false))).limit(1);
+    if (!project) return undefined;
+
+    if (view === "claims") {
+      const claimRows = await this.db.select().from(researchClaims).where(and(eq(researchClaims.projectId, projectId), eq(researchClaims.deleted, false))).orderBy(desc(researchClaims.createdAt));
+      return { project, claims: claimRows };
+    }
+    if (view === "decisions") {
+      const decisionRows = await this.db.select().from(projectDecisions).where(and(eq(projectDecisions.projectId, projectId), eq(projectDecisions.deleted, false))).orderBy(desc(projectDecisions.createdAt));
+      return { project, decisions: decisionRows };
+    }
+    if (view === "sources") {
+      const [sourceRows, paperRows] = await Promise.all([
+        this.db.select().from(sources).where(and(eq(sources.projectId, projectId), eq(sources.userId, userId), eq(sources.deleted, false), eq(sources.retention, "library"))).orderBy(desc(sources.createdAt)),
+        this.db.select().from(papers).where(and(eq(papers.projectId, projectId), eq(papers.deleted, false))).orderBy(desc(papers.updatedAt)),
+      ]);
+      return { project, sources: sourceRows.map(publicSourceMetadata), papers: paperRows };
+    }
+
+    const [decisionRows, claimRows, noteRows] = await Promise.all([
+      this.db.select().from(projectDecisions).where(and(eq(projectDecisions.projectId, projectId), eq(projectDecisions.deleted, false))).orderBy(desc(projectDecisions.createdAt)).limit(10),
+      this.db.select().from(researchClaims).where(and(eq(researchClaims.projectId, projectId), eq(researchClaims.deleted, false))).orderBy(desc(researchClaims.createdAt)).limit(10),
+      this.db.select().from(researchNotes).where(and(eq(researchNotes.projectId, projectId), eq(researchNotes.deleted, false))).orderBy(desc(researchNotes.createdAt)).limit(10),
+    ]);
+    return { project, decisions: decisionRows, claims: claimRows, notes: noteRows };
+  }
+
   async getWorkspaceSnapshot(userId: string, view: string) {
     await this.ensureDemoSeed();
     const empty = {
-      events: [], goals: [], tasks: [], milestones: [], projects: [], decisions: [], claims: [], notes: [], sources: [], papers: [],
-      learningStates: [], memoryRecords: [], receipts: [], resourceActivities: [], proposals: [],
+      events: [], goals: [], tasks: [], taskDependencies: [], milestones: [], projects: [], decisions: [], claims: [], notes: [], sources: [], papers: [],
+      learningStates: [], memoryRecords: [], receipts: [], resourceActivities: [], questionBanks: [], assistantSessions: [], proposals: [],
       schedule: [], calendarConstraints: [], modelRoutes: [],
     };
     const userMilestones = () => this.db.select({ milestone: milestones }).from(milestones).innerJoin(goals, eq(milestones.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(goals.deleted, false), eq(milestones.deleted, false))).orderBy(asc(milestones.order));
@@ -336,7 +698,13 @@ export class NeonRepository {
       occurredAt: event.occurredAt.toISOString(),
     }));
 
-    if (view === "integrations") return empty;
+    if (["integrations", "account", "zotero"].includes(view)) return empty;
+    // Library/Discover derives its suggested searches from the user's own work,
+    // so it needs goal and project titles — nothing else.
+    if (["library", "openalex"].includes(view)) {
+      const [goalRows, projectRows] = await Promise.all([userGoals(), userProjects()]);
+      return { ...empty, goals: goalRows, projects: projectRows };
+    }
     if (view === "today") {
       const [goalRows, taskRows, milestoneRows, projectRows, receiptRows, activityRows, scheduleRows, constraintRows] = await Promise.all([
         userGoals(), userTasks(), userMilestones(), userProjects(), userReceipts(4),
@@ -353,14 +721,55 @@ export class NeonRepository {
       ]);
       return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), milestones: milestoneRows.map(({ milestone }) => milestone), schedule: scheduleRows, calendarConstraints: constraintRows };
     }
+    // One goal's whole working set. The goal page is the product's primary
+    // object, so it needs the plan, the concepts, the material, and the
+    // projects hanging off it in a single read rather than four screens' worth
+    // of separate snapshots.
+    if (view === "goal") {
+      const [goalRows, taskRows, dependencyRows, milestoneRows, projectRows, masteryRows, sourceRows, paperRows, scheduleRows, receiptRows, eventRows, questionBankRows] = await Promise.all([
+        userGoals(), userTasks(), this.listTaskDependencies(userId), userMilestones(), userProjects(),
+        this.db.select().from(learningStates).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false))),
+        this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).orderBy(desc(sources.createdAt)).limit(100),
+        this.db.select({ paper: papers }).from(papers).innerJoin(projects, eq(papers.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(papers.deleted, false))).orderBy(desc(papers.updatedAt)),
+        this.listSchedule(userId),
+        userReceipts(10), userEvents(30),
+        this.db.select().from(questionBanks).where(and(eq(questionBanks.userId, userId), eq(questionBanks.deleted, false))).orderBy(desc(questionBanks.updatedAt)).limit(20),
+      ]);
+      return {
+        ...empty,
+        goals: goalRows,
+        tasks: taskRows.map(({ task }) => task),
+        taskDependencies: dependencyRows,
+        milestones: milestoneRows.map(({ milestone }) => milestone),
+        projects: projectRows,
+        learningStates: masteryRows,
+        sources: sourceRows.map(publicSourceMetadata),
+        papers: paperRows.map(({ paper }) => paper),
+        schedule: scheduleRows,
+        receipts: receiptRows,
+        events: eventView(eventRows),
+        questionBanks: questionBankRows.map(publicQuestionBankSummary),
+      };
+    }
     if (view === "learn") {
-      const [goalRows, taskRows, masteryRows, activityRows, receiptRows] = await Promise.all([
+      const [goalRows, taskRows, dependencyRows, masteryRows, activityRows, questionBankRows, receiptRows] = await Promise.all([
         userGoals(), userTasks(),
+        this.listTaskDependencies(userId),
         this.db.select().from(learningStates).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false))),
         this.db.select().from(resourceActivities).where(eq(resourceActivities.userId, userId)).orderBy(desc(resourceActivities.startedAt)).limit(20),
+        this.db.select().from(questionBanks).where(and(eq(questionBanks.userId, userId), eq(questionBanks.deleted, false))).orderBy(desc(questionBanks.updatedAt)).limit(20),
         userReceipts(5),
       ]);
-      return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), learningStates: masteryRows, resourceActivities: activityRows, receipts: receiptRows };
+      return {
+        ...empty,
+        goals: goalRows,
+        tasks: taskRows.map(({ task }) => task),
+        taskDependencies: dependencyRows,
+        learningStates: masteryRows,
+        resourceActivities: activityRows,
+        questionBanks: questionBankRows.map(publicQuestionBankSummary),
+        receipts: receiptRows,
+      };
     }
     if (view === "research") {
       const [goalRows, taskRows, projectRows, decisionRows, claimRows, noteRows, sourceRows, paperRows] = await Promise.all([
@@ -394,7 +803,35 @@ export class NeonRepository {
         this.db.select({ id: modelRoutes.id, taskClass: modelRoutes.taskClass, reason: modelRoutes.reason, verificationStatus: modelRoutes.verificationStatus, fallbackUsed: modelRoutes.fallbackUsed, createdAt: modelRoutes.createdAt }).from(modelRoutes).where(eq(modelRoutes.userId, userId)).orderBy(desc(modelRoutes.createdAt)).limit(30),
         userEvents(50),
       ]);
-      return { ...empty, proposals: proposalRows, modelRoutes: routeRows, events: eventView(eventRows) };
+      // AC-RV1 wants a before-and-after, and "before" is whatever the proposal
+      // would overwrite. Without these the screen resolved no target and printed
+      // an em dash in every left-hand cell — a diff with one side missing, which
+      // is precisely the "approve a change you cannot see" problem Review exists
+      // to remove. Only the records the pending proposals actually name are
+      // read, so this stays a Review-shaped query rather than a whole workspace.
+      const targetIds = [...new Set(proposalRows.flatMap((row) => {
+        const payload = row.payload as Record<string, unknown>;
+        return [payload.entityId, payload.goalId, payload.taskId, payload.projectId, row.entityId]
+          .filter((value): value is string => typeof value === "string" && value.length > 0);
+      }))];
+      const [targetGoals, targetTasks, targetProjects, targetMilestones] = targetIds.length
+        ? await Promise.all([
+          this.db.select().from(goals).where(and(eq(goals.userId, userId), eq(goals.deleted, false), inArray(goals.id, targetIds))),
+          this.db.select({ task: tasks }).from(tasks).innerJoin(goals, eq(tasks.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(tasks.deleted, false), inArray(tasks.id, targetIds))),
+          this.db.select().from(projects).where(and(eq(projects.userId, userId), eq(projects.deleted, false), inArray(projects.id, targetIds))),
+          this.db.select({ milestone: milestones }).from(milestones).innerJoin(goals, eq(milestones.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(milestones.deleted, false), inArray(milestones.id, targetIds))),
+        ])
+        : [[], [], [], []];
+      return {
+        ...empty,
+        proposals: proposalRows,
+        modelRoutes: routeRows,
+        events: eventView(eventRows),
+        goals: targetGoals,
+        tasks: targetTasks.map(({ task }) => task),
+        projects: targetProjects,
+        milestones: targetMilestones.map(({ milestone }) => milestone),
+      };
     }
     if (view === "code") {
       const [goalRows, taskRows, projectRows, masteryRows, receiptRows] = await Promise.all([
@@ -403,6 +840,27 @@ export class NeonRepository {
         userReceipts(5),
       ]);
       return { ...empty, goals: goalRows, tasks: taskRows.map(({ task }) => task), projects: projectRows, learningStates: masteryRows, receipts: receiptRows };
+    }
+    if (view === "assistant") {
+      const [goalRows, taskRows, projectRows, masteryRows, sourceRows, paperRows, receiptRows, sessionRows] = await Promise.all([
+        userGoals(), userTasks(), userProjects(),
+        this.db.select().from(learningStates).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false))),
+        this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).orderBy(desc(sources.updatedAt)).limit(30),
+        this.db.select({ paper: papers }).from(papers).innerJoin(projects, eq(papers.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(papers.deleted, false))).orderBy(desc(papers.updatedAt)).limit(30),
+        userReceipts(10),
+        this.db.select().from(assistantSessions).where(and(eq(assistantSessions.userId, userId), eq(assistantSessions.deleted, false))).orderBy(desc(assistantSessions.lastMessageAt)).limit(40),
+      ]);
+      return {
+        ...empty,
+        goals: goalRows,
+        tasks: taskRows.map(({ task }) => task),
+        projects: projectRows,
+        learningStates: masteryRows,
+        sources: sourceRows.map(publicSourceMetadata),
+        papers: paperRows.map(({ paper }) => paper),
+        receipts: receiptRows,
+        assistantSessions: sessionRows,
+      };
     }
     return empty;
   }
@@ -690,6 +1148,275 @@ export class NeonRepository {
     });
   }
 
+  async saveQuestionBank(input: QuestionBankWrite) {
+    await this.ensureDemoSeed();
+    const [ownedSource] = await this.db.select({ id: sources.id }).from(sources).where(and(
+      eq(sources.id, input.sourceId),
+      eq(sources.userId, input.userId),
+      eq(sources.deleted, false),
+    )).limit(1);
+    if (!ownedSource) throw new Error("Source not found or not accessible");
+    if (input.conceptId) {
+      const [concept] = await this.db.select({ id: concepts.id }).from(concepts).where(eq(concepts.id, input.conceptId)).limit(1);
+      if (!concept) throw new Error("Learning concept was not found");
+    }
+    const now = new Date();
+    const values = {
+      id: input.id,
+      userId: input.userId,
+      sourceId: input.sourceId,
+      conceptId: input.conceptId ?? null,
+      title: input.title,
+      status: input.status,
+      mode: input.mode,
+      questions: input.questions,
+      injectionDetected: input.injectionDetected ?? false,
+      deleted: false,
+      updatedAt: now,
+    };
+    const [saved] = await this.db.insert(questionBanks).values(values).onConflictDoUpdate({
+      target: questionBanks.id,
+      set: { ...values, version: sql`${questionBanks.version} + 1` },
+    }).returning();
+    return saved;
+  }
+
+  async listQuestionBanks(userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    return this.db.select().from(questionBanks).where(and(
+      eq(questionBanks.userId, userId),
+      eq(questionBanks.deleted, false),
+    )).orderBy(desc(questionBanks.updatedAt)).limit(50);
+  }
+
+  async getQuestionBank(questionBankId: string, userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    const [bank] = await this.db.select().from(questionBanks).where(and(
+      eq(questionBanks.id, questionBankId),
+      eq(questionBanks.userId, userId),
+      eq(questionBanks.deleted, false),
+    )).limit(1);
+    if (!bank) return undefined;
+    const attempts = await this.db.select().from(questionBankAttempts).where(and(
+      eq(questionBankAttempts.questionBankId, questionBankId),
+      eq(questionBankAttempts.userId, userId),
+    )).orderBy(desc(questionBankAttempts.updatedAt)).limit(20);
+    return { ...bank, attempts };
+  }
+
+  async saveQuestionBankAttempt(input: QuestionBankAttemptWrite) {
+    await this.ensureDemoSeed();
+    return this.db.transaction(async (tx) => {
+      const [ownedBank] = await tx.select({ id: questionBanks.id }).from(questionBanks).where(and(
+        eq(questionBanks.id, input.questionBankId),
+        eq(questionBanks.userId, input.userId),
+        eq(questionBanks.deleted, false),
+      )).limit(1);
+      if (!ownedBank) throw new Error("Question bank not found or not accessible");
+      const now = new Date();
+      const values = {
+        id: input.id,
+        questionBankId: input.questionBankId,
+        userId: input.userId,
+        mode: input.mode,
+        answers: input.answers,
+        evaluations: input.evaluations,
+        score: input.score,
+        currentIndex: input.currentIndex,
+        completedAt: input.completedAt ? new Date(input.completedAt) : null,
+        updatedAt: now,
+      };
+      const [attempt] = await tx.insert(questionBankAttempts).values(values).onConflictDoUpdate({
+        target: questionBankAttempts.id,
+        set: { ...values, version: sql`${questionBankAttempts.version} + 1` },
+      }).returning();
+      await tx.update(questionBanks).set({
+        status: input.completedAt ? "completed" : "in_progress",
+        mode: input.mode,
+        updatedAt: now,
+        version: sql`${questionBanks.version} + 1`,
+      }).where(eq(questionBanks.id, input.questionBankId));
+      return attempt;
+    });
+  }
+
+  async getImageExtractionByHash(contentHash: string, userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    const [extraction] = await this.db.select().from(imageExtractions).where(and(
+      eq(imageExtractions.userId, userId),
+      eq(imageExtractions.contentHash, contentHash),
+    )).limit(1);
+    return extraction;
+  }
+
+  async getImageExtraction(extractionId: string, userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    const [extraction] = await this.db.select().from(imageExtractions).where(and(
+      eq(imageExtractions.id, extractionId),
+      eq(imageExtractions.userId, userId),
+    )).limit(1);
+    return extraction;
+  }
+
+  async saveImageExtraction(input: ImageExtractionWrite) {
+    await this.ensureDemoSeed();
+    const now = new Date();
+    const values = {
+      id: input.id,
+      userId: input.userId,
+      contentHash: input.contentHash,
+      sourceId: input.sourceId ?? null,
+      status: input.status,
+      structure: input.structure,
+      assetPaths: input.assetPaths,
+      injectionDetected: input.injectionDetected ?? false,
+      error: input.error ?? null,
+      updatedAt: now,
+    };
+    const [saved] = await this.db.insert(imageExtractions).values(values).onConflictDoUpdate({
+      target: [imageExtractions.userId, imageExtractions.contentHash],
+      set: {
+        sourceId: values.sourceId,
+        status: values.status,
+        structure: values.structure,
+        assetPaths: values.assetPaths,
+        injectionDetected: values.injectionDetected,
+        error: values.error,
+        updatedAt: now,
+      },
+    }).returning();
+    return saved;
+  }
+
+  async createAssistantSession(input: { id: string; userId: string; title: string }) {
+    await this.ensureDemoSeed();
+    const [session] = await this.db.insert(assistantSessions).values({
+      id: input.id,
+      userId: input.userId,
+      title: input.title,
+    }).returning();
+    return session;
+  }
+
+  async listAssistantSessions(userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    return this.db.select().from(assistantSessions).where(and(
+      eq(assistantSessions.userId, userId),
+      eq(assistantSessions.deleted, false),
+    )).orderBy(desc(assistantSessions.pinned), desc(assistantSessions.lastMessageAt)).limit(80);
+  }
+
+  async getAssistantSession(sessionId: string, userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    const [session] = await this.db.select().from(assistantSessions).where(and(
+      eq(assistantSessions.id, sessionId),
+      eq(assistantSessions.userId, userId),
+      eq(assistantSessions.deleted, false),
+    )).limit(1);
+    if (!session) return undefined;
+    const messages = await this.db.select().from(assistantMessages).where(and(
+      eq(assistantMessages.sessionId, sessionId),
+      eq(assistantMessages.userId, userId),
+    )).orderBy(asc(assistantMessages.createdAt)).limit(200);
+    return { ...session, messages };
+  }
+
+  async appendAssistantMessage(input: {
+    id: string;
+    sessionId: string;
+    userId: string;
+    role: "user" | "assistant";
+    content: string;
+    provider?: string;
+    model?: string;
+    metadata?: Record<string, unknown>;
+  }) {
+    await this.ensureDemoSeed();
+    return this.db.transaction(async (tx) => {
+      const [session] = await tx.select({ id: assistantSessions.id, title: assistantSessions.title }).from(assistantSessions).where(and(
+        eq(assistantSessions.id, input.sessionId),
+        eq(assistantSessions.userId, input.userId),
+        eq(assistantSessions.deleted, false),
+      )).limit(1);
+      if (!session) throw new Error("Assistant session not found or not accessible");
+      const now = new Date();
+      const derivedTitle = deriveConversationTitle(session.title, input.role, input.content);
+      const [message] = await tx.insert(assistantMessages).values({
+        ...input,
+        provider: input.provider ?? null,
+        model: input.model ?? null,
+        metadata: input.metadata ?? {},
+      }).returning();
+      await tx.update(assistantSessions).set({
+        lastMessageAt: now,
+        updatedAt: now,
+        version: sql`${assistantSessions.version} + 1`,
+        ...(derivedTitle ? { title: derivedTitle } : {}),
+      }).where(eq(assistantSessions.id, input.sessionId));
+      return message;
+    });
+  }
+
+  async updateAssistantSession(sessionId: string, userId: string, input: {
+    title?: string;
+    pinned?: boolean;
+    archived?: boolean;
+    groupLabel?: string | null;
+    contextSettings?: Record<string, unknown>;
+  }) {
+    const rows = await this.db.update(assistantSessions).set({
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.pinned !== undefined ? { pinned: input.pinned } : {}),
+      ...(input.archived !== undefined ? { archived: input.archived } : {}),
+      ...(input.groupLabel !== undefined ? { groupLabel: input.groupLabel } : {}),
+      ...(input.contextSettings !== undefined ? { contextSettings: input.contextSettings } : {}),
+      updatedAt: new Date(),
+      version: sql`${assistantSessions.version} + 1`,
+    }).where(and(
+      eq(assistantSessions.id, sessionId),
+      eq(assistantSessions.userId, userId),
+      eq(assistantSessions.deleted, false),
+    )).returning();
+    return rows[0];
+  }
+
+  async updateAssistantSessionMemory(sessionId: string, userId: string, memory: AssistantSessionMemory) {
+    await this.ensureDemoSeed();
+    const now = new Date();
+    const rows = await this.db.update(assistantSessions).set({
+      ...(memory.summary !== undefined ? { summary: memory.summary } : {}),
+      ...(memory.decisions !== undefined ? { decisions: memory.decisions } : {}),
+      ...(memory.unresolvedQuestions !== undefined ? { unresolvedQuestions: memory.unresolvedQuestions } : {}),
+      ...(memory.createdTasks !== undefined ? { createdTasks: memory.createdTasks } : {}),
+      ...(memory.importantFacts !== undefined ? { importantFacts: memory.importantFacts } : {}),
+      ...(memory.linkedEntityIds !== undefined ? { linkedEntityIds: memory.linkedEntityIds } : {}),
+      ...(memory.memoryExcluded !== undefined ? { memoryExcluded: memory.memoryExcluded } : {}),
+      ...(memory.status !== undefined ? { status: memory.status } : {}),
+      updatedAt: now,
+      version: sql`${assistantSessions.version} + 1`,
+    }).where(and(
+      eq(assistantSessions.id, sessionId),
+      eq(assistantSessions.userId, userId),
+      eq(assistantSessions.deleted, false),
+    )).returning();
+    return rows[0];
+  }
+
+  async deleteAssistantSession(sessionId: string, userId: string) {
+    await this.ensureDemoSeed();
+    const rows = await this.db.update(assistantSessions).set({
+      deleted: true,
+      memoryExcluded: true,
+      updatedAt: new Date(),
+      version: sql`${assistantSessions.version} + 1`,
+    }).where(and(
+      eq(assistantSessions.id, sessionId),
+      eq(assistantSessions.userId, userId),
+      eq(assistantSessions.deleted, false),
+    )).returning({ id: assistantSessions.id });
+    return Boolean(rows.length);
+  }
+
   async ensureConcept(id: string, title: string) {
     await this.db.insert(concepts).values({ id, title, description: `User-scoped learning concept for ${title}.`, prerequisiteIds: [] }).onConflictDoNothing();
     return id;
@@ -717,6 +1444,7 @@ export class NeonRepository {
       contentHash: input.contentHash,
       sourceVersion: input.sourceVersion,
       parserVersion: input.parserVersion,
+      retention: input.retention ?? "library",
       deleted: false,
       updatedAt: new Date(),
     };
@@ -738,9 +1466,23 @@ export class NeonRepository {
     }
   }
 
-  async listSources(userId = DEMO_USER_ID) {
+  /**
+   * §11.4: material attached with "use in this message only" is retrievable by
+   * the conversation that attached it but is never listed in the Library, so a
+   * one-off upload does not silently become part of someone's collection (S12).
+   * `scope: "all"` is what the assistant uses to resolve its own attachments.
+   */
+  async listSources(userId = DEMO_USER_ID, scope: "library" | "all" = "library") {
     await this.ensureDemoSeed();
-    const rows = await this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).orderBy(desc(sources.createdAt));
+    const rows = await this.db
+      .select()
+      .from(sources)
+      .where(and(
+        eq(sources.userId, userId),
+        eq(sources.deleted, false),
+        ...(scope === "library" ? [eq(sources.retention, "library")] : []),
+      ))
+      .orderBy(desc(sources.createdAt));
     return rows.map(publicSourceMetadata);
   }
 
@@ -753,9 +1495,41 @@ export class NeonRepository {
     return source;
   }
 
-  async listSourceChunks(userId = DEMO_USER_ID): Promise<StoredSourceChunk[]> {
+  /**
+   * Re-files an existing source into a project, or unfiles it (`null`).
+   *
+   * Both sides are ownership-checked in the statement itself: the source must
+   * belong to the caller, and so must the destination project, so a guessed
+   * project id can neither read nor acquire someone else's upload.
+   */
+  async assignSourceToProject(sourceId: string, userId: string, projectId: string | null) {
     await this.ensureDemoSeed();
-    const rows = await this.db.select({ chunk: sourceChunks, source: sources }).from(sourceChunks).innerJoin(sources, eq(sourceChunks.sourceId, sources.id)).where(and(eq(sources.userId, userId), eq(sources.deleted, false), eq(sourceChunks.deleted, false))).orderBy(asc(sourceChunks.sourceId), asc(sourceChunks.passage));
+    if (projectId) {
+      const [ownedProject] = await this.db.select({ id: projects.id }).from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId), eq(projects.deleted, false))).limit(1);
+      if (!ownedProject) return { status: "project_not_found" as const };
+    }
+    const [updated] = await this.db.update(sources).set({ projectId, updatedAt: new Date() })
+      .where(and(eq(sources.id, sourceId), eq(sources.userId, userId), eq(sources.deleted, false)))
+      .returning({ id: sources.id, title: sources.title, projectId: sources.projectId });
+    return updated ? { status: "ok" as const, source: updated } : { status: "source_not_found" as const };
+  }
+
+  /**
+   * The stored original for a download, including the `storage_path` that
+   * `publicSourceMetadata` strips from every listing — it is a Blob URL and
+   * must never reach the browser. Only the route that streams the bytes back
+   * calls this.
+   */
+  async getSourceOriginal(sourceId: string, userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    const [source] = await this.db.select({ id: sources.id, title: sources.title, mimeType: sources.mimeType, storagePath: sources.storagePath })
+      .from(sources).where(and(eq(sources.id, sourceId), eq(sources.userId, userId), eq(sources.deleted, false))).limit(1);
+    return source;
+  }
+
+  async listSourceChunks(userId = DEMO_USER_ID, sourceId?: string): Promise<StoredSourceChunk[]> {
+    await this.ensureDemoSeed();
+    const rows = await this.db.select({ chunk: sourceChunks, source: sources }).from(sourceChunks).innerJoin(sources, eq(sourceChunks.sourceId, sources.id)).where(and(eq(sources.userId, userId), eq(sources.deleted, false), eq(sourceChunks.deleted, false), ...(sourceId ? [eq(sources.id, sourceId)] : []))).orderBy(asc(sourceChunks.sourceId), asc(sourceChunks.passage));
     return rows.map(({ chunk, source }) => ({
       id: chunk.id,
       sourceId: source.id,
@@ -837,6 +1611,68 @@ export class NeonRepository {
       ...noteRows.map(({ note, projectTitle }) => ({ kind: "note", id: note.id, projectId: note.projectId, projectTitle, text: note.text, sourceId: note.sourceId, chunkId: note.chunkId, updatedAt: note.updatedAt.toISOString() })),
       ...passageRows.map(({ chunk, source }) => ({ kind: "source_passage", id: chunk.id, sourceId: source.id, projectId: source.projectId, sourceTitle: source.title, passage: chunk.passage, text: chunk.content.slice(0, 4000), contentHash: chunk.contentHash, sourceVersion: source.sourceVersion, updatedAt: chunk.updatedAt.toISOString() })),
     ].slice(0, bounded);
+  }
+
+  /**
+   * One user-scoped lexical pass across every object the command palette and the
+   * Library can land on (§8.4). The palette previously searched four entity types
+   * held in the client's snapshot, so a source, a paper, a conversation, or a
+   * concept could not be found at all (C13) — the objects a student actually
+   * looks for by name.
+   *
+   * Concepts carry no owner column; they are reachable only through the user's
+   * own `learning_states`, which is what scopes them here. Every other branch
+   * filters on `user_id` directly or through the owning project.
+   */
+  async searchWorkspace(userId: string, query: string, kinds?: string[], limit = 20): Promise<WorkspaceSearchHit[]> {
+    const trimmed = query.trim().slice(0, 200);
+    if (trimmed.length < 2) return [];
+    const bounded = Math.max(1, Math.min(limit, 50));
+    // Per-kind cap keeps one prolific kind from crowding out the rest; the
+    // palette shows at most five rows per section anyway.
+    const perKind = Math.max(3, Math.min(bounded, 8));
+    const pattern = `%${trimmed.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+    const wanted = (kind: string) => !kinds?.length || kinds.includes(kind);
+    const snippet = (value: string) => {
+      const flat = value.replace(/\s+/g, " ").trim();
+      const at = flat.toLowerCase().indexOf(trimmed.toLowerCase());
+      if (at < 0) return flat.slice(0, 160);
+      const from = Math.max(0, at - 40);
+      return `${from > 0 ? "…" : ""}${flat.slice(from, from + 160)}${from + 160 < flat.length ? "…" : ""}`;
+    };
+
+    const [goalRows, taskRows, projectRows, sourceRows, paperRows, sessionRows, conceptRows, noteRows, chunkRows] = await Promise.all([
+      wanted("goal") ? this.db.select().from(goals).where(and(eq(goals.userId, userId), eq(goals.deleted, false), or(ilike(goals.title, pattern), ilike(goals.outcome, pattern)))).orderBy(asc(goals.targetDate)).limit(perKind) : [],
+      wanted("task") ? this.db.select({ task: tasks, goalTitle: goals.title }).from(tasks).innerJoin(goals, eq(tasks.goalId, goals.id)).where(and(eq(goals.userId, userId), eq(goals.deleted, false), eq(tasks.deleted, false), ilike(tasks.title, pattern))).orderBy(desc(tasks.updatedAt)).limit(perKind) : [],
+      wanted("project") ? this.db.select().from(projects).where(and(eq(projects.userId, userId), eq(projects.deleted, false), or(ilike(projects.title, pattern), ilike(projects.purpose, pattern)))).orderBy(desc(projects.updatedAt)).limit(perKind) : [],
+      wanted("source") ? this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false), ilike(sources.title, pattern))).orderBy(desc(sources.updatedAt)).limit(perKind) : [],
+      wanted("paper") ? this.db.select({ paper: papers, projectTitle: projects.title }).from(papers).innerJoin(projects, eq(papers.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(projects.deleted, false), eq(papers.deleted, false), or(ilike(papers.title, pattern), ilike(papers.doi, pattern)))).orderBy(desc(papers.updatedAt)).limit(perKind) : [],
+      wanted("conversation") ? this.db.select().from(assistantSessions).where(and(eq(assistantSessions.userId, userId), eq(assistantSessions.deleted, false), or(ilike(assistantSessions.title, pattern), ilike(assistantSessions.summary, pattern)))).orderBy(desc(assistantSessions.lastMessageAt)).limit(perKind) : [],
+      wanted("concept") ? this.db.select({ concept: concepts, state: learningStates }).from(concepts).innerJoin(learningStates, eq(learningStates.conceptId, concepts.id)).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false), eq(concepts.deleted, false), or(ilike(concepts.title, pattern), ilike(concepts.description, pattern)))).orderBy(desc(learningStates.updatedAt)).limit(perKind) : [],
+      wanted("note") ? this.db.select({ note: researchNotes, projectTitle: projects.title }).from(researchNotes).innerJoin(projects, eq(researchNotes.projectId, projects.id)).where(and(eq(projects.userId, userId), eq(projects.deleted, false), eq(researchNotes.deleted, false), ilike(researchNotes.text, pattern))).orderBy(desc(researchNotes.updatedAt)).limit(perKind) : [],
+      wanted("memory") ? this.db.select().from(memoryChunks).where(and(eq(memoryChunks.userId, userId), eq(memoryChunks.deleted, false), eq(memoryChunks.superseded, false), ilike(memoryChunks.content, pattern))).orderBy(desc(memoryChunks.occurredAt)).limit(perKind) : [],
+    ]);
+
+    const hits: WorkspaceSearchHit[] = [
+      ...goalRows.map((goal) => ({ kind: "goal" as const, id: goal.id, title: goal.title, snippet: snippet(goal.outcome), context: "Goal", updatedAt: goal.updatedAt.toISOString() })),
+      ...taskRows.map(({ task, goalTitle }) => ({ kind: "task" as const, id: task.id, title: task.title, snippet: snippet(task.description ?? ""), context: goalTitle, parentId: task.goalId, updatedAt: task.updatedAt.toISOString() })),
+      ...projectRows.map((project) => ({ kind: "project" as const, id: project.id, title: project.title, snippet: snippet(project.purpose), context: "Research project", parentId: project.goalId ?? undefined, updatedAt: project.updatedAt.toISOString() })),
+      ...sourceRows.map((source) => ({ kind: "source" as const, id: source.id, title: source.title, snippet: source.processingState === "ready" ? "" : `Processing: ${source.processingState}`, context: "Source", updatedAt: source.updatedAt.toISOString() })),
+      ...paperRows.map(({ paper, projectTitle }) => ({ kind: "paper" as const, id: paper.id, title: paper.title, snippet: [paper.authors.slice(0, 3).join(", "), paper.year].filter(Boolean).join(" · "), context: projectTitle, parentId: paper.projectId, updatedAt: paper.updatedAt.toISOString() })),
+      ...sessionRows.map((session) => ({ kind: "conversation" as const, id: session.id, title: session.title, snippet: snippet(session.summary ?? ""), context: "Conversation", updatedAt: (session.lastMessageAt ?? session.updatedAt).toISOString() })),
+      ...conceptRows.map(({ concept, state }) => ({ kind: "concept" as const, id: concept.id, title: concept.title, snippet: snippet(concept.description), context: `Concept · ${state.status.replaceAll("_", " ")}`, updatedAt: state.updatedAt.toISOString() })),
+      ...noteRows.map(({ note, projectTitle }) => ({ kind: "note" as const, id: note.id, title: snippet(note.text).slice(0, 80), snippet: snippet(note.text), context: projectTitle, parentId: note.projectId, updatedAt: note.updatedAt.toISOString() })),
+      ...chunkRows.map((chunk) => ({ kind: "memory" as const, id: chunk.id, title: snippet(chunk.content).slice(0, 80), snippet: snippet(chunk.content), context: `Remembered · ${chunk.kind.replaceAll("_", " ")}`, updatedAt: chunk.occurredAt.toISOString() })),
+    ];
+
+    // A title match is what the user typed a name to find; body matches follow.
+    const needle = trimmed.toLowerCase();
+    return hits
+      .sort((left, right) => {
+        const rank = (hit: WorkspaceSearchHit) => (hit.title.toLowerCase().startsWith(needle) ? 0 : hit.title.toLowerCase().includes(needle) ? 1 : 2);
+        return rank(left) - rank(right) || right.updatedAt.localeCompare(left.updatedAt);
+      })
+      .slice(0, bounded);
   }
 
   async getClaimEvidence(claimId: string, userId: string) {
@@ -942,6 +1778,56 @@ export class NeonRepository {
     return [...scored.values()].sort((left, right) => (right.score ?? 0) - (left.score ?? 0) || right.occurredAt.localeCompare(left.occurredAt)).slice(0, limit);
   }
 
+  /**
+   * §9.9 AC-CX3 — "Forget": drop one remembered record out of every future
+   * retrieval, permanently.
+   *
+   * Not a hard delete, deliberately. `memory_records` and `memory_chunks` are
+   * the materialised head of an append-only event ledger — the thing that makes
+   * a citation checkable — and §16.8 forbids destructive changes. Forgetting
+   * therefore sets both `superseded` and `deleted`, the two flags every read in
+   * this file already filters on (`searchMemory`, `searchWorkspace`,
+   * `getStateSnapshot`, `getWorkspaceSnapshot`), which is what makes the
+   * exclusion total rather than best-effort.
+   *
+   * A row on `/context` is either a durable record ("How you like to work") or
+   * a retrieved passage (a search result), and the user does not distinguish
+   * them, so either id is accepted. Whichever is named, its counterpart on the
+   * other table goes with it — matched through the memory event that produced
+   * both, because `saveMemoryChunk` does not populate `record_id`. Forgetting
+   * only one side would clear the list and leave retrieval untouched.
+   */
+  async forgetMemoryRecord(recordId: string, userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    const [record] = await this.db.select().from(memoryRecords).where(and(eq(memoryRecords.id, recordId), eq(memoryRecords.userId, userId), eq(memoryRecords.deleted, false))).limit(1);
+    const [chunk] = record ? [] : await this.db.select().from(memoryChunks).where(and(eq(memoryChunks.id, recordId), eq(memoryChunks.userId, userId), eq(memoryChunks.deleted, false))).limit(1);
+    if (!record && !chunk) return undefined;
+
+    const eventIds = [...new Set((record ? [record.sourceEventId] : chunk?.sourceEventIds ?? []).filter(Boolean))];
+    const forgotten = { superseded: true, deleted: true, updatedAt: new Date() };
+
+    const chunkMatches = [
+      ...(chunk ? [eq(memoryChunks.id, chunk.id)] : []),
+      ...(record ? [eq(memoryChunks.recordId, record.id)] : []),
+      ...eventIds.map((id) => sql`${id} = any(${memoryChunks.sourceEventIds})`),
+    ];
+    const recordMatches = [
+      ...(record ? [eq(memoryRecords.id, record.id)] : []),
+      ...(eventIds.length ? [inArray(memoryRecords.sourceEventId, eventIds)] : []),
+    ];
+
+    const [chunkRows, recordRows] = await Promise.all([
+      chunkMatches.length
+        ? this.db.update(memoryChunks).set(forgotten).where(and(eq(memoryChunks.userId, userId), eq(memoryChunks.deleted, false), or(...chunkMatches))).returning({ id: memoryChunks.id })
+        : Promise.resolve([]),
+      recordMatches.length
+        ? this.db.update(memoryRecords).set(forgotten).where(and(eq(memoryRecords.userId, userId), eq(memoryRecords.deleted, false), or(...recordMatches))).returning({ id: memoryRecords.id })
+        : Promise.resolve([]),
+    ]);
+
+    return { id: recordId, kind: record ? "record" as const : "passage" as const, records: recordRows.length, passages: chunkRows.length };
+  }
+
   async upsertEntitySummary(input: { id: string; userId: string; entityType: string; entityId: string; summary: string; tokenEstimate: number; sourceEventIds: string[]; eventWatermark: string }) {
     const values = { ...input, eventWatermark: new Date(input.eventWatermark), updatedAt: new Date(), deleted: false };
     await this.db.insert(entitySummaries).values(values).onConflictDoUpdate({ target: [entitySummaries.userId, entitySummaries.entityType, entitySummaries.entityId], set: values });
@@ -985,7 +1871,29 @@ export class NeonRepository {
     return this.db.select().from(sessionReceipts).where(eq(sessionReceipts.userId, userId)).orderBy(desc(sessionReceipts.createdAt)).limit(Math.max(1, Math.min(limit, 50)));
   }
 
+  /**
+   * Creates a proposal, or refreshes an identical pending one.
+   *
+   * Re-running the same generator produced a new row every time, so the demo's
+   * review queue held four byte-identical "Commit the generated academic plan"
+   * proposals differing only by timestamp. An identical pending proposal is the
+   * same request, so it is updated in place rather than duplicated.
+   */
   async createProposal(input: { id: string; userId: string; clientId?: string; kind: string; entityId?: string; summary: string; payload: Record<string, unknown>; risk: string; expiresAt: string }) {
+    const existing = await this.db.select({ id: memoryProposals.id }).from(memoryProposals).where(and(
+      eq(memoryProposals.userId, input.userId),
+      eq(memoryProposals.kind, input.kind),
+      eq(memoryProposals.summary, input.summary),
+      eq(memoryProposals.status, "pending"),
+      gt(memoryProposals.expiresAt, new Date()),
+    )).limit(1);
+    const duplicate = existing[0];
+    if (duplicate) {
+      await this.db.update(memoryProposals)
+        .set({ payload: input.payload, risk: input.risk, expiresAt: new Date(input.expiresAt), updatedAt: new Date() })
+        .where(eq(memoryProposals.id, duplicate.id));
+      return duplicate.id;
+    }
     await this.db.insert(memoryProposals).values({ ...input, status: "pending", expiresAt: new Date(input.expiresAt) });
     return input.id;
   }
@@ -1090,7 +1998,7 @@ export class NeonRepository {
           if (!taskId || Number.isNaN(startsAt.valueOf()) || Number.isNaN(endsAt.valueOf()) || startsAt >= endsAt || endsAt.valueOf() - startsAt.valueOf() > 8 * 3600_000) throw new Error("Schedule proposal contains invalid task or time bounds");
           const [ownedTask] = await tx.select({ id: tasks.id }).from(tasks).innerJoin(goals, eq(tasks.goalId, goals.id)).where(and(eq(tasks.id, taskId), eq(goals.userId, userId), eq(tasks.deleted, false), eq(goals.deleted, false))).limit(1);
           if (!ownedTask) throw new Error(`Task ${taskId} was not found or is not accessible`);
-          planned.push({ id: `block_${proposal.id.replace(/^proposal_/, "")}_${index + 1}`, taskId, startsAt, endsAt, status: "planned", proposalId: proposal.id, committedAt: new Date() });
+          planned.push({ id: `block_${proposal.id.replace(/^proposal_/, "")}_${index + 1}`, taskId, startsAt, endsAt, status: "planned", flexible: block.flexible !== false, proposalId: proposal.id, committedAt: new Date() });
         }
         if (!planned.length) throw new Error("Schedule proposal contains no blocks to commit");
         const created = await tx.insert(scheduleBlocks).values(planned).returning();
@@ -1200,9 +2108,11 @@ export class NeonRepository {
     await this.db.insert(contextAccessLog).values({ ...input, occurredAt: new Date(input.occurredAt) });
   }
 
-  async logModelRoute(input: { id: string; userId: string; taskClass: string; provider: string; model: string; reason: string; verificationStatus: string; fallbackUsed: boolean; inputTokens: number; outputTokens: number; costClass: string; occurredAt: string }) {
-    await this.db.insert(modelRoutes).values({ id: input.id, userId: input.userId, taskClass: input.taskClass, provider: input.provider, model: input.model, reason: input.reason, verificationStatus: input.verificationStatus, fallbackUsed: input.fallbackUsed });
-    await this.db.insert(modelUsage).values({ id: `usage_${input.id.replace(/^route_/, "")}`, routeId: input.id, userId: input.userId, inputTokens: input.inputTokens, outputTokens: input.outputTokens, costClass: input.costClass, occurredAt: new Date(input.occurredAt) });
+  async logModelRoute(input: { id: string; userId: string; feature: string; taskClass: string; provider: string; model: string; reason: string; verificationStatus: string; fallbackUsed: boolean; inputTokens: number; outputTokens: number; costClass: string; estimatedCostUsd: number; occurredAt: string }) {
+    await this.db.transaction(async (tx) => {
+      await tx.insert(modelRoutes).values({ id: input.id, userId: input.userId, taskClass: input.taskClass, provider: input.provider, model: input.model, reason: input.reason, verificationStatus: input.verificationStatus, fallbackUsed: input.fallbackUsed });
+      await tx.insert(modelUsage).values({ id: `usage_${input.id.replace(/^route_/, "")}`, routeId: input.id, userId: input.userId, feature: input.feature, inputTokens: input.inputTokens, outputTokens: input.outputTokens, costClass: input.costClass, estimatedCostUsd: input.estimatedCostUsd, occurredAt: new Date(input.occurredAt) });
+    });
   }
 
   async getDailyModelUsage(userId: string, dayStart: string, dayEnd: string) {
@@ -1210,30 +2120,41 @@ export class NeonRepository {
     return Number(row?.total ?? 0);
   }
 
-  async createUser(input: { id: string; email: string; displayName: string; timezone: string; educationLevel?: string; passwordHash: string; passwordSalt: string }) {
+  async getGlobalModelUsage(start: string, end: string) {
+    const [row] = await this.db.select({
+      tokens: sql<number>`coalesce(sum(${modelUsage.inputTokens} + ${modelUsage.outputTokens}), 0)`,
+      estimatedCostUsd: sql<number>`coalesce(sum(${modelUsage.estimatedCostUsd}), 0)`,
+      requests: sql<number>`count(*)`,
+    }).from(modelUsage).where(and(gt(modelUsage.occurredAt, new Date(start)), lt(modelUsage.occurredAt, new Date(end))));
+    return {
+      tokens: Number(row?.tokens ?? 0),
+      estimatedCostUsd: Number(row?.estimatedCostUsd ?? 0),
+      requests: Number(row?.requests ?? 0),
+    };
+  }
+
+  async acquireAiRequestLease(input: { id: string; userId: string; feature: string; expiresAt: string; limit: number }) {
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(773492104)`);
+      await tx.delete(aiRequestLeases).where(lt(aiRequestLeases.expiresAt, new Date()));
+      const [row] = await tx.select({ total: sql<number>`count(*)` }).from(aiRequestLeases);
+      if (Number(row?.total ?? 0) >= input.limit) return false;
+      await tx.insert(aiRequestLeases).values({ id: input.id, userId: input.userId, feature: input.feature, expiresAt: new Date(input.expiresAt) });
+      return true;
+    });
+  }
+
+  async releaseAiRequestLease(id: string) {
+    await this.db.delete(aiRequestLeases).where(eq(aiRequestLeases.id, id));
+  }
+
+  async createUser(input: { id: string; username: string; displayName: string; timezone: string; educationLevel?: string; passwordHash: string; passwordSalt: string }) {
     await this.db.transaction(async (tx) => {
-      await tx.insert(users).values({ id: input.id, email: input.email.toLowerCase() });
+      await tx.insert(users).values({ id: input.id, email: input.username.toLowerCase() });
       await tx.insert(profiles).values({ id: `profile_${input.id.replace(/^user_/, "")}`, userId: input.id, displayName: input.displayName, timezone: input.timezone, educationLevel: input.educationLevel, preferences: { explanationStyle: "intuition_before_derivation", memoryWrites: true } });
       await tx.insert(userCredentials).values({ userId: input.id, passwordHash: input.passwordHash, passwordSalt: input.passwordSalt });
     });
-    return { id: input.id, email: input.email.toLowerCase(), displayName: input.displayName, timezone: input.timezone, ...(input.educationLevel ? { educationLevel: input.educationLevel } : {}) } satisfies AuthUser;
-  }
-
-  async resolveOrCreateOAuthUser(input: { id: string; identityId: string; provider: string; subject: string; email: string; displayName: string; timezone: string }) {
-    return this.db.transaction(async (tx) => {
-      const existingIdentity = await tx.select({ user: users, profile: profiles }).from(authIdentities).innerJoin(users, eq(authIdentities.userId, users.id)).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(authIdentities.provider, input.provider), eq(authIdentities.subject, input.subject), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
-      if (existingIdentity[0]) return { id: existingIdentity[0].user.id, email: existingIdentity[0].user.email, displayName: existingIdentity[0].profile.displayName, timezone: existingIdentity[0].profile.timezone, ...(existingIdentity[0].profile.educationLevel ? { educationLevel: existingIdentity[0].profile.educationLevel } : {}) } satisfies AuthUser;
-
-      const normalizedEmail = input.email.toLowerCase();
-      const inserted = await tx.insert(users).values({ id: input.id, email: normalizedEmail }).onConflictDoNothing({ target: users.email }).returning({ id: users.id });
-      if (inserted[0]) await tx.insert(profiles).values({ id: `profile_${input.id.replace(/^user_/, "")}`, userId: input.id, displayName: input.displayName, timezone: input.timezone, preferences: { explanationStyle: "intuition_before_derivation", memoryWrites: true } });
-      const [account] = await tx.select({ user: users, profile: profiles }).from(users).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(users.email, normalizedEmail), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
-      if (!account) throw new Error("Verified account could not be created");
-      await tx.insert(authIdentities).values({ id: input.identityId, userId: account.user.id, provider: input.provider, subject: input.subject, email: normalizedEmail }).onConflictDoNothing();
-      const [resolved] = await tx.select({ user: users, profile: profiles }).from(authIdentities).innerJoin(users, eq(authIdentities.userId, users.id)).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(authIdentities.provider, input.provider), eq(authIdentities.subject, input.subject), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
-      if (!resolved) throw new Error("Verified identity could not be linked");
-      return { id: resolved.user.id, email: resolved.user.email, displayName: resolved.profile.displayName, timezone: resolved.profile.timezone, ...(resolved.profile.educationLevel ? { educationLevel: resolved.profile.educationLevel } : {}) } satisfies AuthUser;
-    });
+    return { id: input.id, username: input.username.toLowerCase(), displayName: input.displayName, timezone: input.timezone, ...(input.educationLevel ? { educationLevel: input.educationLevel } : {}) } satisfies AuthUser;
   }
 
   async findUserForLogin(email: string) {
@@ -1244,7 +2165,7 @@ export class NeonRepository {
   async getUser(userId: string): Promise<AuthUser | undefined> {
     const [row] = await this.db.select({ user: users, profile: profiles }).from(users).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(users.id, userId), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
     if (!row) return undefined;
-    return { id: row.user.id, email: row.user.email, displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}) };
+    return { id: row.user.id, username: publicUsername(row.user.email), displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}) };
   }
 
   async updateLoginFailure(userId: string, succeeded: boolean) {
@@ -1256,18 +2177,183 @@ export class NeonRepository {
     if ((row?.attempts ?? 0) >= 5) await this.db.update(userCredentials).set({ lockedUntil: new Date(Date.now() + 15 * 60_000) }).where(eq(userCredentials.userId, userId));
   }
 
-  async createSession(input: { id: string; userId: string; tokenHash: string; expiresAt: string; userAgentHash?: string; ipHash?: string }) {
+  async createSession(input: { id: string; userId: string; tokenHash: string; expiresAt: string; userAgent?: string; userAgentHash?: string; ipHash?: string }) {
     await this.db.insert(appSessions).values({ ...input, expiresAt: new Date(input.expiresAt) });
   }
 
   async getSession(tokenHash: string) {
     const [row] = await this.db.select({ session: appSessions, user: users, profile: profiles }).from(appSessions).innerJoin(users, eq(appSessions.userId, users.id)).innerJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(appSessions.tokenHash, tokenHash), isNull(appSessions.revokedAt), gt(appSessions.expiresAt, new Date()), eq(users.deleted, false), eq(profiles.deleted, false))).limit(1);
     if (!row) return undefined;
-    return { id: row.user.id, email: row.user.email, displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}) } satisfies AuthUser;
+    if (Date.now() - row.session.lastSeenAt.getTime() > 5 * 60_000) {
+      void this.db.update(appSessions).set({ lastSeenAt: new Date() }).where(eq(appSessions.id, row.session.id));
+    }
+    return { id: row.user.id, username: publicUsername(row.user.email), displayName: row.profile.displayName, timezone: row.profile.timezone, ...(row.profile.educationLevel ? { educationLevel: row.profile.educationLevel } : {}) } satisfies AuthUser;
+  }
+
+  async findCredentialForUser(userId: string) {
+    const [row] = await this.db.select({ user: users, credential: userCredentials })
+      .from(users)
+      .innerJoin(userCredentials, eq(userCredentials.userId, users.id))
+      .where(and(eq(users.id, userId), eq(users.deleted, false)))
+      .limit(1);
+    return row;
   }
 
   async revokeSession(tokenHash: string) {
     await this.db.update(appSessions).set({ revokedAt: new Date() }).where(eq(appSessions.tokenHash, tokenHash));
+  }
+
+  async findUserForRecovery(email: string) {
+    const [row] = await this.db.select({ user: users, profile: profiles, credential: userCredentials })
+      .from(users)
+      .innerJoin(profiles, eq(profiles.userId, users.id))
+      .leftJoin(userCredentials, eq(userCredentials.userId, users.id))
+      .where(and(eq(users.email, email.toLowerCase()), eq(users.deleted, false), eq(profiles.deleted, false)))
+      .limit(1);
+    return row;
+  }
+
+  async createAuthToken(input: { id: string; userId: string; purpose: string; tokenHash: string; expiresAt: string; metadata?: Record<string, unknown> }) {
+    const now = new Date();
+    await this.db.transaction(async (tx) => {
+      await tx.update(authTokens).set({ consumedAt: now }).where(and(
+        eq(authTokens.userId, input.userId),
+        eq(authTokens.purpose, input.purpose),
+        isNull(authTokens.consumedAt),
+      ));
+      await tx.insert(authTokens).values({
+        ...input,
+        expiresAt: new Date(input.expiresAt),
+        metadata: input.metadata ?? {},
+      });
+    });
+  }
+
+  async consumeAuthToken(tokenHash: string, purposes: string[]) {
+    return this.db.transaction(async (tx) => {
+      const [token] = await tx.select().from(authTokens).where(and(
+        eq(authTokens.tokenHash, tokenHash),
+        inArray(authTokens.purpose, purposes),
+        isNull(authTokens.consumedAt),
+        gt(authTokens.expiresAt, new Date()),
+      )).limit(1);
+      if (!token) return undefined;
+      const consumed = await tx.update(authTokens).set({ consumedAt: new Date() }).where(and(
+        eq(authTokens.id, token.id),
+        isNull(authTokens.consumedAt),
+      )).returning({ id: authTokens.id });
+      return consumed[0] ? token : undefined;
+    });
+  }
+
+  async inspectAuthToken(tokenHash: string, purposes: string[]) {
+    const [token] = await this.db.select({
+      id: authTokens.id,
+      userId: authTokens.userId,
+      purpose: authTokens.purpose,
+      expiresAt: authTokens.expiresAt,
+      consumedAt: authTokens.consumedAt,
+      email: users.email,
+    }).from(authTokens).innerJoin(users, eq(authTokens.userId, users.id)).where(and(
+      eq(authTokens.tokenHash, tokenHash),
+      inArray(authTokens.purpose, purposes),
+      eq(users.deleted, false),
+    )).limit(1);
+    return token;
+  }
+
+  async verifyEmail(userId: string) {
+    const rows = await this.db.update(users).set({ emailVerifiedAt: new Date(), updatedAt: new Date(), version: sql`${users.version} + 1` })
+      .where(and(eq(users.id, userId), eq(users.deleted, false)))
+      .returning({ id: users.id });
+    return Boolean(rows.length);
+  }
+
+  async replacePassword(input: { userId: string; passwordHash: string; passwordSalt: string; keepSessionId?: string }) {
+    await this.db.transaction(async (tx) => {
+      const [current] = await tx.select().from(userCredentials).where(eq(userCredentials.userId, input.userId)).limit(1);
+      if (current) {
+        await tx.insert(passwordHistory).values({
+          id: `password_history_${randomUUID().replaceAll("-", "").slice(0, 24)}`,
+          userId: input.userId,
+          passwordHash: current.passwordHash,
+          passwordSalt: current.passwordSalt,
+        });
+        await tx.update(userCredentials).set({
+          passwordHash: input.passwordHash,
+          passwordSalt: input.passwordSalt,
+          passwordVersion: sql`${userCredentials.passwordVersion} + 1`,
+          failedAttempts: 0,
+          lockedUntil: null,
+          updatedAt: new Date(),
+        }).where(eq(userCredentials.userId, input.userId));
+      } else {
+        await tx.insert(userCredentials).values({
+          userId: input.userId,
+          passwordHash: input.passwordHash,
+          passwordSalt: input.passwordSalt,
+        });
+      }
+      await tx.update(users).set({ emailVerifiedAt: new Date(), updatedAt: new Date(), version: sql`${users.version} + 1` }).where(eq(users.id, input.userId));
+      await tx.update(appSessions).set({ revokedAt: new Date() }).where(and(
+        eq(appSessions.userId, input.userId),
+        isNull(appSessions.revokedAt),
+        input.keepSessionId ? sql`${appSessions.id} <> ${input.keepSessionId}` : undefined,
+      ));
+    });
+  }
+
+  async recentPasswordHistory(userId: string, limit = 5) {
+    const current = await this.db.select({
+      passwordHash: userCredentials.passwordHash,
+      passwordSalt: userCredentials.passwordSalt,
+      createdAt: userCredentials.updatedAt,
+    }).from(userCredentials).where(eq(userCredentials.userId, userId)).limit(1);
+    const history = await this.db.select({
+      passwordHash: passwordHistory.passwordHash,
+      passwordSalt: passwordHistory.passwordSalt,
+      createdAt: passwordHistory.createdAt,
+    }).from(passwordHistory).where(eq(passwordHistory.userId, userId)).orderBy(desc(passwordHistory.createdAt)).limit(Math.max(0, limit - current.length));
+    return [...current, ...history];
+  }
+
+  async sessionByTokenHash(tokenHash: string) {
+    const [session] = await this.db.select().from(appSessions).where(and(
+      eq(appSessions.tokenHash, tokenHash),
+      isNull(appSessions.revokedAt),
+      gt(appSessions.expiresAt, new Date()),
+    )).limit(1);
+    return session;
+  }
+
+  async listUserSessions(userId: string) {
+    return this.db.select({
+      id: appSessions.id,
+      createdAt: appSessions.createdAt,
+      lastSeenAt: appSessions.lastSeenAt,
+      authenticatedAt: appSessions.authenticatedAt,
+      expiresAt: appSessions.expiresAt,
+      revokedAt: appSessions.revokedAt,
+      userAgent: appSessions.userAgent,
+    }).from(appSessions).where(eq(appSessions.userId, userId)).orderBy(desc(appSessions.lastSeenAt)).limit(50);
+  }
+
+  async revokeUserSession(userId: string, sessionId: string) {
+    const rows = await this.db.update(appSessions).set({ revokedAt: new Date() }).where(and(
+      eq(appSessions.id, sessionId),
+      eq(appSessions.userId, userId),
+      isNull(appSessions.revokedAt),
+    )).returning({ id: appSessions.id });
+    return Boolean(rows.length);
+  }
+
+  async revokeUserSessions(userId: string, exceptSessionId?: string) {
+    const rows = await this.db.update(appSessions).set({ revokedAt: new Date() }).where(and(
+      eq(appSessions.userId, userId),
+      isNull(appSessions.revokedAt),
+      exceptSessionId ? sql`${appSessions.id} <> ${exceptSessionId}` : undefined,
+    )).returning({ id: appSessions.id });
+    return rows.length;
   }
 
   async consumeRateLimit(key: string, limit: number, windowMs: number) {
@@ -1352,12 +2438,57 @@ export class NeonRepository {
   }
 
   async listOAuthConnections(userId: string) {
-    return this.db.select({ id: oauthGrants.id, clientId: oauthGrants.clientId, kind: oauthGrants.kind, scopes: oauthGrants.scopes, expiresAt: oauthGrants.expiresAt, revokedAt: oauthGrants.revokedAt, createdAt: oauthGrants.createdAt }).from(oauthGrants).where(and(eq(oauthGrants.userId, userId), isNull(oauthGrants.revokedAt), gt(oauthGrants.expiresAt, new Date()))).orderBy(desc(oauthGrants.createdAt));
+    return this.db.select().from(oauthConnections)
+      .where(and(eq(oauthConnections.userId, userId), isNull(oauthConnections.revokedAt)))
+      .orderBy(desc(oauthConnections.lastAuthorizedAt));
+  }
+
+  async registerOAuthClient(input: { id: string; name: string; redirectUris: string[]; scopes: string[] }) {
+    await this.db.insert(oauthClients).values({
+      id: input.id,
+      name: input.name,
+      redirectUris: input.redirectUris,
+      scopes: input.scopes,
+      publicClient: true,
+    });
+    return input.id;
+  }
+
+  async getOAuthClient(clientId: string) {
+    const [client] = await this.db.select().from(oauthClients)
+      .where(and(eq(oauthClients.id, clientId), isNull(oauthClients.revokedAt)))
+      .limit(1);
+    return client;
+  }
+
+  async upsertOAuthConnection(input: { id: string; userId: string; clientId: string; clientName: string; scopes: string[] }) {
+    const now = new Date();
+    await this.db.insert(oauthConnections).values({
+      ...input,
+      connectedAt: now,
+      lastAuthorizedAt: now,
+      revokedAt: null,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: [oauthConnections.userId, oauthConnections.clientId],
+      set: {
+        clientName: input.clientName,
+        scopes: input.scopes,
+        lastAuthorizedAt: now,
+        revokedAt: null,
+        updatedAt: now,
+        version: sql`${oauthConnections.version} + 1`,
+      },
+    });
   }
 
   async revokeOAuthClient(userId: string, clientId: string) {
-    const rows = await this.db.update(oauthGrants).set({ revokedAt: new Date() }).where(and(eq(oauthGrants.userId, userId), eq(oauthGrants.clientId, clientId), isNull(oauthGrants.revokedAt))).returning({ id: oauthGrants.id });
-    return rows.length;
+    return this.db.transaction(async (tx) => {
+      const now = new Date();
+      const rows = await tx.update(oauthGrants).set({ revokedAt: now }).where(and(eq(oauthGrants.userId, userId), eq(oauthGrants.clientId, clientId), isNull(oauthGrants.revokedAt))).returning({ id: oauthGrants.id });
+      const connections = await tx.update(oauthConnections).set({ revokedAt: now, updatedAt: now, version: sql`${oauthConnections.version} + 1` }).where(and(eq(oauthConnections.userId, userId), eq(oauthConnections.clientId, clientId), isNull(oauthConnections.revokedAt))).returning({ id: oauthConnections.id });
+      return rows.length + connections.length;
+    });
   }
 
   async registerOAuthGrant(input: { jti: string; userId: string; clientId: string; kind: string; scopes: string[]; expiresAt: string }) {
@@ -1376,10 +2507,10 @@ export class NeonRepository {
     await this.db.update(oauthGrants).set({ revokedAt: new Date() }).where(eq(oauthGrants.id, jti));
   }
 
-  async consumeOAuthGrant(jti: string, kind: "code" | "refresh") {
+  async consumeOAuthGrant(jti: string, kind: "code" | "refresh" | "consent") {
     await this.ensureDemoSeed();
     const rows = await this.db.update(oauthGrants).set({ consumedAt: new Date() }).where(and(eq(oauthGrants.id, jti), eq(oauthGrants.kind, kind), isNull(oauthGrants.consumedAt), isNull(oauthGrants.revokedAt), gt(oauthGrants.expiresAt, new Date()))).returning({ id: oauthGrants.id });
-    if (!rows.length) throw new Error(`${kind === "code" ? "Authorization code" : "Refresh token"} was already used, expired, or was not issued`);
+    if (!rows.length) throw new Error(`${kind === "code" ? "Authorization code" : kind === "refresh" ? "Refresh token" : "Authorization request"} was already used, expired, or was not issued`);
   }
 
   async consumeOAuthCode(jti: string) {

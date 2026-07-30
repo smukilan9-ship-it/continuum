@@ -1,4 +1,6 @@
-# Performance baseline (before fixes)
+# Performance baseline
+
+## Before the redesign
 
 Environment: local dev server (`pnpm dev`, Next 15.5) against the real Neon
 database and the real configured providers, authenticated as a freshly
@@ -82,3 +84,99 @@ providers, the entire model layer appeared broken.
 - DB read fan-out uses `Promise.all` (no N+1) with correct indexes.
 - Streaming `/api/code` produced well-formed Markdown with fast first-token.
 - Client bundle sizes, images, fonts, CSS.
+
+
+---
+
+# After the redesign
+
+Measured against a live deployment on 2026-07-30. Every number is the §19.9
+budget beside what the product actually does.
+
+**How to reproduce.** Deploy a preview, then:
+
+```bash
+node scripts/verify-release.mjs <deployment>   # heights, overflow, headings
+node scripts/verify-mcp.mjs <deployment>       # MCP call counts
+rm -rf apps/web/.next && pnpm build            # bundle sizes
+```
+
+Route timings are p75 of five warm `curl -w '%{time_starttransfer}'` samples per
+route, from a client in India against `sin1`.
+
+## Against the §19.9 budgets
+
+| Metric | Budget | Measured | |
+|---|---|---|---|
+| Landing document height @1440 | ≤ 6,500px | **5,479px** (from 9,843) | ✅ |
+| App route TTFB (p75) | < 400ms | **195–448ms** (from 800–1,437) | ⚠️ six of seven |
+| Assistant first token — chitchat | < 800ms | **~930ms** | ⚠️ |
+| Assistant first token — about my work | < 1.5s | **1.4–2.2s** | ⚠️ |
+| Marketing JS | < 120 KB | **116 KB** | ✅ |
+| App shell JS | < 180 KB | **135 KB** (from 218) | ✅ |
+| MCP workflows | ≤ 2 calls | **1 call** each | ✅ |
+| `globals.css` | < 600 lines | **503** (from 3,889) | ✅ |
+
+### Per-route TTFB
+
+| Route | p75 |
+|---|---|
+| `/ask` | 217ms |
+| `/plan` | 214ms |
+| `/library` | 201ms |
+| `/review` | 195ms |
+| `/context` | 202ms |
+| `/g/[goalId]` | 198ms |
+| `/home` | 448ms |
+
+## The single largest change
+
+**Function region.** Functions defaulted to `iad1` (US East) while the Neon
+instance is in `ap-southeast-1` (Singapore), so every query crossed the Pacific
+and back — and a page render makes at least two. Pinning them to `sin1` in
+`apps/web/vercel.json` took p75 from **800–1,437ms to 195–448ms** without
+changing a line of application code.
+
+Anyone moving the database must move this too; they are one decision.
+
+## What is still over budget, and why
+
+**Assistant first token.** The ~930ms chitchat figure is dominated by the
+provider's own time to first token over the network, not by anything Continuum
+does — retrieval is provably zero for that class, asserted with a call counter
+in `tests/assistant-orchestrator.test.ts`. The `about_my_work` range is
+retrieval plus model; the orchestrator caps retrieval at 2s and degrades rather
+than blocking, so the worst case is bounded and reported to the user rather
+than hidden.
+
+**`/home` TTFB.** The one route over budget, and the one that reads the most:
+`getHomeData` plus `getShellData` plus the schedule. Merging those into one
+query is the obvious next step and was not attempted.
+
+## Landing page, Lighthouse (§18.9)
+
+`lighthouserc.json`, three runs against a production build, mobile form factor
+with Lighthouse's own mobile throttling — 150ms RTT, 1.6 Mbps down, **4× CPU
+slowdown**. Run it with `npx lhci autorun`.
+
+| | Budget | Measured |
+|---|---|---|
+| Performance | — | **100** |
+| Accessibility | ≥ 95 | **100** |
+| Best practices | ≥ 95 | **100** |
+| SEO | — | **100** |
+| Largest contentful paint | < 2.0s | see the run |
+| Cumulative layout shift | < 0.05 | **0** |
+| Total blocking time | < 200ms | see the run |
+
+The config originally carried `preset: "desktop"` beside `formFactor: "mobile"`,
+and the preset wins: it was reporting a mobile form factor while applying
+desktop throttling — 40ms RTT, 10 Mbps, no CPU slowdown. That is not the
+condition §19.9 budgets, so the 100 it produced measured the wrong thing. The
+preset is gone and the mobile numbers are the ones recorded.
+
+Reports are 8 MB per run and are gitignored, not committed.
+
+## Not measured
+
+- **Cold start.** Every figure above is warm.

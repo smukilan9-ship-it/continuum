@@ -25,10 +25,8 @@ export interface ProviderEnvironment {
   AI_GATEWAY_GENERAL_MODEL?: string;
   AI_GATEWAY_MULTIMODAL_MODEL?: string;
   AI_GATEWAY_FALLBACK_MODELS?: string;
-  FEATHERLESS_API_KEY?: string;
-  FEATHERLESS_API_KEY_1?: string;
-  FEATHERLESS_API_KEY_2?: string;
-  FEATHERLESS_API_KEY_3?: string;
+  FEATHERLESS_API_KEY_PRIMARY?: string;
+  FEATHERLESS_API_KEY_SECONDARY?: string;
   FEATHERLESS_MODEL?: string;
   FEATHERLESS_FAST_MODEL?: string;
   FEATHERLESS_REASONING_MODEL?: string;
@@ -54,6 +52,7 @@ export interface StructuredGenerationRequest<T> {
   system?: string;
   maxOutputTokens?: number;
   userId?: string;
+  retrySafe?: boolean;
 }
 
 export interface StreamingGenerationRequest {
@@ -79,10 +78,8 @@ export function providerEnvironmentFromProcess(): ProviderEnvironment {
     AI_GATEWAY_GENERAL_MODEL: process.env.AI_GATEWAY_GENERAL_MODEL,
     AI_GATEWAY_MULTIMODAL_MODEL: process.env.AI_GATEWAY_MULTIMODAL_MODEL,
     AI_GATEWAY_FALLBACK_MODELS: process.env.AI_GATEWAY_FALLBACK_MODELS,
-    FEATHERLESS_API_KEY: process.env.FEATHERLESS_API_KEY,
-    FEATHERLESS_API_KEY_1: process.env.FEATHERLESS_API_KEY_1,
-    FEATHERLESS_API_KEY_2: process.env.FEATHERLESS_API_KEY_2,
-    FEATHERLESS_API_KEY_3: process.env.FEATHERLESS_API_KEY_3,
+    FEATHERLESS_API_KEY_PRIMARY: process.env.FEATHERLESS_API_KEY_PRIMARY,
+    FEATHERLESS_API_KEY_SECONDARY: process.env.FEATHERLESS_API_KEY_SECONDARY,
     FEATHERLESS_MODEL: process.env.FEATHERLESS_MODEL,
     FEATHERLESS_FAST_MODEL: process.env.FEATHERLESS_FAST_MODEL,
     FEATHERLESS_REASONING_MODEL: process.env.FEATHERLESS_REASONING_MODEL,
@@ -203,12 +200,10 @@ export function generationRouteOrder(decision: RouteDecision, env: ProviderEnvir
  * a last-resort fallback so structured tasks never depend on it.
  */
 export function structuredRouteOrder(decision: RouteDecision, env: ProviderEnvironment): RouteDecision["route"][] {
-  // For schema-bound generation, lead with Groq: its GPT-OSS models are the most
-  // reliable json_schema route and return in ~1s, so structured calls succeed fast
-  // instead of burning the deadline on providers that stream prose or time out. The
-  // originally routed provider and the rest follow as fallbacks. When Groq is not
-  // configured, the routed provider leads as before.
-  const order: RouteDecision["route"][] = ["groq", decision.route, "gemini", "featherless", "ai_gateway"];
+  // Preserve the policy decision first. Featherless is the shared primary route;
+  // other configured providers remain bounded fallbacks when both healthy
+  // credentials are unavailable or a model cannot satisfy the schema.
+  const order: RouteDecision["route"][] = [decision.route, "featherless", "groq", "gemini", "ai_gateway"];
   return healthAwareOrder([...new Set(order)].filter((route) => routeConfigured(route, env)));
 }
 
@@ -300,8 +295,8 @@ export async function generateStructured<T>(request: StructuredGenerationRequest
     // before the next provider is tried.
     const routeAttempts = decision.route === "gemini"
       ? Math.min(2, Math.max(1, geminiApiKeys(env as NodeJS.ProcessEnv).length))
-      : decision.route === "featherless"
-        ? Math.min(3, Math.max(1, featherlessCredentials(env as NodeJS.ProcessEnv).length))
+      : decision.route === "featherless" && request.retrySafe !== false && ["classification", "extraction", "summarization", "misconception_diagnosis"].includes(decision.taskClass)
+        ? Math.min(2, Math.max(1, featherlessCredentials(env as NodeJS.ProcessEnv).length))
         : 1;
     for (let routeAttempt = 0; routeAttempt < routeAttempts; routeAttempt += 1) {
       const budget = remaining();

@@ -19,6 +19,8 @@ import { closeDatabase, getDatabase } from "./client";
 import {
   assessmentAttempts,
   assessments,
+  assistantMessages,
+  assistantSessions,
   calendarConstraints,
   claimEvidence,
   concepts,
@@ -28,6 +30,7 @@ import {
   learningStates,
   memoryChunks,
   memoryEvents,
+  memoryProposals,
   memoryRecords,
   milestones,
   misconceptions,
@@ -73,6 +76,8 @@ async function createPasswordCredential(password: string) {
 // Reset targets: each table plus the id prefix that marks a demo-owned row.
 // Ordered children-before-parents so foreign keys never block a delete.
 export const RESET_TARGETS: Array<[table: { id: unknown }, prefix: string]> = [
+  [assistantMessages, "amsg_demo_"],
+  [assistantSessions, "asession_demo_"],
   [claimEvidence, "ev_demo_"],
   [researchClaims, "claim_demo_"],
   [researchNotes, "note_demo_"],
@@ -91,6 +96,7 @@ export const RESET_TARGETS: Array<[table: { id: unknown }, prefix: string]> = [
   [resourceActivities, "activity_demo_"],
   [sessionReceipts, "receipt_demo_"],
   [memoryChunks, "mchunk_demo_"],
+  [memoryProposals, "proposal_demo_"],
   [memoryRecords, "record_demo_"],
   [memoryEvents, "event_demo_"],
   [modelRoutes, "route_demo_"],
@@ -330,13 +336,27 @@ export function buildDemoData(now: Date) {
     { id: "misc_demo_sql_commit", userId: DEMO_ACCOUNT_USER_ID, conceptId: "concept_demo_sql_txn", attemptId: "attempt_demo_sql_txn", label: "Assumed data-changing queries persist without commit()", status: "resolved", confidence: 0.8 },
   ];
 
-  // Schedule: today's committed block + an earlier completed one; upcoming blocks.
+  // Schedule: every block is dated relative to `now()` and spread across the whole
+  // rolling seven-day window the Plan grid renders, so the demo shows a populated
+  // current week no matter how long ago it was seeded. Absolute dates decayed a
+  // little each day until the flagship planning screen looked broken.
+  const atDay = (day: number, hour: number, minutes: number) => {
+    const date = daysFromNow(day);
+    date.setHours(hour, 0, 0, 0);
+    return { startsAt: date, endsAt: new Date(date.getTime() + minutes * 60_000) };
+  };
   const scheduleRows = [
-    { id: "block_demo_sat_today", taskId: "task_demo_sat_geometry", startsAt: hoursFromNow(2), endsAt: hoursFromNow(3), status: "committed", proposalId: "prop_demo_sat", committedAt: daysFromNow(-1) },
-    { id: "block_demo_sql_yesterday", taskId: "task_demo_sql_crud", startsAt: hoursFromNow(-20), endsAt: hoursFromNow(-19), status: "done", proposalId: "prop_demo_sql", committedAt: daysFromNow(-3) },
-    { id: "block_demo_sql_tomorrow", taskId: "task_demo_sql_param", startsAt: hoursFromNow(30), endsAt: hoursFromNow(31), status: "committed", proposalId: "prop_demo_sql", committedAt: daysFromNow(-1) },
-    { id: "block_demo_oasis_soon", taskId: "task_demo_oasis_dense", startsAt: hoursFromNow(48), endsAt: hoursFromNow(50), status: "committed", proposalId: "prop_demo_oasis", committedAt: daysFromNow(-1) },
-    { id: "block_demo_sat_reading", taskId: "task_demo_sat_reading", startsAt: daysFromNow(2), endsAt: new Date(daysFromNow(2).getTime() + 70 * 60_000), status: "committed", proposalId: "prop_demo_sat", committedAt: daysFromNow(-1) },
+    { id: "block_demo_sat_today", taskId: "task_demo_sat_geometry", ...atDay(0, 17, 60), status: "committed", proposalId: "prop_demo_sat", committedAt: daysFromNow(-1) },
+    { id: "block_demo_sql_today", taskId: "task_demo_sql_crud", ...atDay(0, 19, 45), status: "committed", proposalId: "prop_demo_sql", committedAt: daysFromNow(-1) },
+    { id: "block_demo_sql_tomorrow", taskId: "task_demo_sql_param", ...atDay(1, 17, 60), status: "committed", proposalId: "prop_demo_sql", committedAt: daysFromNow(-1) },
+    { id: "block_demo_sat_reading", taskId: "task_demo_sat_reading", ...atDay(1, 19, 70), status: "committed", proposalId: "prop_demo_sat", committedAt: daysFromNow(-1) },
+    { id: "block_demo_oasis_soon", taskId: "task_demo_oasis_dense", ...atDay(2, 17, 120), status: "committed", proposalId: "prop_demo_oasis", committedAt: daysFromNow(-1) },
+    { id: "block_demo_exo_cv", taskId: "task_demo_exo_ensemble", ...atDay(3, 18, 90), status: "committed", proposalId: "prop_demo_exo", committedAt: daysFromNow(-1) },
+    { id: "block_demo_sat_mock", taskId: "task_demo_sat_mockreview", ...atDay(4, 17, 60), status: "committed", proposalId: "prop_demo_sat", committedAt: daysFromNow(-1) },
+    { id: "block_demo_sql_cli", taskId: "task_demo_sql_cli", ...atDay(5, 10, 120), status: "committed", proposalId: "prop_demo_sql", committedAt: daysFromNow(-1) },
+    { id: "block_demo_oasis_draft", taskId: "task_demo_oasis_fig", ...atDay(6, 11, 90), status: "committed", proposalId: "prop_demo_oasis", committedAt: daysFromNow(-1) },
+    // One completed block just before the window, so history stays reachable.
+    { id: "block_demo_sql_yesterday", taskId: "task_demo_sql_crud", ...atDay(-1, 18, 60), status: "done", proposalId: "prop_demo_sql", committedAt: daysFromNow(-3) },
   ];
 
   const calendarRows = [
@@ -394,11 +414,159 @@ export function buildDemoData(now: Date) {
     { id: "route_demo_3", userId: DEMO_ACCOUNT_USER_ID, taskClass: "retrieval_grounded", provider: "gemini", model: "gemini-embedding-001", reason: "Grounded Q&A over OASIS sources — embeddings for citation-locked retrieval.", verificationStatus: "verified", fallbackUsed: false },
   ];
 
+  // Review's whole argument is that nothing an assistant proposes takes effect
+  // until a person approves it (§9.8). With an empty queue the screen states
+  // that and then shows nothing, so the claim is unverifiable and W9 has nothing
+  // to exercise. These two are the shapes the screen renders differently: one
+  // carries field-level changes, so the before-and-after diff has something to
+  // diff, and one is a schedule change, which takes the two-step approve-then-
+  // commit path rather than applying on approval.
+  const proposalRows = [
+    {
+      id: "proposal_demo_deadline",
+      userId: DEMO_ACCOUNT_USER_ID,
+      clientId: "claude-desktop",
+      kind: "task_update",
+      entityId: "task_demo_sat_mockreview",
+      summary: "Move the mock-test review a day later, after the timed drill",
+      payload: {
+        entityId: "task_demo_sat_mockreview",
+        // Every field here has to be a change the task can actually take: the
+        // same types the column holds, and a value that differs from the one
+        // already stored, or the diff shows a row that would do nothing.
+        changes: { deadline: daysFromNow(7).toISOString(), estimatedMinutes: 75, priority: 2 },
+        reason: "The timed drill lands the day before and its result is what the review is meant to read.",
+      },
+      risk: "low",
+      status: "pending",
+      expiresAt: daysFromNow(7),
+    },
+    {
+      id: "proposal_demo_schedule",
+      userId: DEMO_ACCOUNT_USER_ID,
+      clientId: "claude-desktop",
+      kind: "schedule_change",
+      entityId: "goal_demo_sql",
+      summary: "Add two 45-minute SQL sessions to the free evenings this week",
+      payload: {
+        goalId: "goal_demo_sql",
+        changes: {
+          blocks: [
+            { taskId: "task_demo_sql_param", startsAt: atDay(2, 19, 45).startsAt.toISOString(), minutes: 45 },
+            { taskId: "task_demo_sql_cli", startsAt: atDay(4, 19, 45).startsAt.toISOString(), minutes: 45 },
+          ],
+        },
+        reason: "Two evenings this week have no block and parameterised queries is the weakest concept on this goal.",
+      },
+      risk: "medium",
+      status: "pending",
+      expiresAt: daysFromNow(7),
+    },
+  ];
+
+  // Two lived-in conversations so a reset demo opens on a real thread rather
+  // than an empty Ask screen. Each assistant turn carries `usedContext` naming
+  // the exact seeded records the answer came from, so the citation chips in the
+  // UI resolve to rows that genuinely exist.
+  const assistantSessionRows = [
+    {
+      id: "asession_demo_oasis",
+      userId: DEMO_ACCOUNT_USER_ID,
+      title: "What did I decide about cross-marker association?",
+      status: "active",
+      summary: "Confirmed that cross-marker spatial association is population-level, never same-cell co-expression, and that registration stays similarity-only.",
+      decisions: ["Never present cross-marker association as same-cell co-expression", "Registration stays similarity-only before any cross-K test"],
+      unresolvedQuestions: ["Does the dense-null candidate hold on the LL477 H-DAB bundles?"],
+      createdTasks: [],
+      importantFacts: ["Serial sections are different physical slices, so two markers can never be the same cell."],
+      linkedEntityIds: ["project_demo_oasis", "decision_demo_oasis_coexpr", "decision_demo_oasis_warp"],
+      pinned: true,
+      lastMessageAt: hoursFromNow(-22),
+    },
+    {
+      id: "asession_demo_sat",
+      userId: DEMO_ACCOUNT_USER_ID,
+      title: "What should I work on next for the SAT?",
+      status: "active",
+      summary: "Advanced geometry is the weakest area; arc-length and sector-area formulas are still swapping under time pressure.",
+      decisions: [],
+      unresolvedQuestions: [],
+      createdTasks: ["Rework the 12 flagged advanced-geometry misses in the error log"],
+      importantFacts: ["Parabola-item pace improved from 95s to 68s per question."],
+      linkedEntityIds: ["goal_demo_sat"],
+      pinned: false,
+      lastMessageAt: hoursFromNow(-4),
+    },
+  ];
+
+  const assistantMessageRows = [
+    {
+      id: "amsg_demo_oasis_u",
+      sessionId: "asession_demo_oasis",
+      userId: DEMO_ACCOUNT_USER_ID,
+      role: "user",
+      content: "What did I decide about cross-marker association?",
+      metadata: { contextScopes: ["current_project"] },
+      createdAt: hoursFromNow(-22),
+    },
+    {
+      id: "amsg_demo_oasis_a",
+      sessionId: "asession_demo_oasis",
+      userId: DEMO_ACCOUNT_USER_ID,
+      role: "assistant",
+      content:
+        "You accepted two decisions on this, and they constrain each other.\n\n" +
+        "**Cross-marker spatial association is never same-cell co-expression.** Serial sections are different physical slices, so a CD8 cell and a TIM-3 cell cannot be the same cell. OASIS measures population-level association through cross-type Ripley's K. Claiming co-expression would need multiplex on a single section or a restaining protocol, and neither is in this pipeline.\n\n" +
+        "**Registration stays similarity-only.** A non-rigid warp fabricates the very inter-cell distances the statistic consumes, so it is forbidden before any cross-K test. The ANHIR comparison confirmed VALIS-nonrigid is more accurate overall but is exactly the operation you ruled out; VALIS-rigid is the safe fallback where LoFTR fails on cross-modal stains.\n\n" +
+        "Still open: whether the dense-null candidate holds on the two completed LL477 H-DAB bundles.",
+      provider: "seed",
+      model: "seed",
+      metadata: {
+        usedContext: [
+          { type: "decision", id: "decision_demo_oasis_coexpr", label: "Cross-marker association is not co-expression", href: "/g/goal_demo_oasis/p/project_demo_oasis?view=decisions", snippet: "Cross-marker spatial association is never same-cell co-expression. Serial sections are different physical slices, so a CD8 cell and a TIM-3 cell cannot be the same cell." },
+          { type: "decision", id: "decision_demo_oasis_warp", label: "Registration stays similarity-only", href: "/g/goal_demo_oasis/p/project_demo_oasis?view=decisions", snippet: "A non-rigid warp fabricates the very inter-cell distances the statistic consumes, so it is forbidden before any cross-K test." },
+          { type: "source", id: "source_demo_ihc", label: "OASIS — Technical Reference", href: "/library?tab=sources&source=source_demo_ihc", snippet: "Multiplexed immunohistochemistry permits co-expression claims on a single section; serial single-plex does not." },
+        ],
+      },
+      createdAt: hoursFromNow(-22),
+    },
+    {
+      id: "amsg_demo_sat_u",
+      sessionId: "asession_demo_sat",
+      userId: DEMO_ACCOUNT_USER_ID,
+      role: "user",
+      content: "Based on my plan, what should I work on next for the SAT?",
+      metadata: { contextScopes: ["approved_memory"] },
+      createdAt: hoursFromNow(-4),
+    },
+    {
+      id: "amsg_demo_sat_a",
+      sessionId: "asession_demo_sat",
+      userId: DEMO_ACCOUNT_USER_ID,
+      role: "assistant",
+      content:
+        "Advanced geometry, specifically the arc-length and sector-area pair.\n\n" +
+        "Your error log shows those two formulas swapping under time pressure, and accuracy drops in the last third of timed sets — so this is a recall-under-pressure problem, not a comprehension one. Reworking the 12 flagged misses will do more for your score than another full mock right now.\n\n" +
+        "Pace is not the constraint any more: parabola items went from 95s to 68s after the error-log rework, and Math practice is trending toward 800. Protect that and fix the formula confusion.",
+      provider: "seed",
+      model: "seed",
+      metadata: {
+        usedContext: [
+          { type: "goal", id: "goal_demo_sat", label: "Raise SAT score from 1520 to 1570+", href: "/g/goal_demo_sat", snippet: "Break 1570 on the October SAT by closing Module-2 reading and advanced-geometry gaps and holding pace under timed conditions." },
+          { type: "misconception", id: "mchunk_demo_misc_sat", label: "Arc-length and sector-area swapped under time pressure", href: "/context?record=mchunk_demo_misc_sat", snippet: "The error log shows the arc-length and sector-area formulas swapping in the last third of timed sets — a recall-under-pressure failure, not a comprehension one." },
+          { type: "progress", id: "mchunk_demo_progress_sat", label: "Parabola pace 95s → 68s", href: "/context?record=mchunk_demo_progress_sat", snippet: "Parabola items went from 95s to 68s after the error-log rework, and Math practice is trending toward 800." },
+        ],
+      },
+      createdAt: hoursFromNow(-4),
+    },
+  ];
+
   return {
     goalRows, milestoneRows, taskRows, taskDeps, projectRows, sourceRows, chunkRows, paperRows,
     decisionRows, noteRows, claimRows, evidenceRows, curriculumRows, curriculumNodeRows, conceptRows,
     learningStateRows, assessmentRows, attemptRows, misconceptionRows, scheduleRows, calendarRows,
-    receiptRows, eventRows, recordRows, memoryChunkRows, resourceRows, activityRows, routeRows,
+    receiptRows, eventRows, recordRows, memoryChunkRows, resourceRows, activityRows, routeRows, proposalRows,
+    assistantSessionRows, assistantMessageRows,
   };
 }
 
@@ -494,6 +662,9 @@ export async function seedDemoAccount(options: SeedDemoOptions): Promise<SeedDem
   await db.insert(sessionReceipts).values(data.receiptRows).onConflictDoNothing();
   await db.insert(resourceActivities).values(data.activityRows).onConflictDoNothing();
   await db.insert(modelRoutes).values(data.routeRows).onConflictDoNothing();
+  await db.insert(memoryProposals).values(data.proposalRows).onConflictDoNothing();
+  await db.insert(assistantSessions).values(data.assistantSessionRows).onConflictDoNothing();
+  await db.insert(assistantMessages).values(data.assistantMessageRows).onConflictDoNothing();
 
   return {
     username: DEMO_ACCOUNT_USERNAME,
@@ -516,6 +687,7 @@ export async function seedDemoAccount(options: SeedDemoOptions): Promise<SeedDem
       events: data.eventRows.length,
       memoryChunks: data.memoryChunkRows.length,
       resourceActivities: data.activityRows.length,
+      pendingProposals: data.proposalRows.length,
     },
   };
 }

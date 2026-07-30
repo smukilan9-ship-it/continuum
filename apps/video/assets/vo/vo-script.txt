@@ -1,0 +1,108 @@
+CONTINUUM — 120s LAUNCH FILM · VOICEOVER SCRIPT
+
+Target pace ~120 wpm. Charon reads at ~120 wpm. Copy is sized against that, measured, not against the 135 a human would hit.
+
+Generating with Gemini TTS in AI Studio? Use assets/vo/GEMINI-TTS.md —
+it carries the per-line prompts, voice settings and export steps.
+
+Deliver takes to: assets/vo/final/lineNN.wav  (mp3/aiff/m4a also accepted)
+Then re-run: node scripts/make-vo.mjs
+
+Two fifths of this film carries no narration. The gaps are deliberate: the
+approval click at 1:34 and the Claude Desktop proof at 1:37-1:47 play almost
+dry. Do not fill them.
+
+------------------------------------------------------------------------
+
+[01]  00:00:00:12 → 00:00:09:12   (9.0s)   S0 Hook
+
+      Every tool sees a sliver of your work. So your attention goes to re-explaining what already exists.
+
+      Direction: state this as a relaxed observation, not a complaint — no sympathy or heaviness in the voice
+
+[02]  00:00:09:21 → 00:00:13:06   (3.5s)   S0 Problem statement
+
+      Information is abundant. Learning is fragmented.
+
+      Direction: two separate statements of fact, even and unhurried, with no lift on either
+
+[03]  00:00:14:09 → 00:00:20:24   (6.5s)   S1 Today
+
+      One workspace. One memory. Continuum opens on your next step, and why.
+
+      Direction: assured and clear, with a small warm lift on the last few words
+
+[04]  00:00:21:00 → 00:00:33:00   (12.0s)   S2a Learn
+
+      It finds the best resource, and shows you why it won. It maps what you know, tests it, and adapts when you get something wrong. Mastery is earned, not assumed.
+
+      Direction: bright and engaged, leaning very lightly on "why" and "adapts"
+
+[05]  00:00:34:00 → 00:00:38:24   (4.8s)   S2b Plan
+
+      Outcomes become a week of work, with proof.
+
+      Direction: brisk and practical, matter-of-fact
+
+[06]  00:00:39:00 → 00:00:54:00   (15.0s)   S2c Library
+
+      This is the live scholarly graph — real papers, real citations. Follow the evidence, keep what matters, and it lands beside your Zotero library, every PDF indexed and searchable.
+
+      Direction: easy and unfussy, letting each clause land without weight
+
+[07]  00:00:55:00 → 00:00:58:24   (3.8s)   S2d Research
+
+      Every claim, tied to its source.
+
+      Direction: clean and declarative, no lift
+
+[08]  00:00:59:00 → 00:01:06:00   (7.0s)   S2e Obsidian
+
+      Your notes don't have to move. Continuum meets them in Obsidian — plain markdown.
+
+      Direction: friendly and reassuring, as if casually removing an objection
+
+[09]  00:01:07:00 → 00:01:12:00   (5.0s)   S2f Memory
+
+      Everything becomes memory — retrieved by relevance, not replay.
+
+      Direction: clean and certain, leaning very lightly on "relevance"
+
+[10]  00:01:13:00 → 00:01:19:15   (6.5s)   S2g Code
+
+      Run it. When it breaks, the fix cites the paper you just saved.
+
+      Direction: easy and slightly wry, as if it were unremarkable
+
+[11]  00:01:20:00 → 00:01:24:09   (4.3s)   S2h Connections
+
+      It connects to what you already use —
+
+      Direction: light and easy, with a small forward lift at the end
+
+[12]  00:01:25:00 → 00:01:33:00   (8.0s)   S3a Assistant
+
+      — so the assistant already knows your mastery, your weak spots, your deadline. It proposes. You approve.
+
+      Direction: even and warm, landing the last two sentences cleanly and lightly
+
+[13]  00:01:37:00 → 00:01:43:15   (6.5s)   S3c Claude MCP
+
+      And because Continuum speaks MCP, that memory follows you into Claude itself.
+
+      Direction: relaxed and confident — understated, as if it were obvious
+
+[14]  00:01:43:27 → 00:01:47:00   (3.1s)   S3c payoff
+
+      Nothing. Explained. Twice.
+
+      Direction: three separate words, each landing on its own — flat, certain, no rise
+
+[15]  00:01:49:00 → 00:01:58:00   (9.0s)   S4 Close
+
+      Information is abundant. Learning is fragmented. Continuum is one workspace — where knowledge compounds.
+
+      Direction: warm and assured, clean and even — confident rather than solemn
+
+------------------------------------------------------------------------
+Narration slots: 104.0s of 120s

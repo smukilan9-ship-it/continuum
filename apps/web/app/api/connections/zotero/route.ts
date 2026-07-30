@@ -1,47 +1,127 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { embedDocuments, embeddingConfiguration } from "@continuum/ai";
-import { NeonRepository } from "@continuum/db";
+import { getDatabase, NeonRepository, sql } from "@continuum/db";
 import { chunkDocument, contentHash, sanitizeUntrustedContent } from "@continuum/retrieval";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { openCredential, sealCredential } from "@/lib/credential-vault";
+import {
+  listZoteroCollections,
+  listZoteroItems,
+  listZoteroLibraries,
+  newZoteroIntegrationId,
+  normalizeZoteroItem,
+  storedZoteroPdf,
+  syncZoteroLibraries,
+  validateZoteroKey,
+  zoteroPrefix,
+  zoteroRequest,
+  type ZoteroCredential,
+  type ZoteroItem,
+} from "@/lib/zotero";
 import { getStore } from "@/lib/store";
+import { logRequestFailure, publicErrorMessage } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const requestSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("validate"), apiKey: z.string().trim().min(16).max(256) }),
   z.object({ action: z.literal("connect"), apiKey: z.string().trim().min(16).max(256) }),
   z.object({ action: z.literal("sync") }),
+  z.object({
+    action: z.literal("save_item"),
+    libraryType: z.enum(["user", "group"]),
+    libraryId: z.string().regex(/^\d+$/),
+    itemKey: z.string().regex(/^[A-Z0-9]{8}$/i),
+  }),
   z.object({ action: z.literal("disconnect") }),
 ]);
 
-type ZoteroCredential = { apiKey: string; userId: string; username?: string; lastSyncAt?: string; syncCursor?: number; libraryVersion?: number; pendingLibraryVersion?: number };
-type ZoteroKey = { userID?: number; username?: string; access?: { user?: { library?: boolean; files?: boolean } } };
-type ZoteroItem = { key?: string; version?: number; data?: { key?: string; itemType?: string; title?: string; abstractNote?: string; dateModified?: string; date?: string; DOI?: string; url?: string; publicationTitle?: string; creators?: Array<{ firstName?: string; lastName?: string; name?: string }> } };
-
-async function zoteroFetch<T>(path: string, apiKey: string) {
-  const response = await fetch(`https://api.zotero.org${path}`, { headers: { "Zotero-API-Key": apiKey, "Zotero-API-Version": "3" }, cache: "no-store" });
-  const payload = await response.json().catch(() => ({})) as T & { message?: string };
-  if (!response.ok) throw new Error(response.status === 403 ? "This Zotero key cannot read the private library" : payload.message ?? `Zotero returned ${response.status}`);
-  return payload;
+function libraryQuery(url: URL) {
+  const libraryType = url.searchParams.get("libraryType") === "group" ? "group" as const : "user" as const;
+  const libraryId = url.searchParams.get("libraryId")?.slice(0, 100);
+  if (!libraryId || !/^\d+$/.test(libraryId)) throw new Error("Choose a valid Zotero library.");
+  return { libraryType, libraryId };
 }
 
-async function zoteroFetchPage(path: string, apiKey: string) {
-  const response = await fetch(`https://api.zotero.org${path}`, { headers: { "Zotero-API-Key": apiKey, "Zotero-API-Version": "3" }, cache: "no-store" });
-  const payload = await response.json().catch(() => []) as ZoteroItem[] & { message?: string };
-  if (!response.ok) throw new Error(response.status === 403 ? "This Zotero key cannot read the private library" : payload.message ?? `Zotero returned ${response.status}`);
-  return {
-    items: Array.isArray(payload) ? payload : [],
-    total: Number(response.headers.get("total-results") ?? payload.length),
-    libraryVersion: Number(response.headers.get("last-modified-version") ?? 0),
-  };
+async function credentialFor(userId: string) {
+  const connection = await new NeonRepository().getIntegration(userId, "zotero");
+  if (!connection) throw new Error("Zotero is not connected.");
+  try {
+    return { connection, credential: openCredential<ZoteroCredential>(connection.encryptedCredentials) };
+  } catch {
+    throw new Error("The saved Zotero credential can no longer be decrypted. Replace it with a new dedicated Zotero API key.");
+  }
 }
 
-function zoteroSourceId(userId: string, itemKey: string) {
-  return `source_zotero_${createHash("sha256").update(`${userId}:${itemKey}`).digest("hex").slice(0, 24)}`;
+export async function GET(request: Request) {
+  const user = await getRequestUser(request);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const rate = await enforceRateLimit(request, "zotero-read", 120, 60_000, user.id);
+  if (!rate.allowed) return NextResponse.json({ error: "Too many Zotero requests" }, { status: 429 });
+  try {
+    const { credential } = await credentialFor(user.id);
+    const url = new URL(request.url);
+    const resource = url.searchParams.get("resource") ?? "libraries";
+    const libraries = await listZoteroLibraries(credential);
+    if (resource === "libraries") {
+      const state = await getDatabase().execute(sql`
+        select library_type, library_id, library_version, last_sync_at, last_error, stats
+        from zotero_libraries where user_id = ${user.id} and deleted = false
+      `);
+      return NextResponse.json({ libraries, syncState: state.rows }, { headers: { "cache-control": "private, no-store" } });
+    }
+    const library = libraryQuery(url);
+    const accessible = libraries.find((entry) => entry.type === library.libraryType && entry.id === library.libraryId);
+    if (!accessible) return NextResponse.json({ error: "This key cannot access the selected library." }, { status: 403 });
+    if (resource === "collections") {
+      const page = await listZoteroCollections(credential, library.libraryType, library.libraryId);
+      const collections = page.data.map((collection) => ({
+        key: collection.key,
+        name: String(collection.data.name ?? "Untitled collection"),
+        parentCollectionKey: typeof collection.data.parentCollection === "string" ? collection.data.parentCollection : undefined,
+        version: collection.version,
+      }));
+      return NextResponse.json({ collections, total: page.total, libraryVersion: page.libraryVersion }, { headers: { "cache-control": "private, no-store" } });
+    }
+    if (resource === "attachment") {
+      const itemKey = url.searchParams.get("itemKey");
+      if (!itemKey || !/^[A-Z0-9]{8}$/i.test(itemKey)) return NextResponse.json({ error: "Invalid attachment key" }, { status: 400 });
+      const pdf = await storedZoteroPdf({ credential, ...library, itemKey, allowFiles: accessible.permissions.files });
+      return new Response(pdf.bytes, {
+        headers: {
+          "content-type": "application/pdf",
+          "content-disposition": `inline; filename="${pdf.filename.replaceAll('"', "")}"`,
+          "cache-control": "private, no-store",
+          "x-content-type-options": "nosniff",
+          ...(pdf.etag ? { etag: pdf.etag } : {}),
+        },
+      });
+    }
+    const page = await listZoteroItems({
+      credential,
+      ...library,
+      collectionKey: url.searchParams.get("collectionKey")?.slice(0, 20),
+      parentItemKey: url.searchParams.get("parentItemKey")?.slice(0, 20),
+      query: url.searchParams.get("q")?.slice(0, 300),
+      itemType: url.searchParams.get("itemType")?.slice(0, 100),
+      sort: z.enum(["dateModified", "dateAdded", "title", "creator", "date"]).catch("dateModified").parse(url.searchParams.get("sort")),
+      direction: url.searchParams.get("direction") === "asc" ? "asc" : "desc",
+      start: Number(url.searchParams.get("start") ?? 0),
+      limit: Number(url.searchParams.get("limit") ?? 50),
+    });
+    return NextResponse.json({
+      items: page.data.map(normalizeZoteroItem),
+      total: page.total,
+      libraryVersion: page.libraryVersion,
+    }, { headers: { "cache-control": "private, no-store" } });
+  } catch (error) {
+    logRequestFailure("zotero_request_failed", {}, error);
+    return NextResponse.json({ error: publicErrorMessage(error, "Zotero request failed") }, { status: 502 });
+  }
 }
 
 export async function POST(request: Request) {
@@ -53,73 +133,101 @@ export async function POST(request: Request) {
   const parsed = requestSchema.safeParse(await request.json().catch(() => undefined));
   if (!parsed.success) return NextResponse.json({ error: "Invalid Zotero action" }, { status: 400 });
   const repo = new NeonRepository();
-
   try {
     if (parsed.data.action === "disconnect") return NextResponse.json({ disconnected: await repo.revokeIntegration(user.id, "zotero") });
-    if (parsed.data.action === "connect") {
-      const key = await zoteroFetch<ZoteroKey>("/keys/current", parsed.data.apiKey);
-      if (!key.userID || !key.access?.user?.library) return NextResponse.json({ error: "Create a Zotero key with personal-library read access" }, { status: 403 });
+    if (parsed.data.action === "validate" || parsed.data.action === "connect") {
+      const key = await validateZoteroKey(parsed.data.apiKey);
+      if (parsed.data.action === "validate") {
+        return NextResponse.json({
+          valid: true,
+          username: key.username ?? `Zotero user ${key.userID}`,
+          groupsAvailable: Boolean(key.access?.groups),
+          filesAvailable: Boolean(key.access?.user?.files),
+          message: "Zotero accepted this dedicated read key. It has not been saved yet.",
+        });
+      }
       const existing = await repo.getIntegration(user.id, "zotero");
       await repo.upsertIntegration({
-        id: existing?.id ?? `integration_zotero_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+        id: existing?.id ?? newZoteroIntegrationId(),
         userId: user.id,
         provider: "zotero",
-        encryptedCredentials: sealCredential({ apiKey: parsed.data.apiKey, userId: String(key.userID), username: key.username }),
-        scopes: ["library:read"],
+        encryptedCredentials: sealCredential({ apiKey: parsed.data.apiKey, userId: String(key.userID), username: key.username } satisfies ZoteroCredential),
+        scopes: ["library:read", ...(key.access?.user?.files ? ["files:read"] : []), ...(key.access?.groups ? ["groups:read"] : [])],
       });
       return NextResponse.json({ connected: true, username: key.username ?? `Zotero user ${key.userID}` });
     }
-
-    const connection = await repo.getIntegration(user.id, "zotero");
-    if (!connection) return NextResponse.json({ error: "Zotero is not connected" }, { status: 409 });
-    const credential = openCredential<ZoteroCredential>(connection.encryptedCredentials);
-    const cursor = Math.max(0, credential.syncCursor ?? 0);
-    const query = new URLSearchParams({ limit: "100", start: String(cursor), format: "json" });
-    if (credential.libraryVersion) query.set("since", String(credential.libraryVersion));
-    const page = await zoteroFetchPage(`/users/${encodeURIComponent(credential.userId)}/items/top?${query}`, credential.apiKey);
-    const items = page.items;
-    const existingDocuments = new Map((await repo.listSyncedDocuments(user.id, "zotero")).map((document) => [document.externalId, document]));
-    const store = getStore(user.id);
-    let unchanged = 0;
-    const prepared: Array<{ itemKey: string; item: ZoteroItem; data: NonNullable<ZoteroItem["data"]>; title: string; digest: string; sourceId: string; chunks: ReturnType<typeof chunkDocument> }> = [];
-    for (const item of items) {
-      const data = item.data;
-      const itemKey = item.key ?? data?.key;
-      const title = data?.title?.normalize("NFKC").trim();
-      if (!data || !itemKey || !title || data.itemType === "note") continue;
-      const creators = (data.creators ?? []).map((creator) => creator.name ?? [creator.firstName, creator.lastName].filter(Boolean).join(" ")).filter(Boolean).join(", ");
-      const raw = [`# ${title}`, creators && `Authors: ${creators}`, data.date && `Date: ${data.date}`, data.publicationTitle && `Publication: ${data.publicationTitle}`, data.DOI && `DOI: ${data.DOI}`, data.url && `URL: ${data.url}`, data.abstractNote && `\nAbstract\n${data.abstractNote}`].filter(Boolean).join("\n");
-      const sanitized = sanitizeUntrustedContent(raw).sanitized.slice(0, 30_000);
-      const digest = contentHash(sanitized);
-      if (existingDocuments.get(itemKey)?.contentHash === digest) { unchanged += 1; continue; }
-      const sourceId = zoteroSourceId(user.id, itemKey);
-      const chunks = chunkDocument({ id: sourceId, title, text: sanitized, version: item.version ?? 1, deleted: false });
-      prepared.push({ itemKey, item, data, title, digest, sourceId, chunks });
+    const { connection, credential } = await credentialFor(user.id);
+    if (parsed.data.action === "save_item") {
+      const saveRequest = parsed.data;
+      const libraries = await listZoteroLibraries(credential);
+      if (!libraries.some((library) => library.type === saveRequest.libraryType && library.id === saveRequest.libraryId)) {
+        return NextResponse.json({ error: "This key cannot access the selected library." }, { status: 403 });
+      }
+      const remote = (await zoteroRequest<ZoteroItem>(
+        `${zoteroPrefix(saveRequest.libraryType, saveRequest.libraryId)}/items/${saveRequest.itemKey}`,
+        credential.apiKey,
+      )).data;
+      const item = normalizeZoteroItem(remote);
+      if (item.itemType === "attachment" || item.itemType === "note") return NextResponse.json({ error: "Save the parent bibliographic item instead." }, { status: 400 });
+      const raw = [
+        `# ${item.title}`,
+        item.creators.length ? `Authors: ${item.creators.map((creator) => creator.name).join(", ")}` : "",
+        item.date ? `Date: ${item.date}` : "",
+        item.publicationTitle ? `Publication: ${item.publicationTitle}` : "",
+        item.doi ? `DOI: ${item.doi}` : "",
+        item.url ? `URL: ${item.url}` : "",
+        item.abstract ? `\nAbstract\n${item.abstract}` : "",
+      ].filter(Boolean).join("\n");
+      const sanitized = sanitizeUntrustedContent(raw).sanitized.slice(0, 100_000);
+      const sourceId = `source_zotero_${createHash("sha256").update(`${user.id}:${saveRequest.libraryType}:${saveRequest.libraryId}:${item.key}`).digest("hex").slice(0, 24)}`;
+      const chunks = chunkDocument({ id: sourceId, title: item.title, text: sanitized, version: item.version || 1, deleted: false });
+      let embeddings: number[][] | undefined;
+      if (embeddingConfiguration()) {
+        try { embeddings = await embedDocuments(chunks.map((chunk) => chunk.text)); } catch { /* Lexical retrieval remains available. */ }
+      }
+      await getStore(user.id).saveSource({
+        id: sourceId,
+        userId: user.id,
+        title: item.title,
+        mimeType: "application/vnd.zotero.item+json",
+        contentHash: contentHash(sanitized),
+        sourceVersion: item.version || 1,
+        parserVersion: "zotero-web-api-v3",
+        chunks: chunks.map((chunk, index) => ({
+          id: chunk.id,
+          sourceId,
+          passage: chunk.passage,
+          content: chunk.text,
+          contentHash: chunk.contentHash,
+          ...(embeddings?.[index] ? { embedding: embeddings[index] } : {}),
+        })),
+      });
+      await getDatabase().execute(sql`
+        update zotero_items set source_id = ${sourceId}, updated_at = now(), version = version + 1
+        where user_id = ${user.id} and library_type = ${saveRequest.libraryType}
+          and library_id = ${saveRequest.libraryId} and item_key = ${item.key}
+      `);
+      return NextResponse.json({ saved: true, sourceId, title: item.title });
     }
-    const flattened = prepared.flatMap((entry) => entry.chunks.map((chunk) => chunk.text));
-    let embeddings: number[][] = [];
-    if (store.kind === "neon" && embeddingConfiguration() && flattened.length) {
-      try { embeddings = await embedDocuments(flattened.slice(0, 80)); } catch { /* Keyword retrieval remains available and sync still completes. */ }
-    }
-    let embeddingOffset = 0;
-    for (const entry of prepared) {
-      const entryEmbeddings = embeddings.slice(embeddingOffset, embeddingOffset + entry.chunks.length);
-      embeddingOffset += entry.chunks.length;
-      await store.saveSource({ id: entry.sourceId, userId: user.id, title: entry.title, mimeType: "application/vnd.zotero.item+json", contentHash: entry.digest, sourceVersion: entry.item.version ?? 1, parserVersion: "zotero-web-api-v3", chunks: entry.chunks.map((chunk, index) => ({ id: chunk.id, sourceId: entry.sourceId, passage: chunk.passage, content: chunk.text, contentHash: chunk.contentHash, ...(entryEmbeddings[index] ? { embedding: entryEmbeddings[index] } : {}) })) });
-      await repo.upsertSyncedDocument({ id: `sync_zotero_${createHash("sha256").update(`${user.id}:${entry.itemKey}`).digest("hex").slice(0, 24)}`, userId: user.id, provider: "zotero", externalId: entry.itemKey, path: entry.title, mimeType: "application/vnd.zotero.item+json", contentHash: entry.digest, sourceId: entry.sourceId, remoteUpdatedAt: entry.data.dateModified ?? new Date().toISOString(), metadata: { zoteroVersion: entry.item.version ?? 0, itemType: entry.data.itemType ?? "item", doi: entry.data.DOI, url: entry.data.url } });
-    }
-    const indexed = prepared.length;
+    const results = await syncZoteroLibraries(user.id, credential);
     const lastSyncAt = new Date().toISOString();
-    const nextCursor = cursor + items.length;
-    const hasMore = nextCursor < page.total;
-    const observedVersion = Math.max(credential.pendingLibraryVersion ?? 0, page.libraryVersion);
-    const nextCredential: ZoteroCredential = hasMore
-      ? { ...credential, lastSyncAt, syncCursor: nextCursor, pendingLibraryVersion: observedVersion }
-      : { ...credential, lastSyncAt, syncCursor: 0, libraryVersion: observedVersion || credential.libraryVersion, pendingLibraryVersion: undefined };
-    await repo.upsertIntegration({ id: connection.id, userId: user.id, provider: "zotero", encryptedCredentials: sealCredential(nextCredential), scopes: connection.scopes });
-    await store.appendEvent({ type: "integration.zotero.synced", summary: `Zotero sync indexed ${indexed} changed item${indexed === 1 ? "" : "s"}.`, entityIds: [], payload: { indexed, unchanged, total: items.length } });
-    return NextResponse.json({ indexed, unchanged, scanned: items.length, remaining: Math.max(0, page.total - nextCursor), hasMore, lastSyncAt });
+    await repo.upsertIntegration({
+      id: connection.id,
+      userId: user.id,
+      provider: "zotero",
+      encryptedCredentials: sealCredential({ ...credential, lastSyncAt }),
+      scopes: connection.scopes,
+    });
+    return NextResponse.json({
+      synced: true,
+      libraries: results,
+      changedCollections: results.reduce((total, result) => total + result.changedCollections, 0),
+      changedItems: results.reduce((total, result) => total + result.changedItems, 0),
+      deleted: results.reduce((total, result) => total + result.deleted, 0),
+      lastSyncAt,
+    });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Zotero action failed" }, { status: 502 });
+    logRequestFailure("zotero_action_failed", {}, error);
+    return NextResponse.json({ error: publicErrorMessage(error, "Zotero action failed") }, { status: 502 });
   }
 }

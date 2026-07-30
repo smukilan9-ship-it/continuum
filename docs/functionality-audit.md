@@ -15,7 +15,7 @@ freshly registered account (not the demo fixture), except where noted.
 | Login | `/login` | `/api/auth/login` → scrypt verify + lockout | **WORKS** | 200 + session cookie |
 | Session | — | `/api/auth/session` → `getSession` | **WORKS** | ~100 ms read, no write-on-read |
 | Logout | sidebar | `/api/auth/logout` → `revokeSession` | **WORKS (code)** | revokes token hash |
-| Google OpenID sign-in | `/login` | `/api/auth/google/*` | **UNVERIFIABLE** | needs `GOOGLE_CLIENT_ID/SECRET` |
+| Account recovery | Future work | managed verified recovery flow | **DEFERRED** | hackathon accounts use username/password only; users must retain their password |
 | New-user empty states | all screens | SSR snapshot | **WORKS** | verified in browser (fresh account) |
 | Public registration gate | — | `publicRegistrationEnabled` | **WORKS (code)** | off in prod unless enabled |
 
@@ -61,8 +61,7 @@ freshly registered account (not the demo fixture), except where noted.
 | Feature | Backend | Status |
 |---|---|---|
 | Deterministic plan + repair | `packages/domain` scheduler | **WORKS** (5 unit tests) |
-| Propose → confirm → commit (separate writes) | `propose/confirm/commit_schedule_change` | **WORKS (code)** — no external calendar write claimed |
-| Google Calendar two-way sync | `/api/connections/google/*` | **UNVERIFIABLE** — needs Google OAuth creds |
+| Propose → confirm → commit (separate writes) | `propose/confirm/commit_schedule_change` | **WORKS (code)** — writes the internal schedule only |
 
 ## Memory
 | Feature | Backend | Status |
@@ -89,7 +88,6 @@ freshly registered account (not the demo fixture), except where noted.
 |---|---|---|
 | Claude remote MCP | **WORKS** | full protocol + continuity verified |
 | Zotero library indexing | **UNVERIFIABLE** | needs API key; encrypted, paginated code path present |
-| Google Calendar | **UNVERIFIABLE** | needs OAuth creds |
 | NotebookLM | **WORKS (code)** as export/handoff | correctly labeled a handoff (no consumer API) |
 | Obsidian plugin | **WORKS (code)** | SecretStorage, folder-first opt-in, safe generated-note writes |
 | Ollama (local/private) | **DEMO-WIRED** | browser→loopback, hostname-validated; needs a live Ollama |

@@ -64,6 +64,27 @@ memory   0.15 0.15 0.15
   structured generation deliberately routes around them to Groq, and the
   deadline guarantees a fast failure if every provider is unhealthy.
 
+## 2026-07-26 production-readiness sample
+
+The current browser gate adds a repeatable Code-path budget on a warm local dev
+server with real Neon authentication and the direct browser runtime:
+
+| Metric | Observed |
+|---|---:|
+| Code screen ready after navigation | 1,028 ms |
+| Code editor ready | 1,030 ms |
+| Median of three trivial JavaScript executions | 71 ms |
+| Trivial execution timeouts | 0 / 3 |
+| Local code-file preview ready | 77 ms |
+| Cached return navigation to Code | 57 ms |
+
+The test uses `console.log("continuum performance")` and does not intercept or
+invoke `/api/code`; this verifies that a print statement stays on the direct
+runtime path. A separate live Ollama streamed probe completed in 2.57 seconds
+including a 2.36-second model load. These are local samples, not production
+p95s. The optimized build reports 126 kB first-load JavaScript for workspace
+routes and 103 kB shared.
+
 ## Tunables added
 - `AI_STRUCTURED_DEADLINE_MS` (default 40000) — overall structured-generation budget.
 - `AI_ATTEMPT_TIMEOUT_MS` (default 20000) — per-attempt timeout.

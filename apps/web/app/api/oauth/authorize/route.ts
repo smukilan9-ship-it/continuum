@@ -1,76 +1,151 @@
-import { issueToken, mcpResource, safeOAuthRedirect, validMcpResource, verifyClientRegistration } from "@/lib/oauth";
 import { scopes as supportedScopes } from "@continuum/domain";
 import { NextResponse } from "next/server";
-import { enforceRateLimit, getRequestUser, safeReturnTo, sameOriginWrite } from "@/lib/auth";
+import {
+  issueToken,
+  parseAuthorizationRequest,
+  verifyToken,
+} from "@/lib/oauth";
+import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
+import { getStore } from "@/lib/store";
 
-function escapeHtml(value: string) {
-  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+const protocolFields = [
+  "client_id",
+  "redirect_uri",
+  "response_type",
+  "scope",
+  "state",
+  "code_challenge",
+  "code_challenge_method",
+  "resource",
+] as const;
+
+function consentPage(request: Request, error?: string) {
+  const source = new URL(request.url);
+  const target = new URL("/oauth/authorize", source.origin);
+  for (const name of protocolFields) {
+    const value = source.searchParams.get(name);
+    if (value) target.searchParams.set(name, value);
+  }
+  if (error) target.searchParams.set("oauth_error", error);
+  return target;
 }
 
-function registeredClient(clientId: string, redirectUri: string) {
-  const client = verifyClientRegistration(clientId);
-  if (!safeOAuthRedirect(redirectUri) || !client.redirectUris.includes(redirectUri)) throw new Error("Redirect URI was not registered by this OAuth client");
-  return client;
+function formProtocolUrl(request: Request, form: FormData) {
+  const url = new URL(request.url);
+  for (const name of protocolFields) {
+    const value = form.get(name);
+    if (value) url.searchParams.set(name, String(value));
+  }
+  return url;
+}
+
+function formError(request: Request, form: FormData | undefined, code: string, status = 400) {
+  if (form?.get("ux") === "continuum") {
+    const source = formProtocolUrl(request, form);
+    const target = consentPage(new Request(source), code);
+    return NextResponse.redirect(target, 303);
+  }
+  return NextResponse.json({ error: "invalid_request", error_description: code }, { status });
 }
 
 export async function GET(request: Request) {
   const user = await getRequestUser(request);
   if (!user) {
     const url = new URL(request.url);
-    const login = new URL("/login", url.origin);
-    login.searchParams.set("returnTo", safeReturnTo(`${url.pathname}${url.search}`));
-    return NextResponse.redirect(login);
+    const target = new URL("/login", url.origin);
+    target.searchParams.set("returnTo", `/oauth/authorize${url.search}`);
+    return NextResponse.redirect(target);
   }
-  const rate = await enforceRateLimit(request, "oauth-authorize-view", Number(process.env.OAUTH_AUTHORIZATIONS_PER_HOUR ?? 60), 60 * 60_000, user.id);
-  if (!rate.allowed) return NextResponse.json({ error: "slow_down", error_description: "Authorization rate limit exceeded" }, { status: 429, headers: { "retry-after": "3600" } });
-  const params = new URL(request.url).searchParams;
-  const redirectUri = params.get("redirect_uri") ?? "";
-  let client;
-  try { client = registeredClient(params.get("client_id") ?? "", redirectUri); } catch (error) {
-    return NextResponse.json({ error: "invalid_client", error_description: error instanceof Error ? error.message : "OAuth client validation failed" }, { status: 400 });
+  const rate = await enforceRateLimit(
+    request,
+    "oauth-authorize-view",
+    Number(process.env.OAUTH_AUTHORIZATIONS_PER_HOUR ?? 60),
+    60 * 60_000,
+    user.id,
+  );
+  if (!rate.allowed) return NextResponse.redirect(consentPage(request, "rate_limited"), 303);
+  try {
+    await parseAuthorizationRequest(new URL(request.url).searchParams, supportedScopes, request.url);
+  } catch {
+    return NextResponse.redirect(consentPage(request, "invalid_request"), 303);
   }
-  const challenge = params.get("code_challenge") ?? "";
-  const state = params.get("state") ?? "";
-  const resource = params.get("resource") ?? mcpResource();
-  if (params.get("response_type") !== "code" || params.get("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(challenge) || state.length > 512 || !validMcpResource(resource)) {
-    return NextResponse.json({ error: "invalid_request", error_description: "A safe redirect URI and PKCE S256 challenge are required" }, { status: 400 });
-  }
-  const requested = (params.get("scope") ?? "memory:read goals:read learning:read research:read schedule:read").split(" ").filter((scope) => supportedScopes.includes(scope as (typeof supportedScopes)[number]) && client.scopes.includes(scope));
-  const fields = ["client_id", "redirect_uri", "state", "code_challenge"].map((name) => `<input type="hidden" name="${name}" value="${escapeHtml(params.get(name) ?? "")}">`).join("") + `<input type="hidden" name="resource" value="${escapeHtml(resource)}">`;
-  const choices = requested.map((scope) => `<label class="scope"><input type="checkbox" name="scope" value="${escapeHtml(scope)}" checked><span><strong>${escapeHtml(scope)}</strong><small>${scope.endsWith(":write") || scope.endsWith(":commit") || scope.endsWith(":propose") || scope.endsWith(":invoke") ? "Can change state or use a provider" : "Read-only access"}</small></span></label>`).join("");
-  return new NextResponse(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Authorize Continuum</title><style>body{font-family:system-ui;background:#0b2748;color:#14283d;display:grid;place-items:center;min-height:100vh;margin:0;padding:20px}.card{width:min(480px,calc(100vw - 40px));background:#fff;padding:30px;border-radius:14px}.eyebrow{font-size:11px;letter-spacing:1.3px;color:#25679f;font-weight:800}h1{font-weight:750;font-size:30px;line-height:1.15;margin:9px 0}p{font-size:14px;line-height:1.55;color:#60758a}.scopes{display:grid;gap:7px;background:#edf5fc;padding:12px;border-radius:8px;max-height:290px;overflow:auto}.scope{display:flex;align-items:center;gap:10px;background:#fff;padding:10px;border:1px solid #d7e4ef;border-radius:7px}.scope input{width:17px;height:17px}.scope span{display:flex;flex-direction:column;gap:2px}.scope strong{font-size:13px}.scope small{font-size:11px;color:#60758a}.actions{display:grid;grid-template-columns:1fr 2fr;gap:8px;margin-top:15px}button{height:43px;border:0;border-radius:8px;background:#15548d;color:white;font-weight:700;cursor:pointer}button.deny{background:#edf2f6;color:#52687d}.note{font-size:11px;text-align:center;margin-top:11px}</style></head><body><main class="card"><span class="eyebrow">CONTINUUM · MCP OAUTH</span><h1>Share only what this assistant needs.</h1><p><strong>${escapeHtml(client.clientName)}</strong> will return to <strong>${escapeHtml(new URL(redirectUri).hostname)}</strong> after this decision. Uncheck any permission you do not want to grant.</p><form method="post">${fields}<div class="scopes">${choices || "<p>This client requested no supported scopes.</p>"}</div><div class="actions"><button class="deny" type="submit" name="decision" value="deny">Deny</button><button type="submit" name="decision" value="approve">Approve selected</button></div></form><p class="note">Short-lived access token · PKCE protected · revocable</p></main></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+  return NextResponse.redirect(consentPage(request), 307);
 }
 
 export async function POST(request: Request) {
-  if (!sameOriginWrite(request)) return NextResponse.json({ error: "invalid_request", error_description: "Cross-origin authorization was rejected" }, { status: 403 });
+  const startedAt = Date.now();
+  const requestId = request.headers.get("x-vercel-id");
+  if (!sameOriginWrite(request)) {
+    return NextResponse.json(
+      { error: "invalid_request", error_description: "Cross-origin authorization was rejected" },
+      { status: 403 },
+    );
+  }
   const user = await getRequestUser(request);
   if (!user) return NextResponse.json({ error: "login_required" }, { status: 401 });
-  const rate = await enforceRateLimit(request, "oauth-authorize", Number(process.env.OAUTH_AUTHORIZATIONS_PER_HOUR ?? 60), 60 * 60_000, user.id);
-  if (!rate.allowed) return NextResponse.json({ error: "slow_down", error_description: "Authorization rate limit exceeded" }, { status: 429, headers: { "retry-after": "3600" } });
+  const rate = await enforceRateLimit(
+    request,
+    "oauth-authorize",
+    Number(process.env.OAUTH_AUTHORIZATIONS_PER_HOUR ?? 60),
+    60 * 60_000,
+    user.id,
+  );
+  if (!rate.allowed) return formError(request, undefined, "rate_limited", 429);
+
   const form = await request.formData().catch(() => undefined);
-  if (!form) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
-  const redirectUri = String(form.get("redirect_uri") ?? "");
-  const challenge = String(form.get("code_challenge") ?? "");
-  const clientId = String(form.get("client_id") ?? "");
-  const resource = String(form.get("resource") ?? mcpResource());
-  let client;
-  try { client = registeredClient(clientId, redirectUri); } catch (error) {
-    return NextResponse.json({ error: "invalid_client", error_description: error instanceof Error ? error.message : "OAuth client validation failed" }, { status: 400 });
+  if (!form) return formError(request, form, "invalid_form");
+
+  let authorization;
+  try {
+    authorization = await parseAuthorizationRequest(formProtocolUrl(request, form).searchParams, supportedScopes, request.url);
+  } catch {
+    return formError(request, form, "invalid_request");
   }
-  if (!/^[A-Za-z0-9_-]{43}$/.test(challenge) || String(form.get("state") ?? "").length > 512 || !validMcpResource(resource)) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
-  if (form.get("decision") === "deny") {
-    const target = new URL(redirectUri);
-    target.searchParams.set("error", "access_denied");
-    const state = form.get("state");
-    if (state) target.searchParams.set("state", String(state));
+
+  try {
+    const consent = await verifyToken(String(form.get("consent_token") ?? ""), "consent", request.url);
+    const consentMatches = consent.sub === user.id
+      && consent.clientId === authorization.clientId
+      && consent.redirectUri === authorization.redirectUri
+      && consent.codeChallenge === authorization.codeChallenge
+      && consent.state === authorization.state
+      && consent.resource === authorization.resource
+      && authorization.requestedScopes.every((scope) => consent.scopes.includes(scope));
+    if (!consentMatches) return formError(request, form, "invalid_state");
+    await getStore(user.id).consumeOAuthGrant(consent.jti, "consent");
+
+    if (form.get("decision") === "deny") {
+      const target = new URL(authorization.redirectUri);
+      target.searchParams.set("error", "access_denied");
+      target.searchParams.set("state", authorization.state);
+      console.info(JSON.stringify({ level: "info", message: "oauth_authorization_denied", requestId, client: authorization.client.clientName, redirectHost: target.host, ms: Date.now() - startedAt }));
+      return NextResponse.redirect(target, 303);
+    }
+    if (form.get("decision") !== "approve") return formError(request, form, "invalid_decision");
+
+    const selectedScopes = form.getAll("selected_scope")
+      .map(String)
+      .filter((scope) => consent.scopes.includes(scope) && authorization.client.scopes.includes(scope));
+    const now = Math.floor(Date.now() / 1000);
+    const code = await issueToken({
+      // Already validated against the serving origin by the parse above.
+      trustedResource: true,
+      sub: user.id,
+      clientId: authorization.clientId,
+      scopes: selectedScopes,
+      type: "code",
+      exp: now + 300,
+      redirectUri: authorization.redirectUri,
+      codeChallenge: authorization.codeChallenge,
+      resource: authorization.resource,
+    });
+    const target = new URL(authorization.redirectUri);
+    target.searchParams.set("code", code);
+    target.searchParams.set("state", authorization.state);
+    console.info(JSON.stringify({ level: "info", message: "oauth_authorization_code_issued", requestId, client: authorization.client.clientName, redirectHost: target.host, ms: Date.now() - startedAt }));
     return NextResponse.redirect(target, 303);
+  } catch (error) {
+    console.error(JSON.stringify({ level: "error", message: "oauth_authorization_failed", requestId, error: error instanceof Error ? error.message : "Unknown authorization failure", ms: Date.now() - startedAt }));
+    return formError(request, form, "authorization_failed");
   }
-  const requestedScopes = form.getAll("scope").map(String).filter((scope) => supportedScopes.includes(scope as (typeof supportedScopes)[number]) && client.scopes.includes(scope));
-  const now = Math.floor(Date.now() / 1000);
-  const code = await issueToken({ sub: user.id, clientId, scopes: requestedScopes, type: "code", exp: now + 300, redirectUri, codeChallenge: challenge, resource });
-  const target = new URL(redirectUri);
-  target.searchParams.set("code", code);
-  const state = form.get("state");
-  if (state) target.searchParams.set("state", String(state));
-  return NextResponse.redirect(target, 303);
 }

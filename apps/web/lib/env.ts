@@ -21,7 +21,7 @@ export function applicationBaseUrl(env: NodeJS.ProcessEnv = process.env) {
 }
 
 export function publicRegistrationEnabled(env: NodeJS.ProcessEnv = process.env) {
-  return env.NODE_ENV !== "production" || env.PUBLIC_REGISTRATION_ENABLED === "true";
+  return env.PUBLIC_REGISTRATION_ENABLED !== "false";
 }
 
 /**
@@ -31,8 +31,9 @@ export function publicRegistrationEnabled(env: NodeJS.ProcessEnv = process.env) 
  * path using the seeded demo account.
  */
 export function demoLoginEnabled(env: NodeJS.ProcessEnv = process.env) {
-  if (env.DEMO_LOGIN_ENABLED === "false") return false;
-  return env.NODE_ENV !== "production" || env.DEMO_LOGIN_ENABLED === "true";
+  const configured = env.ENABLE_DEMO_LOGIN ?? env.DEMO_LOGIN_ENABLED;
+  if (configured === "false") return false;
+  return env.NODE_ENV !== "production" || configured === "true";
 }
 
 /** The demo account password used by the seed command and the demo-login route. */
@@ -56,7 +57,6 @@ export function environmentStatus(env: NodeJS.ProcessEnv = process.env) {
     let integrationKeyBytes = 0;
     try { integrationKeyBytes = /^[a-f0-9]{64}$/i.test(integrationKey) ? 32 : Buffer.from(integrationKey, "base64url").length; } catch { integrationKeyBytes = 0; }
     if (integrationKeyBytes !== 32) errors.push("INTEGRATION_CREDENTIAL_ENCRYPTION_KEY must contain exactly 32 random bytes");
-    if (Boolean(env.GOOGLE_CLIENT_ID) !== Boolean(env.GOOGLE_CLIENT_SECRET)) errors.push("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be configured together");
   }
   return {
     ready: errors.length === 0,

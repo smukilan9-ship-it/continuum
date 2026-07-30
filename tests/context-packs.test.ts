@@ -30,6 +30,16 @@ describe("context packs", () => {
     const markdown = contextPackMarkdown(getContextPack(state, "goal:goal_sql"));
     expect(markdown).toContain('continuum_context_pack: "goal:goal_sql"');
     expect(markdown).toContain("continuum_generated: true");
-    expect(markdown).toContain('"goal_sql"');
+
+    // The stable identifier lives in the frontmatter, which is the anchor
+    // Obsidian sync matches on. This previously asserted `"goal_sql"` appeared
+    // in the body, which was only true because the body was a JSON dump of the
+    // whole pack; §9.9 replaced that with prose sections, and raw record ids are
+    // deliberately no longer written into readable copy. The identity guarantee
+    // is unchanged — it is checked one line above — and the body is now asserted
+    // to carry real content rather than a serialised object.
+    expect(markdown).toContain("# SQL mastery");
+    expect(markdown).toContain("- Window functions — planned");
+    expect(markdown).not.toContain("```json");
   });
 });

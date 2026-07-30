@@ -20,11 +20,11 @@ describe("same-origin write protection", () => {
     expect(sameOriginWrite(request("https://continuum.example/api/state", "https://evil.example"), env)).toBe(false);
   });
 
-  it("does not trust a forged production request host", () => {
-    expect(sameOriginWrite(request("https://evil.example/api/state", "https://evil.example"), {
+  it("accepts a deployment's exact same origin without baking its hostname into the bundle", () => {
+    expect(sameOriginWrite(request("https://continuum-feature-abc.vercel.app/api/state", "https://continuum-feature-abc.vercel.app"), {
       NODE_ENV: "production",
       APP_BASE_URL: "https://continuum.example",
-    })).toBe(false);
+    })).toBe(true);
   });
 
   it("accepts loopback host and port differences only in development", () => {

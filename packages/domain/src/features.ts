@@ -1,4 +1,4 @@
-export const featureNames = ["calendar", "zotero", "obsidian", "chatgpt_ui", "voice", "demo_token"] as const;
+export const featureNames = ["zotero", "obsidian", "chatgpt_ui", "voice", "demo_token"] as const;
 export type FeatureName = (typeof featureNames)[number];
 
 export function getFeatureFlags(value = process.env.FEATURE_FLAGS ?? "") {

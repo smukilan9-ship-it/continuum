@@ -28,8 +28,8 @@ claim — and it shares that context with the AI tools you already use.
 
 3. **Plan (Goals) — SAT progress.** Open **Plan**. The SAT goal reads *Raise SAT score
    from 1520 to 1570+*, **42%**, due **Oct 3, 2026**, with a task list showing one task
-   already **done** (error-log review) and one **in progress**. A Google Calendar strip
-   shows commitments protecting study time.
+   already **done** (error-log review) and one **in progress**. The weekly plan
+   shows fixed commitments protecting study time.
 
 4. **Learn — SQL verified checkpoint.** Open **Learn** / **Memory**. The SQL unit shows a
    **verified checkpoint** on `commit()` / `rollback()` and a **resolved misconception**

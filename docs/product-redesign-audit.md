@@ -104,7 +104,7 @@ targets. Final evidence is catalogued in `visual-qa.md`.
 - Three tall goal cards, each with repeated progress metadata and task rows, dominate the page. Today, deadlines, calendar constraints, week load, and conflicts are not visible as a coherent schedule.
 - New task and new goal are presented before the user can see workload or the current week.
 - Mobile stretches to roughly 4,050px and makes cross-goal prioritisation impossible. Repeated “Mark done” buttons and status pills create control noise.
-- Google Calendar state is at least labelled accurately; the redesign must retain that honesty and call seeded blocks internal constraints.
+- Seeded blocks must be labelled as internal constraints, and the planner must remain useful without an external service.
 
 ### Learn
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { enforceRateLimit, getRequestUser } from "@/lib/auth";
 import { searchLearningVideos, youtubeSearchHandoffUrl, YouTubeProviderError } from "@/lib/youtube";
+import { getYouTubeApiKeyForUser } from "@/lib/provider-credentials";
 
 export const runtime = "nodejs";
 
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
   try {
     const videos = await searchLearningVideos({
       query: parsed.data.q,
-      apiKey: process.env.YOUTUBE_API_KEY,
+      apiKey: await getYouTubeApiKeyForUser(user.id),
       trustedChannelIds: (process.env.YOUTUBE_TRUSTED_CHANNEL_IDS ?? "").split(","),
     });
     return NextResponse.json({ videos, status: "live", handoffUrl, note: "YouTube provider results are not curriculum claims. Trusted-channel badges require an operator allowlist." });

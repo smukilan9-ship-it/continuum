@@ -109,7 +109,78 @@ export function getContextPack(state: Record<string, unknown>, packId: string, m
   return { ...pack, metadata: { ...pack.metadata, estimatedTokens: tokens(content), recordCount: Object.values(content).reduce<number>((total, value) => total + (Array.isArray(value) ? value.length : 1), 0) }, content, contextPolicy: `${pack.contextPolicy} Truncated to the requested ${maxTokens}-token estimate.` };
 }
 
+export interface PackSection {
+  heading: string;
+  items: string[];
+  /** Items beyond the rendered slice, so truncation is stated rather than silent. */
+  remaining: number;
+}
+
+const SECTION_HEADING: Record<string, string> = {
+  goal: "Goal",
+  project: "Project",
+  tasks: "Open work",
+  schedule: "Scheduled study",
+  decisions: "What you've decided",
+  claims: "Claims and their evidence",
+  notes: "Notes",
+  sources: "Sources",
+  papers: "Papers",
+  learningStates: "What you're learning",
+  recentReceipts: "Recent session summaries",
+  misconceptions: "Open misconceptions",
+  goals: "Goals",
+  blocks: "Study blocks",
+};
+
+function humanKey(key: string) {
+  return SECTION_HEADING[key] ?? key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
+
+/**
+ * Turn a record into the one line a person would read. Falls back through the
+ * fields that actually carry meaning rather than printing the object.
+ */
+function bullet(value: unknown): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string") return value.trim() || undefined;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(bullet).filter(Boolean).join(", ") || undefined;
+  if (typeof value !== "object") return undefined;
+
+  const row = value as Row;
+  const headline = ["title", "text", "summary", "name", "question", "content"].map((key) => string(row, key)).find(Boolean);
+  const qualifier = ["outcome", "status", "phase", "reasoning", "purpose", "explanation"].map((key) => string(row, key)).find(Boolean);
+  if (headline) return qualifier && qualifier !== headline ? `${headline} — ${qualifier}` : headline;
+  if (qualifier) return qualifier;
+
+  // Nothing nameable: describe the fields rather than dumping the object.
+  const keys = Object.keys(row).filter((key) => !/^(id|.*Id|createdAt|updatedAt|deleted|version)$/.test(key));
+  return keys.length ? keys.slice(0, 4).map(humanKey).join(", ") : undefined;
+}
+
+/**
+ * §9.9: a pack is rendered as sections with headings and bullets. The page used
+ * to show `JSON.stringify(pack.content, null, 2)` in a <pre> as its primary
+ * content (C21), and the Markdown export wrapped the same JSON in a code fence,
+ * so neither format was actually readable by the person the pack is about.
+ */
+export function renderPackSections(pack: ContextPack, perSection = 8): PackSection[] {
+  const sections: PackSection[] = [];
+  for (const [key, value] of Object.entries(pack.content)) {
+    if (Array.isArray(value)) {
+      const items = value.map(bullet).filter((item): item is string => Boolean(item));
+      if (items.length) sections.push({ heading: humanKey(key), items: items.slice(0, perSection), remaining: Math.max(0, items.length - perSection) });
+      continue;
+    }
+    const single = bullet(value);
+    if (single) sections.push({ heading: humanKey(key), items: [single], remaining: 0 });
+  }
+  return sections;
+}
+
 export function contextPackMarkdown(pack: ContextPack) {
+  const sections = renderPackSections(pack, 50);
   return [
     "---",
     `continuum_context_pack: ${JSON.stringify(pack.metadata.id)}`,
@@ -125,14 +196,12 @@ export function contextPackMarkdown(pack: ContextPack) {
     "",
     `> ${pack.contextPolicy}`,
     "",
-    "## Provenance",
-    ...pack.metadata.provenance.map((item) => `- ${item}`),
-    "",
-    "## Compact context",
-    "",
-    "```json",
-    JSON.stringify(pack.content, null, 2),
-    "```",
-    "",
+    ...sections.flatMap((section) => [
+      `## ${section.heading}`,
+      "",
+      ...section.items.map((item) => `- ${item}`),
+      ...(section.remaining ? [`- …and ${section.remaining} more`] : []),
+      "",
+    ]),
   ].join("\n");
 }

@@ -1,11 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  deriveConversationTitle,
   DEMO_USER_ID,
   NeonRepository,
+  type AssistantSessionMemory,
+  type ImageExtractionWrite,
   type PaperWrite,
+  type QuestionBankAttemptWrite,
+  type QuestionBankWrite,
   type SourceWrite,
   type StoredMemoryChunk,
   type StoredSourceChunk,
+  type WorkspaceSearchHit,
 } from "@continuum/db";
 import { assertScheduleCommitAllowed, curatedResourceRegistry, recommendBestResource, updateMastery, type ResourceNeed } from "@continuum/domain";
 import { contentHash } from "@continuum/retrieval";
@@ -42,26 +48,69 @@ export type StoreWriteResult = {
   summary: string;
 };
 
+/**
+ * What "Forget" removed. `kind` says which of the two shapes on `/context` the
+ * caller named; the counts are what the route reports back, so the confirmation
+ * can state a fact rather than an assumption.
+ */
+export type ForgottenMemory = { id: string; kind: "record" | "passage"; records: number; passages: number };
+
+/** Ownership is checked on both the source and the destination project. */
+export type SourceAssignment =
+  | { status: "ok"; source: { id: string; title: string; projectId: string | null } }
+  | { status: "source_not_found" }
+  | { status: "project_not_found" };
+
 export interface Store {
   readonly kind: "memory" | "neon";
   readonly userId: string;
   snapshot(): Promise<Record<string, unknown>>;
+  /** @deprecated §16.3 — screens fetch their own data; use the per-route reads. */
   workspace(view: string): Promise<Record<string, unknown>>;
+  /** Only what the shell chrome needs (§8.1), so it never depends on a screen. */
+  shellData(): Promise<{ goals: Array<Record<string, unknown>>; projects: Array<Record<string, unknown>>; pendingProposals: number }>;
+  homeData(): Promise<Record<string, unknown>>;
+  goalView(goalId: string, view: "overview" | "plan" | "study" | "sources"): Promise<Record<string, unknown> | undefined>;
+  projectView(projectId: string, view: "overview" | "claims" | "sources" | "decisions"): Promise<Record<string, unknown> | undefined>;
+  updateGoal(goalId: string, changes: { title?: string; outcome?: string; targetDate?: string; status?: string; deleted?: boolean }): Promise<Record<string, unknown> | undefined>;
   read(name: string, args: Record<string, unknown>, clientId?: string): Promise<unknown>;
   write(name: string, args: Record<string, unknown>, now: string, surface?: "mcp" | "standalone_app", clientId?: string): Promise<StoreWriteResult>;
   appendEvent(input: AppEventInput, now?: string): Promise<DemoEvent>;
   getLearningState(conceptId?: string): Promise<MasteryState>;
   saveLearningState(state: MasteryState): Promise<void>;
   ensureConcept(topic: string): Promise<string>;
+  saveQuestionBank(questionBank: QuestionBankWrite): Promise<unknown>;
+  listQuestionBanks(): Promise<unknown[]>;
+  getQuestionBank(questionBankId: string): Promise<Record<string, unknown> | undefined>;
+  saveQuestionBankAttempt(attempt: QuestionBankAttemptWrite): Promise<unknown>;
+  getImageExtractionByHash(contentHash: string): Promise<Record<string, unknown> | undefined>;
+  getImageExtraction(extractionId: string): Promise<Record<string, unknown> | undefined>;
+  saveImageExtraction(extraction: ImageExtractionWrite): Promise<unknown>;
+  createAssistantSession(input: { id: string; title: string }): Promise<unknown>;
+  listAssistantSessions(): Promise<unknown[]>;
+  getAssistantSession(sessionId: string): Promise<Record<string, unknown> | undefined>;
+  appendAssistantMessage(input: { id: string; sessionId: string; role: "user" | "assistant"; content: string; provider?: string; model?: string; metadata?: Record<string, unknown> }): Promise<unknown>;
+  updateAssistantSession(sessionId: string, input: { title?: string; pinned?: boolean; archived?: boolean; groupLabel?: string | null; contextSettings?: Record<string, unknown> }): Promise<unknown>;
+  updateAssistantSessionMemory(sessionId: string, memory: AssistantSessionMemory): Promise<unknown>;
+  deleteAssistantSession(sessionId: string): Promise<boolean>;
   findSourceByHash(hash: string): Promise<{ id: string; title: string } | undefined>;
   saveSource(source: SourceWrite): Promise<void>;
-  listSources(): Promise<unknown[]>;
+  /** `all` includes session-only attachments (§11.4); the Library uses the default. */
+  listSources(scope?: "library" | "all"): Promise<unknown[]>;
   savePaper(paper: PaperWrite): Promise<{ paper: unknown; duplicate: boolean }>;
   listPapers(projectId?: string): Promise<unknown[]>;
-  listSourceChunks(): Promise<StoredSourceChunk[]>;
+  /** All of the user's passages, or one source's (§13.3 source detail). */
+  listSourceChunks(sourceId?: string): Promise<StoredSourceChunk[]>;
   deleteSource(sourceId: string): Promise<{ id: string; title: string; storagePath?: string } | undefined>;
+  /** Re-files an indexed source into a project the caller owns, or unfiles it. */
+  assignSourceToProject(sourceId: string, projectId: string | null): Promise<SourceAssignment>;
+  /** The stored original, including the storage path listings deliberately strip. */
+  getSourceOriginal(sourceId: string): Promise<{ id: string; title: string; mimeType: string; storagePath?: string } | undefined>;
   vectorSearch(embedding: number[], limit: number): Promise<StoredSourceChunk[]>;
   searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }): Promise<StoredMemoryChunk[]>;
+  searchWorkspace(input: { query: string; kinds?: string[]; limit?: number }): Promise<WorkspaceSearchHit[]>;
+  /** §9.9 AC-CX3 — permanently excludes one remembered record from retrieval. */
+  forgetMemoryRecord(recordId: string): Promise<ForgottenMemory | undefined>;
   saveReceipt(receipt: OutcomeReceipt, clientId?: string): Promise<void>;
   listReceipts(limit?: number): Promise<unknown[]>;
   createMilestone(input: { id: string; goalId: string; title: string; order: number; dueAt?: string }, now: string): Promise<void>;
@@ -76,7 +125,7 @@ export interface Store {
   oauthGrantUnavailable(jti: string): Promise<boolean>;
   revokeOAuthGrant(jti: string): Promise<void>;
   consumeOAuthCode(jti: string): Promise<void>;
-  consumeOAuthGrant(jti: string, kind: "code" | "refresh"): Promise<void>;
+  consumeOAuthGrant(jti: string, kind: "code" | "refresh" | "consent"): Promise<void>;
 }
 
 function opaqueId(prefix: string) {
@@ -98,6 +147,21 @@ function toEvent(userId: string, input: AppEventInput, now = new Date().toISOStr
 
 function estimateTokens(value: string) {
   return Math.max(1, Math.ceil(value.length / 4));
+}
+
+async function settleWithin<T>(promise: Promise<T>, milliseconds: number): Promise<T | undefined> {
+  let cancelTimeout: (() => void) | undefined;
+  try {
+    return await Promise.race([
+      promise.catch(() => undefined),
+      new Promise<undefined>((resolve) => {
+        const timeout = setTimeout(resolve, milliseconds);
+        cancelTimeout = () => clearTimeout(timeout);
+      }),
+    ]);
+  } finally {
+    cancelTimeout?.();
+  }
 }
 
 function compactToBudget<T>(value: T, maxTokens: number): T {
@@ -128,9 +192,38 @@ function compactToBudget<T>(value: T, maxTokens: number): T {
   return clone;
 }
 
+/** The `superseded = false and deleted = false` predicate the Neon reads use. */
+function current(row: { superseded?: boolean; deleted?: boolean }) {
+  return !row.superseded && !row.deleted;
+}
+
 function memoryContent(input: AppEventInput) {
   const durablePayload = Object.fromEntries(Object.entries(input.payload).filter(([key]) => !["rawConversation", "transcript", "fullText"].includes(key)));
   return `${input.summary}\nType: ${input.type}\n${JSON.stringify(durablePayload)}`.slice(0, 12_000);
+}
+
+function publicQuestionBanksForWorkspace(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map((bank) => {
+    if (!bank || typeof bank !== "object") return bank;
+    const row = bank as Record<string, unknown>;
+    const questions = Array.isArray(row.questions) ? row.questions : [];
+    return {
+      ...row,
+      questions: questions.map((question) => {
+        if (!question || typeof question !== "object") return question;
+        const item = question as Record<string, unknown>;
+        return {
+          id: item.id,
+          prompt: item.prompt,
+          type: item.type,
+          choices: item.choices,
+          difficulty: item.difficulty,
+          sourceChunkIds: item.sourceChunkIds,
+        };
+      }),
+    };
+  });
 }
 
 function assertRecentConfirmation(confirmedAt: unknown, now: string) {
@@ -151,14 +244,104 @@ class MemoryStore implements Store {
     const selected: Record<string, string[]> = {
       today: ["goals", "tasks", "projects", "receipts", "resourceActivities", "schedule"],
       goals: ["goals", "tasks", "schedule"],
-      learn: ["goals", "tasks", "learningState", "resourceActivities", "receipts"],
+      learn: ["goals", "tasks", "taskDependencies", "learningState", "resourceActivities", "questionBanks", "receipts"],
       research: ["goals", "tasks", "projects", "decisions", "claims", "notes", "sources", "papers"],
-      memory: ["goals", "tasks", "projects", "decisions", "claims", "notes", "sources", "papers", "learningState", "memoryChunks", "receipts", "events", "schedule"],
+      memory: ["goals", "tasks", "projects", "decisions", "claims", "notes", "sources", "papers", "learningState", "memoryChunks", "memoryRecords", "receipts", "events", "schedule"],
       activity: ["proposals", "events"],
       code: ["goals", "tasks", "projects", "learningState", "receipts"],
+      assistant: ["goals", "tasks", "projects", "learningState", "sources", "papers", "receipts", "assistantSessions"],
       integrations: [],
+      library: ["goals", "projects"],
     };
-    return Object.fromEntries((selected[view] ?? []).map((key) => [key, state[key]]));
+    return Object.fromEntries((selected[view] ?? []).map((key) => [
+      key,
+      key === "questionBanks" ? publicQuestionBanksForWorkspace(state[key])
+        // Forgotten memory never reaches a screen, exactly as the Neon reads
+        // filter on `superseded`/`deleted` (§9.9 AC-CX3).
+        : key === "memoryRecords" ? demoStore.memoryRecords.filter(current)
+        : key === "memoryChunks" ? demoStore.memoryChunks.filter(current)
+        : state[key],
+    ]));
+  }
+
+  async shellData() {
+    const rows = demoStore.goals;
+    return {
+      goals: rows.map((goal) => ({ id: goal.id, title: goal.title, progress: goal.progress ?? 0, targetDate: goal.targetDate, status: goal.status ?? "active" })),
+      projects: demoStore.projects.map((project) => ({ id: project.id, title: project.title, goalId: project.goalId })),
+      pendingProposals: demoStore.proposals.filter((proposal) => proposal.status === "pending").length,
+    };
+  }
+
+  async homeData() {
+    const open = demoStore.tasks.filter((task) => task.status !== "done");
+    return {
+      nextTask: open[0] ?? null,
+      todayBlocks: demoStore.schedule.slice(0, 6),
+      weekBlocks: demoStore.schedule,
+      goals: demoStore.goals,
+      milestones: this.memoryMilestones,
+      tasks: demoStore.tasks,
+      resumeItems: demoStore.resourceActivities.filter((activity) => activity.status !== "verified").slice(0, 3),
+      receipts: demoStore.receipts.slice(0, 4),
+      weekSummary: { scheduledBlocks: demoStore.schedule.length, openTasks: open.length, goals: demoStore.goals.length },
+    };
+  }
+
+  async goalView(goalId: string, view: "overview" | "plan" | "study" | "sources") {
+    const goal = demoStore.goals.find((row) => row.id === goalId);
+    if (!goal) return undefined;
+    const goalTasks = demoStore.tasks.filter((task) => task.goalId === goalId);
+    const goalProjects = demoStore.projects.filter((project) => project.goalId === goalId);
+    const projectIds = new Set(goalProjects.map((project) => String(project.id)));
+    if (view === "plan") {
+      const taskIds = new Set(goalTasks.map((task) => String(task.id)));
+      return { goal, tasks: goalTasks, taskDependencies: demoStore.taskDependencies.filter((row) => taskIds.has(String(row.taskId))), schedule: demoStore.schedule.filter((block) => taskIds.has(String(block.taskId))) };
+    }
+    if (view === "study") {
+      return { goal, concepts: [], learningStates: [demoStore.learningState], questionBanks: publicQuestionBanksForWorkspace(demoStore.questionBanks), resourceActivities: demoStore.resourceActivities.filter((activity) => activity.goalId === goalId) };
+    }
+    if (view === "sources") {
+      return {
+        goal,
+        projects: goalProjects,
+        sources: demoStore.sources.filter((source) => (source.retention ?? "library") === "library" && source.projectId && projectIds.has(source.projectId)),
+        papers: demoStore.papers.filter((paper) => projectIds.has(String(paper.projectId))),
+      };
+    }
+    const taskIdSet = new Set(goalTasks.map((task) => String(task.id)));
+    return {
+      goal,
+      milestones: this.memoryMilestones.filter((milestone) => milestone.goalId === goalId),
+      tasks: goalTasks,
+      taskDependencies: demoStore.taskDependencies.filter((row) => taskIdSet.has(String(row.taskId))),
+      projects: goalProjects,
+      concepts: [],
+      events: demoStore.events.slice(0, 5),
+      openQuestions: [],
+      receipts: demoStore.receipts.filter((receipt) => receipt.goalId === goalId).slice(0, 10),
+    };
+  }
+
+  async projectView(projectId: string, view: "overview" | "claims" | "sources" | "decisions") {
+    const project = demoStore.projects.find((row) => row.id === projectId);
+    if (!project) return undefined;
+    const owned = <T extends Record<string, unknown>>(rows: T[]) => rows.filter((row) => row.projectId === projectId);
+    if (view === "claims") return { project, claims: owned(demoStore.claims) };
+    if (view === "decisions") return { project, decisions: owned(demoStore.decisions) };
+    if (view === "sources") return { project, sources: demoStore.sources.filter((source) => source.projectId === projectId && (source.retention ?? "library") === "library"), papers: owned(demoStore.papers) };
+    return { project, decisions: owned(demoStore.decisions).slice(0, 10), claims: owned(demoStore.claims).slice(0, 10), notes: owned(demoStore.notes).slice(0, 10) };
+  }
+
+  async updateGoal(goalId: string, changes: { title?: string; outcome?: string; targetDate?: string; status?: string; deleted?: boolean }) {
+    const goal = demoStore.goals.find((row) => row.id === goalId);
+    if (!goal) return undefined;
+    Object.assign(goal, Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined)), { updatedAt: new Date().toISOString() });
+    if (changes.deleted) {
+      demoStore.goals = demoStore.goals.filter((row) => row.id !== goalId);
+      demoStore.tasks = demoStore.tasks.filter((task) => task.goalId !== goalId);
+    }
+    return goal;
   }
 
   async read(name: string, args: Record<string, unknown>) {
@@ -242,7 +425,7 @@ class MemoryStore implements Store {
       proposal.status = proposal.kind === "schedule_change" ? "confirmed" : "applied";
       proposal.confirmedAt = now;
       await this.appendEvent({ type: "proposal.confirmed", summary: String(proposal.summary), entityIds: [String(proposal.id)], payload: proposal, source: { surface } }, now);
-      return { data: proposal, entityIds: [String(proposal.id)], summary: proposal.kind === "schedule_change" ? "Confirmed the schedule proposal; a separate commit is still required." : "Confirmed and applied the approved fields to the shared state." };
+      return { data: proposal, entityIds: [String(proposal.id)], summary: proposal.kind === "schedule_change" ? "Approved. Nothing moves in your week until you confirm the new times." : "Approved, and your work is updated." };
     }
     if (name === "reject_proposal") {
       const proposal = demoStore.proposals.find((item) => item.id === args.proposalId && item.status === "pending");
@@ -265,8 +448,8 @@ class MemoryStore implements Store {
         if (!Number.isFinite(Date.parse(start)) || !Number.isFinite(Date.parse(end)) || Date.parse(start) >= Date.parse(end) || Date.parse(end) - Date.parse(start) > 8 * 3600_000) throw new Error("Schedule proposal contains an invalid time range");
         demoStore.schedule = demoStore.schedule.map((block) => block.id === proposal.entityId ? { ...block, start, end, ...(typeof changes.status === "string" ? { status: changes.status } : {}), proposalId: proposal.id, committedAt: now } : block);
         proposal.status = "applied";
-        await this.appendEvent({ type: "schedule.change.committed", summary: "Committed one confirmed schedule block update.", entityIds: [String(proposal.id), String(proposal.entityId)], payload: { externalCalendarWrite: false }, source: { surface } }, now);
-        return { data: { proposal, blocks: demoStore.schedule.filter((block) => block.id === proposal.entityId), externalCalendarWrite: false }, entityIds: [String(proposal.id), String(proposal.entityId)], summary: "Committed the confirmed internal schedule change." };
+        await this.appendEvent({ type: "schedule.change.committed", summary: "Committed one confirmed schedule block update.", entityIds: [String(proposal.id), String(proposal.entityId)], payload: { savedInContinuum: true }, source: { surface } }, now);
+        return { data: { proposal, blocks: demoStore.schedule.filter((block) => block.id === proposal.entityId), savedInContinuum: true }, entityIds: [String(proposal.id), String(proposal.entityId)], summary: "Committed the confirmed schedule change in Continuum." };
       }
       const blocks = ((proposal.payload as { changes?: { blocks?: Array<Record<string, unknown>> } }).changes?.blocks ?? []).map((block) => {
         const taskId = String(block.taskId ?? "");
@@ -279,8 +462,8 @@ class MemoryStore implements Store {
       if (!blocks.length) throw new Error("Schedule proposal contains no blocks to commit");
       demoStore.schedule.unshift(...blocks);
       proposal.status = "applied";
-      await this.appendEvent({ type: "schedule.change.committed", summary: `Committed ${blocks.length} confirmed schedule block${blocks.length === 1 ? "" : "s"}.`, entityIds: [String(proposal.id), ...blocks.map((block) => String(block.id))], payload: { externalCalendarWrite: false }, source: { surface } }, now);
-      return { data: { proposal, blocks, externalCalendarWrite: false }, entityIds: [String(proposal.id), ...blocks.map((block) => String(block.id))], summary: "Committed the confirmed internal schedule change." };
+      await this.appendEvent({ type: "schedule.change.committed", summary: `Committed ${blocks.length} confirmed schedule block${blocks.length === 1 ? "" : "s"}.`, entityIds: [String(proposal.id), ...blocks.map((block) => String(block.id))], payload: { savedInContinuum: true }, source: { surface } }, now);
+      return { data: { proposal, blocks, savedInContinuum: true }, entityIds: [String(proposal.id), ...blocks.map((block) => String(block.id))], summary: "Committed the confirmed schedule change in Continuum." };
     }
     if (name === "record_learning_evidence") {
       const attemptId = String(args.attemptId);
@@ -314,25 +497,117 @@ class MemoryStore implements Store {
     const event = toEvent(this.userId, input, now);
     const stored: DemoEvent = { id: event.id, type: event.type, entityIds: input.entityIds, summary: input.summary, payload: event.payload, occurredAt: event.timestamp };
     demoStore.events.unshift(stored);
+    // Materialise the record head exactly as `repo.appendMemoryEvent` does, so
+    // `/context` shows the same six sections locally and `forgetMemoryRecord`
+    // has both shapes to act on in either store (§16.8).
+    const recordId = `record_${event.id.replace(/^event_/, "")}`;
+    const supersededType = event.type.replace(/\.(deleted|superseded)$/, ".saved");
+    for (const existing of demoStore.memoryRecords) {
+      if (existing.type === supersededType && existing.entityId === event.entityId && current(existing)) existing.superseded = true;
+    }
+    if (!event.type.endsWith(".deleted") && !event.type.endsWith(".superseded")) {
+      demoStore.memoryRecords.unshift({ id: recordId, type: event.type, entityId: event.entityId, value: event.payload, sourceEventId: event.id, superseded: false, deleted: false, updatedAt: now });
+    }
     const content = memoryContent(input);
-    demoStore.memoryChunks.unshift({ id: opaqueId("memory"), kind: input.type, content, ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.goalId ? { goalId: input.goalId } : {}), occurredAt: now, importance: input.importance ?? 0.6, tokenEstimate: estimateTokens(content), sourceEventIds: [event.id], metadata: { surface: event.source.surface } });
+    demoStore.memoryChunks.unshift({ id: opaqueId("memory"), recordId, kind: input.type, content, ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.goalId ? { goalId: input.goalId } : {}), occurredAt: now, importance: input.importance ?? 0.6, tokenEstimate: estimateTokens(content), sourceEventIds: [event.id], metadata: { surface: event.source.surface }, superseded: false, deleted: false });
     return stored;
   }
 
   async getLearningState() { return demoStore.learningState; }
   async saveLearningState(state: MasteryState) { demoStore.learningState = state; }
   async ensureConcept(topic: string) { return `concept_${createHash("sha256").update(`${this.userId}:${topic.toLowerCase().trim()}`).digest("hex").slice(0, 20)}`; }
+  async saveQuestionBank(input: QuestionBankWrite) {
+    const now = new Date().toISOString();
+    const value = { ...input, userId: this.userId, createdAt: now, updatedAt: now, version: 1, deleted: false };
+    const index = demoStore.questionBanks.findIndex((item) => item.id === input.id);
+    if (index >= 0) demoStore.questionBanks[index] = { ...demoStore.questionBanks[index], ...value, version: Number(demoStore.questionBanks[index]?.version ?? 1) + 1 };
+    else demoStore.questionBanks.unshift(value);
+    return value;
+  }
+  async listQuestionBanks() { return demoStore.questionBanks.filter((item) => item.userId === this.userId && item.deleted !== true); }
+  async getQuestionBank(questionBankId: string) {
+    const bank = demoStore.questionBanks.find((item) => item.id === questionBankId && item.userId === this.userId && item.deleted !== true);
+    return bank ? { ...bank, attempts: demoStore.questionBankAttempts.filter((item) => item.questionBankId === questionBankId && item.userId === this.userId) } : undefined;
+  }
+  async saveQuestionBankAttempt(input: QuestionBankAttemptWrite) {
+    const bank = demoStore.questionBanks.find((item) => item.id === input.questionBankId && item.userId === this.userId && item.deleted !== true);
+    if (!bank) throw new Error("Question bank not found or not accessible");
+    const now = new Date().toISOString();
+    const value = { ...input, userId: this.userId, createdAt: now, updatedAt: now, version: 1 };
+    const index = demoStore.questionBankAttempts.findIndex((item) => item.id === input.id && item.userId === this.userId);
+    if (index >= 0) demoStore.questionBankAttempts[index] = { ...demoStore.questionBankAttempts[index], ...value, version: Number(demoStore.questionBankAttempts[index]?.version ?? 1) + 1 };
+    else demoStore.questionBankAttempts.unshift(value);
+    Object.assign(bank, { status: input.completedAt ? "completed" : "in_progress", mode: input.mode, updatedAt: now });
+    return value;
+  }
+  async getImageExtractionByHash(contentHash: string) {
+    return demoStore.imageExtractions.find((item) => item.userId === this.userId && item.contentHash === contentHash);
+  }
+  async getImageExtraction(extractionId: string) {
+    return demoStore.imageExtractions.find((item) => item.userId === this.userId && item.id === extractionId);
+  }
+  async saveImageExtraction(input: ImageExtractionWrite) {
+    const now = new Date().toISOString();
+    const value = { ...input, userId: this.userId, createdAt: now, updatedAt: now };
+    const index = demoStore.imageExtractions.findIndex((item) => item.userId === this.userId && item.contentHash === input.contentHash);
+    if (index >= 0) demoStore.imageExtractions[index] = { ...demoStore.imageExtractions[index], ...value };
+    else demoStore.imageExtractions.unshift(value);
+    return value;
+  }
+  async createAssistantSession(input: { id: string; title: string }) {
+    const now = new Date().toISOString();
+    const session = { ...input, userId: this.userId, status: "active", summary: null, decisions: [], unresolvedQuestions: [], createdTasks: [], importantFacts: [], linkedEntityIds: [], memoryExcluded: false, pinned: false, archived: false, groupLabel: null, contextSettings: {}, lastMessageAt: now, createdAt: now, updatedAt: now, version: 1, deleted: false };
+    demoStore.assistantSessions.unshift(session);
+    return session;
+  }
+  async listAssistantSessions() { return demoStore.assistantSessions.filter((item) => item.userId === this.userId && item.deleted !== true).sort((left, right) => Number(Boolean(right.pinned)) - Number(Boolean(left.pinned)) || String(right.lastMessageAt).localeCompare(String(left.lastMessageAt))); }
+  async getAssistantSession(sessionId: string) {
+    const session = demoStore.assistantSessions.find((item) => item.id === sessionId && item.userId === this.userId && item.deleted !== true);
+    return session ? { ...session, messages: demoStore.assistantMessages.filter((item) => item.sessionId === sessionId && item.userId === this.userId) } : undefined;
+  }
+  async appendAssistantMessage(input: { id: string; sessionId: string; role: "user" | "assistant"; content: string; provider?: string; model?: string; metadata?: Record<string, unknown> }) {
+    const session = demoStore.assistantSessions.find((item) => item.id === input.sessionId && item.userId === this.userId && item.deleted !== true);
+    if (!session) throw new Error("Assistant session not found or not accessible");
+    const now = new Date().toISOString();
+    const message = { ...input, userId: this.userId, createdAt: now, updatedAt: now, version: 1 };
+    demoStore.assistantMessages.push(message);
+    Object.assign(session, {
+      lastMessageAt: now,
+      updatedAt: now,
+      ...(deriveConversationTitle(String(session.title ?? ""), input.role, input.content) ? { title: deriveConversationTitle(String(session.title ?? ""), input.role, input.content)! } : {}),
+    });
+    return message;
+  }
+  async updateAssistantSession(sessionId: string, input: { title?: string; pinned?: boolean; archived?: boolean; groupLabel?: string | null; contextSettings?: Record<string, unknown> }) {
+    const session = demoStore.assistantSessions.find((item) => item.id === sessionId && item.userId === this.userId && item.deleted !== true);
+    if (!session) return undefined;
+    Object.assign(session, input, { updatedAt: new Date().toISOString(), version: Number(session.version ?? 1) + 1 });
+    return session;
+  }
+  async updateAssistantSessionMemory(sessionId: string, memory: AssistantSessionMemory) {
+    const session = demoStore.assistantSessions.find((item) => item.id === sessionId && item.userId === this.userId && item.deleted !== true);
+    if (!session) return undefined;
+    Object.assign(session, memory, { updatedAt: new Date().toISOString(), version: Number(session.version ?? 1) + 1 });
+    return session;
+  }
+  async deleteAssistantSession(sessionId: string) {
+    const session = demoStore.assistantSessions.find((item) => item.id === sessionId && item.userId === this.userId && item.deleted !== true);
+    if (!session) return false;
+    Object.assign(session, { deleted: true, memoryExcluded: true, updatedAt: new Date().toISOString() });
+    return true;
+  }
   async findSourceByHash(hash: string) { const source = demoStore.sources.find((item) => item.contentHash === hash); return source ? { id: source.id, title: source.title } : undefined; }
   async saveSource(source: SourceWrite) {
-    demoStore.sources.unshift({ id: source.id, userId: this.userId, ...(source.projectId ? { projectId: source.projectId } : {}), title: source.title, mimeType: source.mimeType, ...(source.storagePath ? { storagePath: source.storagePath } : {}), contentHash: source.contentHash, sourceVersion: source.sourceVersion, parserVersion: source.parserVersion, createdAt: new Date().toISOString() });
+    demoStore.sources.unshift({ id: source.id, userId: this.userId, ...(source.projectId ? { projectId: source.projectId } : {}), title: source.title, mimeType: source.mimeType, ...(source.storagePath ? { storagePath: source.storagePath } : {}), contentHash: source.contentHash, sourceVersion: source.sourceVersion, parserVersion: source.parserVersion, retention: source.retention ?? "library", createdAt: new Date().toISOString() });
     demoStore.chunks.push(...source.chunks.map((chunk) => ({ id: chunk.id, sourceId: source.id, sourceTitle: source.title, passage: chunk.passage, text: chunk.content, contentHash: chunk.contentHash, sourceVersion: source.sourceVersion, deleted: false, reference: `${source.title} · passage ${chunk.passage}` })));
   }
-  async listSources() {
-    return demoStore.sources.map((item) => {
-      const { storagePath, ...metadata } = item;
-      void storagePath;
-      return metadata;
-    });
+  async listSources(scope: "library" | "all" = "library") {
+    return demoStore.sources
+      .filter((item) => scope === "all" || (item.retention ?? "library") === "library")
+      .map((item) => {
+        const { storagePath, ...metadata } = item;
+        return { ...metadata, hasStoredOriginal: Boolean(storagePath) };
+      });
   }
   async savePaper(paper: PaperWrite) {
     const existing = demoStore.papers.find((item) => item.projectId === paper.projectId && ((paper.doi && String(item.doi ?? "").toLowerCase() === paper.doi.toLowerCase()) || String(item.title ?? "").toLowerCase() === paper.title.toLowerCase()));
@@ -342,12 +617,84 @@ class MemoryStore implements Store {
     return { paper: saved, duplicate: false };
   }
   async listPapers(projectId?: string) { return demoStore.papers.filter((paper) => !projectId || paper.projectId === projectId); }
-  async listSourceChunks() { return demoStore.chunks; }
+  async listSourceChunks(sourceId?: string) { return demoStore.chunks.filter((chunk) => !sourceId || chunk.sourceId === sourceId); }
   async deleteSource(sourceId: string) { const source = demoStore.sources.find((item) => item.id === sourceId); if (!source) return undefined; demoStore.sources = demoStore.sources.filter((item) => item.id !== sourceId); demoStore.chunks = demoStore.chunks.filter((chunk) => chunk.sourceId !== sourceId); return { id: source.id, title: source.title, ...(source.storagePath ? { storagePath: source.storagePath } : {}) }; }
+  /**
+   * The local mirror of `repo.assignSourceToProject`. The demo store holds one
+   * identity, so "exists" and "is mine" are the same question here; the Neon
+   * implementation checks the project's `user_id` explicitly.
+   */
+  async assignSourceToProject(sourceId: string, projectId: string | null): Promise<SourceAssignment> {
+    if (projectId && !demoStore.projects.some((project) => project.id === projectId)) return { status: "project_not_found" };
+    const source = demoStore.sources.find((item) => item.id === sourceId && item.userId === this.userId);
+    if (!source) return { status: "source_not_found" };
+    if (projectId) source.projectId = projectId; else delete source.projectId;
+    return { status: "ok", source: { id: source.id, title: source.title, projectId } };
+  }
+  async getSourceOriginal(sourceId: string) {
+    const source = demoStore.sources.find((item) => item.id === sourceId && item.userId === this.userId);
+    return source ? { id: source.id, title: source.title, mimeType: source.mimeType, ...(source.storagePath ? { storagePath: source.storagePath } : {}) } : undefined;
+  }
   async vectorSearch() { return []; }
   async searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }) {
     const query = input.query.toLowerCase();
-    return demoStore.memoryChunks.filter((chunk) => (!input.goalId || chunk.goalId === input.goalId) && (!input.projectId || chunk.projectId === input.projectId) && (!input.types?.length || input.types.includes(chunk.kind)) && chunk.content.toLowerCase().includes(query)).slice(0, input.limit ?? 8);
+    return demoStore.memoryChunks.filter((chunk) => current(chunk) && (!input.goalId || chunk.goalId === input.goalId) && (!input.projectId || chunk.projectId === input.projectId) && (!input.types?.length || input.types.includes(chunk.kind)) && chunk.content.toLowerCase().includes(query)).slice(0, input.limit ?? 8);
+  }
+  /** The local mirror of `repo.forgetMemoryRecord` — same two flags, same reach. */
+  async forgetMemoryRecord(recordId: string): Promise<ForgottenMemory | undefined> {
+    const record = demoStore.memoryRecords.find((row) => row.id === recordId && current(row));
+    const chunk = record ? undefined : demoStore.memoryChunks.find((row) => row.id === recordId && current(row));
+    if (!record && !chunk) return undefined;
+    const eventIds = new Set((record ? [record.sourceEventId] : chunk?.sourceEventIds ?? []).filter(Boolean));
+    const forget = (row: { superseded?: boolean; deleted?: boolean }) => { row.superseded = true; row.deleted = true; };
+
+    const passages = demoStore.memoryChunks.filter((row) => current(row) && (
+      row.id === recordId
+      || (record ? row.recordId === record.id : false)
+      || row.sourceEventIds.some((id) => eventIds.has(id))
+    ));
+    const records = demoStore.memoryRecords.filter((row) => current(row) && (row.id === recordId || eventIds.has(row.sourceEventId)));
+    passages.forEach(forget);
+    records.forEach(forget);
+    return { id: recordId, kind: record ? "record" : "passage", records: records.length, passages: passages.length };
+  }
+  /**
+   * The local-development mirror of `repo.searchWorkspace` (§8.4). It searches
+   * the same nine kinds over the in-memory store so the palette behaves
+   * identically without a database — the dual implementation §16.8 requires.
+   */
+  async searchWorkspace(input: { query: string; kinds?: string[]; limit?: number }) {
+    const trimmed = input.query.trim().slice(0, 200);
+    if (trimmed.length < 2) return [];
+    const needle = trimmed.toLowerCase();
+    const bounded = Math.max(1, Math.min(input.limit ?? 20, 50));
+    const wanted = (kind: string) => !input.kinds?.length || input.kinds.includes(kind);
+    const matches = (...values: Array<unknown>) => values.some((value) => typeof value === "string" && value.toLowerCase().includes(needle));
+    const snippet = (value: unknown) => {
+      const flat = String(value ?? "").replace(/\s+/g, " ").trim();
+      const at = flat.toLowerCase().indexOf(needle);
+      if (at < 0) return flat.slice(0, 160);
+      const from = Math.max(0, at - 40);
+      return `${from > 0 ? "…" : ""}${flat.slice(from, from + 160)}${from + 160 < flat.length ? "…" : ""}`;
+    };
+    const stamp = (row: Record<string, unknown>) => String(row.updatedAt ?? row.createdAt ?? row.occurredAt ?? new Date(0).toISOString());
+    const hits: WorkspaceSearchHit[] = [];
+    const goalTitle = (goalId: unknown) => String(demoStore.goals.find((goal) => goal.id === goalId)?.title ?? "Goal");
+    const projectTitle = (projectId: unknown) => String(demoStore.projects.find((project) => project.id === projectId)?.title ?? "Research project");
+    if (wanted("goal")) for (const goal of demoStore.goals) if (matches(goal.title, goal.outcome)) hits.push({ kind: "goal", id: String(goal.id), title: String(goal.title ?? "Untitled goal"), snippet: snippet(goal.outcome), context: "Goal", updatedAt: stamp(goal) });
+    if (wanted("task")) for (const task of demoStore.tasks) if (matches(task.title)) hits.push({ kind: "task", id: String(task.id), title: String(task.title ?? "Untitled task"), snippet: snippet(task.description), context: goalTitle(task.goalId), parentId: task.goalId ? String(task.goalId) : undefined, updatedAt: stamp(task) });
+    if (wanted("project")) for (const project of demoStore.projects) if (matches(project.title, project.purpose)) hits.push({ kind: "project", id: String(project.id), title: String(project.title ?? "Untitled project"), snippet: snippet(project.purpose), context: "Research project", parentId: project.goalId ? String(project.goalId) : undefined, updatedAt: stamp(project) });
+    if (wanted("source")) for (const source of demoStore.sources) if (matches(source.title)) hits.push({ kind: "source", id: source.id, title: source.title, snippet: "", context: "Source", updatedAt: source.createdAt });
+    if (wanted("paper")) for (const paper of demoStore.papers) if (matches(paper.title, paper.doi)) hits.push({ kind: "paper", id: String(paper.id), title: String(paper.title ?? "Untitled paper"), snippet: [Array.isArray(paper.authors) ? paper.authors.slice(0, 3).join(", ") : "", paper.year].filter(Boolean).join(" · "), context: projectTitle(paper.projectId), parentId: paper.projectId ? String(paper.projectId) : undefined, updatedAt: stamp(paper) });
+    if (wanted("conversation")) for (const session of demoStore.assistantSessions) if (matches(session.title, session.summary)) hits.push({ kind: "conversation", id: String(session.id), title: String(session.title ?? "Conversation"), snippet: snippet(session.summary), context: "Conversation", updatedAt: String(session.lastMessageAt ?? stamp(session)) });
+    if (wanted("note")) for (const note of demoStore.notes) if (matches(note.text)) hits.push({ kind: "note", id: String(note.id), title: snippet(note.text).slice(0, 80), snippet: snippet(note.text), context: projectTitle(note.projectId), parentId: note.projectId ? String(note.projectId) : undefined, updatedAt: stamp(note) });
+    if (wanted("memory")) for (const chunk of demoStore.memoryChunks) if (current(chunk) && matches(chunk.content)) hits.push({ kind: "memory", id: chunk.id, title: snippet(chunk.content).slice(0, 80), snippet: snippet(chunk.content), context: `Remembered · ${chunk.kind.replaceAll("_", " ")}`, updatedAt: chunk.occurredAt });
+    return hits
+      .sort((left, right) => {
+        const rank = (hit: WorkspaceSearchHit) => (hit.title.toLowerCase().startsWith(needle) ? 0 : hit.title.toLowerCase().includes(needle) ? 1 : 2);
+        return rank(left) - rank(right) || right.updatedAt.localeCompare(left.updatedAt);
+      })
+      .slice(0, bounded);
   }
   async saveReceipt(receipt: OutcomeReceipt) { demoStore.receipts.unshift(receipt as unknown as Record<string, unknown>); }
   async listReceipts(limit = 10) { return demoStore.receipts.slice(0, limit); }
@@ -356,7 +703,7 @@ class MemoryStore implements Store {
   async listMilestones(goalId?: string) { return this.memoryMilestones.filter((milestone) => !goalId || milestone.goalId === goalId).sort((left, right) => Number(left.order) - Number(right.order)); }
   async saveOnboardingIntake() { /* Local development identity does not persist a profile. */ }
   async seedResources() { /* Curated registry is already in the application bundle. */ }
-  async recommendResource(args: Record<string, unknown>) { return recommendBestResource({ id: opaqueId("recommendation"), topic: String(args.topic ?? "electric potential"), goalId: args.goalId ? String(args.goalId) : undefined, conceptId: args.conceptId ? String(args.conceptId) : undefined, goalType: (args.goalType as "school" | "exam" | "university" | "research" | "coding" | undefined) ?? "school", need: (args.need as ResourceNeed | undefined) ?? "conceptual_intuition", level: args.level ? String(args.level) : undefined, minutesAvailable: args.minutesAvailable ? Number(args.minutesAvailable) : undefined, costPreference: (args.costPreference as "free_only" | "free_preferred" | "any" | undefined) ?? "free_only", preferredFormats: Array.isArray(args.preferredFormats) ? args.preferredFormats.map(String) : undefined }); }
+  async recommendResource(args: Record<string, unknown>) { return recommendBestResource({ id: opaqueId("recommendation"), topic: String(args.topic ?? "electric potential"), goalId: args.goalId ? String(args.goalId) : undefined, conceptId: args.conceptId ? String(args.conceptId) : undefined, goalType: (args.goalType as "school" | "exam" | "university" | "research" | "coding" | undefined) ?? "school", need: (args.need as ResourceNeed | undefined) ?? "conceptual_intuition", level: args.level ? String(args.level) : undefined, minutesAvailable: args.minutesAvailable ? Number(args.minutesAvailable) : undefined, costPreference: (args.costPreference as "free_only" | "free_preferred" | "any" | undefined) ?? "free_only", preferredFormats: Array.isArray(args.preferredFormats) ? args.preferredFormats.map(String) : undefined, excludeResourceIds: Array.isArray(args.excludeResourceIds) ? args.excludeResourceIds.map(String) : undefined, rejectionReasons: Array.isArray(args.rejectionReasons) ? args.rejectionReasons.map(String) : undefined, feedback: args.feedback ? String(args.feedback) : undefined }); }
   async saveResourceActivity(activity: ResourceActivity, metadata: Record<string, unknown> = {}) { const index = demoStore.resourceActivities.findIndex((item) => item.id === activity.id); const value = { ...activity, metadata }; if (index >= 0) demoStore.resourceActivities[index] = value; else demoStore.resourceActivities.unshift(value); }
   async getResourceActivity(activityId: string) { return demoStore.resourceActivities.find((item) => item.id === activityId); }
   async scheduleResourceFollowup(input: { goalId: string; activityId: string; title: string; evidence: string; startsAt: string; minutes: number }) {
@@ -367,7 +714,7 @@ class MemoryStore implements Store {
   async registerOAuthGrant(input: { jti: string; kind: string; expiresAt: string }) { demoStore.oauthGrants[input.jti] = { kind: input.kind, revoked: false, consumed: false, expiresAt: input.expiresAt }; }
   async oauthGrantUnavailable(jti: string) { const grant = demoStore.oauthGrants[jti]; return !grant || Boolean(grant.revoked || grant.consumed || Date.parse(grant.expiresAt) <= Date.now()); }
   async revokeOAuthGrant(jti: string) { const grant = demoStore.oauthGrants[jti]; if (grant) grant.revoked = true; }
-  async consumeOAuthGrant(jti: string, kind: "code" | "refresh") { const grant = demoStore.oauthGrants[jti]; if (!grant || grant.kind !== kind || grant.revoked || grant.consumed) throw new Error(`${kind === "code" ? "Authorization code" : "Refresh token"} was already used or was not issued`); grant.consumed = true; }
+  async consumeOAuthGrant(jti: string, kind: "code" | "refresh" | "consent") { const grant = demoStore.oauthGrants[jti]; if (!grant || grant.kind !== kind || grant.revoked || grant.consumed) throw new Error(`${kind === "code" ? "Authorization code" : kind === "refresh" ? "Refresh token" : "Authorization request"} was already used or was not issued`); grant.consumed = true; }
   async consumeOAuthCode(jti: string) { await this.consumeOAuthGrant(jti, "code"); }
 }
 
@@ -381,6 +728,12 @@ class NeonStore implements Store {
   async snapshot() { return this.repo.getStateSnapshot(this.userId); }
 
   async workspace(view: string) { return this.repo.getWorkspaceSnapshot(this.userId, view); }
+
+  async shellData() { return this.repo.getShellData(this.userId); }
+  async homeData() { return this.repo.getHomeData(this.userId); }
+  async goalView(goalId: string, view: "overview" | "plan" | "study" | "sources") { return this.repo.getGoalView(goalId, this.userId, view) as Promise<Record<string, unknown> | undefined>; }
+  async projectView(projectId: string, view: "overview" | "claims" | "sources" | "decisions") { return this.repo.getProjectView(projectId, this.userId, view) as Promise<Record<string, unknown> | undefined>; }
+  async updateGoal(goalId: string, changes: { title?: string; outcome?: string; targetDate?: string; status?: string; deleted?: boolean }) { return this.repo.updateGoal(goalId, this.userId, changes) as Promise<Record<string, unknown> | undefined>; }
 
   async read(name: string, args: Record<string, unknown>, clientId?: string) {
     if (name === "list_context_packs") return buildContextPacks(await this.repo.getWorkspaceSnapshot(this.userId, "memory")).map((pack) => pack.metadata);
@@ -476,16 +829,18 @@ class NeonStore implements Store {
       const id = opaqueId("proposal");
       const kind = name.replace(/^propose_/, "");
       const summary = String(args.summary ?? `Proposed ${kind.replaceAll("_", " ")}`);
-      await this.repo.createProposal({ id, userId: this.userId, clientId, kind, entityId: args.entityId ? String(args.entityId) : undefined, summary, payload: args, risk: name.includes("schedule") || name.includes("goal") ? "high" : "medium", expiresAt: new Date(Date.parse(now) + 24 * 3600_000).toISOString() });
-      await this.appendEvent({ type: "proposal.created", summary, entityIds: [id], payload: { kind, risk: name.includes("schedule") || name.includes("goal") ? "high" : "medium" }, source: { surface } }, now);
-      return { data: { id, kind, summary, status: "pending", confirmationRequired: true }, entityIds: [id], summary: "Proposal saved without changing current state. Explicit confirmation is required." };
+      // An identical pending proposal is refreshed rather than duplicated, so
+      // the returned id may be the existing row's.
+      const proposalId = await this.repo.createProposal({ id, userId: this.userId, clientId, kind, entityId: args.entityId ? String(args.entityId) : undefined, summary, payload: args, risk: name.includes("schedule") || name.includes("goal") ? "high" : "medium", expiresAt: new Date(Date.parse(now) + 24 * 3600_000).toISOString() });
+      await this.appendEvent({ type: "proposal.created", summary, entityIds: [proposalId], payload: { kind, risk: name.includes("schedule") || name.includes("goal") ? "high" : "medium" }, source: { surface } }, now);
+      return { data: { id: proposalId, kind, summary, status: "pending", confirmationRequired: true }, entityIds: [proposalId], summary: "Proposal saved without changing current state. Explicit confirmation is required." };
     }
     if (name === "confirm_proposal") {
       assertRecentConfirmation(args.confirmedAt, now);
       const proposal = await this.repo.confirmProposal(String(args.proposalId), this.userId);
       if (!proposal) throw new Error("Pending proposal not found, expired, or already resolved");
       await this.appendEvent({ type: "proposal.confirmed", summary: proposal.summary, entityIds: [proposal.id], payload: { kind: proposal.kind, payload: proposal.payload, confirmedBy: args.confirmedBy }, source: { surface } }, now);
-      return { data: proposal, entityIds: [proposal.id], summary: proposal.kind === "schedule_change" ? "Confirmed the schedule proposal; commit_schedule_change is still required before the block changes." : "Confirmed and applied the approved, whitelisted fields to the shared state; the audit history was preserved." };
+      return { data: proposal, entityIds: [proposal.id], summary: proposal.kind === "schedule_change" ? "Approved. Nothing moves in your week until you confirm the new times." : "Approved, and your work is updated. The earlier version is kept in Review." };
     }
     if (name === "reject_proposal") {
       const proposal = await this.repo.rejectProposal(String(args.proposalId), this.userId);
@@ -498,8 +853,8 @@ class NeonStore implements Store {
       assertRecentConfirmation((args.confirmation as { confirmedAt?: unknown } | undefined)?.confirmedAt, now);
       const committed = await this.repo.commitScheduleProposal(String(args.proposalId), this.userId);
       const blockIds = committed.blocks.map((block) => block.id);
-      await this.appendEvent({ type: "schedule.change.committed", summary: `Committed ${blockIds.length} confirmed Continuum schedule block${blockIds.length === 1 ? "" : "s"}.`, entityIds: [committed.proposal.id, ...blockIds], payload: { confirmation: args.confirmation, externalCalendarWrite: false }, source: { surface } }, now);
-      return { data: { proposal: committed.proposal, blocks: committed.blocks, externalCalendarWrite: false }, entityIds: [committed.proposal.id, ...blockIds], summary: "Committed the confirmed internal Continuum schedule change. No external calendar write was claimed." };
+      await this.appendEvent({ type: "schedule.change.committed", summary: `Committed ${blockIds.length} confirmed Continuum schedule block${blockIds.length === 1 ? "" : "s"}.`, entityIds: [committed.proposal.id, ...blockIds], payload: { confirmation: args.confirmation, savedInContinuum: true }, source: { surface } }, now);
+      return { data: { proposal: committed.proposal, blocks: committed.blocks, savedInContinuum: true }, entityIds: [committed.proposal.id, ...blockIds], summary: "Committed the confirmed schedule change in Continuum." };
     }
     if (name === "record_learning_evidence") {
       const attemptId = String(args.attemptId);
@@ -551,7 +906,12 @@ class NeonStore implements Store {
     let embeddingModel: string | undefined;
     const configuration = embeddingConfiguration();
     if (configuration) {
-      try { [embedding] = await embedDocuments([content]); embeddingModel = configuration.model; } catch { /* Lexical retrieval remains available and a later worker can backfill. */ }
+      const writeBudget = Math.max(250, Math.min(Number(process.env.EMBEDDING_WRITE_BUDGET_MS ?? 2_000), 10_000));
+      const result = await settleWithin(embedDocuments([content]), writeBudget);
+      if (result?.[0]) {
+        [embedding] = result;
+        embeddingModel = configuration.model;
+      }
     }
     await this.repo.saveMemoryChunk({ id: opaqueId("memory"), userId: this.userId, projectId: input.projectId, goalId: input.goalId, kind: input.type, content, contentHash: contentHash(`${event.id}:${content}`), embeddingModel, embedding, tokenEstimate: estimateTokens(content), importance: input.importance ?? 0.6, occurredAt: now, sourceEventIds: [event.id], metadata: { surface: event.source.surface, entityIds: input.entityIds } });
     return { id: event.id, type: event.type, entityIds: input.entityIds, summary: input.summary, payload: event.payload, occurredAt: now };
@@ -560,26 +920,50 @@ class NeonStore implements Store {
   async getLearningState(conceptId = "concept_potential") { return (await this.repo.getLearningState(this.userId, conceptId)) ?? { conceptId, exposure: 0, understanding: 0, transfer: 0, retention: 0, confidence: 0, status: "not_started", evidenceIds: [], explanation: "No verified evidence has been recorded for this concept yet." }; }
   async saveLearningState(state: MasteryState) { await this.repo.saveLearningState(state, this.userId); }
   async ensureConcept(topic: string) { const normalized = topic.trim().replace(/\s+/g, " "); const conceptId = `concept_${createHash("sha256").update(`${this.userId}:${normalized.toLowerCase()}`).digest("hex").slice(0, 20)}`; await this.repo.ensureConcept(conceptId, normalized); return conceptId; }
+  async saveQuestionBank(input: QuestionBankWrite) { return this.repo.saveQuestionBank({ ...input, userId: this.userId }); }
+  async listQuestionBanks() { return this.repo.listQuestionBanks(this.userId); }
+  async getQuestionBank(questionBankId: string) { return await this.repo.getQuestionBank(questionBankId, this.userId) as unknown as Record<string, unknown> | undefined; }
+  async saveQuestionBankAttempt(input: QuestionBankAttemptWrite) { return this.repo.saveQuestionBankAttempt({ ...input, userId: this.userId }); }
+  async getImageExtractionByHash(contentHash: string) {
+    return this.repo.getImageExtractionByHash(contentHash, this.userId) as Promise<Record<string, unknown> | undefined>;
+  }
+  async getImageExtraction(extractionId: string) {
+    return this.repo.getImageExtraction(extractionId, this.userId) as Promise<Record<string, unknown> | undefined>;
+  }
+  async saveImageExtraction(input: ImageExtractionWrite) {
+    return this.repo.saveImageExtraction({ ...input, userId: this.userId });
+  }
+  async createAssistantSession(input: { id: string; title: string }) { return this.repo.createAssistantSession({ ...input, userId: this.userId }); }
+  async listAssistantSessions() { return this.repo.listAssistantSessions(this.userId); }
+  async getAssistantSession(sessionId: string) { return await this.repo.getAssistantSession(sessionId, this.userId) as unknown as Record<string, unknown> | undefined; }
+  async appendAssistantMessage(input: { id: string; sessionId: string; role: "user" | "assistant"; content: string; provider?: string; model?: string; metadata?: Record<string, unknown> }) { return this.repo.appendAssistantMessage({ ...input, userId: this.userId }); }
+  async updateAssistantSession(sessionId: string, input: { title?: string; pinned?: boolean; archived?: boolean; groupLabel?: string | null; contextSettings?: Record<string, unknown> }) { return this.repo.updateAssistantSession(sessionId, this.userId, input); }
+  async updateAssistantSessionMemory(sessionId: string, memory: AssistantSessionMemory) { return this.repo.updateAssistantSessionMemory(sessionId, this.userId, memory); }
+  async deleteAssistantSession(sessionId: string) { return this.repo.deleteAssistantSession(sessionId, this.userId); }
   async findSourceByHash(hash: string) { const source = await this.repo.findSourceByHash(hash, this.userId); return source ? { id: source.id, title: source.title } : undefined; }
   async saveSource(source: SourceWrite) { await this.repo.saveSource({ ...source, userId: this.userId }); }
-  async listSources() { return this.repo.listSources(this.userId); }
+  async listSources(scope: "library" | "all" = "library") { return this.repo.listSources(this.userId, scope); }
   async savePaper(paper: PaperWrite) { return this.repo.savePaper({ ...paper, userId: this.userId }); }
   async listPapers(projectId?: string) { return this.repo.listPapers(this.userId, projectId); }
-  async listSourceChunks() { return this.repo.listSourceChunks(this.userId); }
+  async listSourceChunks(sourceId?: string) { return this.repo.listSourceChunks(this.userId, sourceId); }
   async deleteSource(sourceId: string) { const source = await this.repo.softDeleteSource(sourceId, this.userId); return source ? { id: source.id, title: source.title, ...(source.storagePath ? { storagePath: source.storagePath } : {}) } : undefined; }
+  async assignSourceToProject(sourceId: string, projectId: string | null) { return this.repo.assignSourceToProject(sourceId, this.userId, projectId); }
+  async getSourceOriginal(sourceId: string) { const source = await this.repo.getSourceOriginal(sourceId, this.userId); return source ? { id: source.id, title: source.title, mimeType: source.mimeType, ...(source.storagePath ? { storagePath: source.storagePath } : {}) } : undefined; }
   async vectorSearch(embedding: number[], limit: number) { return this.repo.vectorSearch(embedding, limit, this.userId); }
   async searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }) {
     let embedding: number[] | undefined;
     if (embeddingConfiguration()) { try { embedding = await embedQuery(input.query); } catch { /* Hybrid retrieval falls back to lexical/current state. */ } }
     return this.repo.searchMemory({ ...input, embedding }, this.userId);
   }
+  async searchWorkspace(input: { query: string; kinds?: string[]; limit?: number }) { return this.repo.searchWorkspace(this.userId, input.query, input.kinds, input.limit); }
+  async forgetMemoryRecord(recordId: string) { return this.repo.forgetMemoryRecord(recordId, this.userId); }
   async saveReceipt(receipt: OutcomeReceipt, clientId?: string) { await this.repo.saveSessionReceipt(receipt, clientId); }
   async listReceipts(limit = 10) { return this.repo.listSessionReceipts(this.userId, limit); }
   async createMilestone(input: { id: string; goalId: string; title: string; order: number; dueAt?: string }, now: string) { await this.repo.createMilestone(input, now, this.userId); }
   async listMilestones(goalId?: string) { return this.repo.listMilestones(this.userId, goalId); }
   async saveOnboardingIntake(educationLevel: string, intake: Record<string, unknown>, now: string) { await this.repo.saveOnboardingIntake(this.userId, educationLevel, intake, now); }
   async seedResources() { this.resourceSeed ??= this.repo.seedResources(curatedResourceRegistry); await this.resourceSeed; }
-  async recommendResource(args: Record<string, unknown>) { await this.seedResources(); const registry = await this.repo.listResources(); return recommendBestResource({ id: opaqueId("recommendation"), topic: String(args.topic ?? "electric potential"), goalId: args.goalId ? String(args.goalId) : undefined, conceptId: args.conceptId ? String(args.conceptId) : undefined, goalType: (args.goalType as "school" | "exam" | "university" | "research" | "coding" | undefined) ?? "school", need: (args.need as ResourceNeed | undefined) ?? "conceptual_intuition", level: args.level ? String(args.level) : undefined, minutesAvailable: args.minutesAvailable ? Number(args.minutesAvailable) : undefined, costPreference: (args.costPreference as "free_only" | "free_preferred" | "any" | undefined) ?? "free_only", preferredFormats: Array.isArray(args.preferredFormats) ? args.preferredFormats.map(String) : undefined }, registry.length ? registry : curatedResourceRegistry); }
+  async recommendResource(args: Record<string, unknown>) { await this.seedResources(); const registry = await this.repo.listResources(); return recommendBestResource({ id: opaqueId("recommendation"), topic: String(args.topic ?? "electric potential"), goalId: args.goalId ? String(args.goalId) : undefined, conceptId: args.conceptId ? String(args.conceptId) : undefined, goalType: (args.goalType as "school" | "exam" | "university" | "research" | "coding" | undefined) ?? "school", need: (args.need as ResourceNeed | undefined) ?? "conceptual_intuition", level: args.level ? String(args.level) : undefined, minutesAvailable: args.minutesAvailable ? Number(args.minutesAvailable) : undefined, costPreference: (args.costPreference as "free_only" | "free_preferred" | "any" | undefined) ?? "free_only", preferredFormats: Array.isArray(args.preferredFormats) ? args.preferredFormats.map(String) : undefined, excludeResourceIds: Array.isArray(args.excludeResourceIds) ? args.excludeResourceIds.map(String) : undefined, rejectionReasons: Array.isArray(args.rejectionReasons) ? args.rejectionReasons.map(String) : undefined, feedback: args.feedback ? String(args.feedback) : undefined }, registry.length ? registry : curatedResourceRegistry); }
   async saveResourceActivity(activity: ResourceActivity, metadata?: Record<string, unknown>) { await this.seedResources(); await this.repo.saveResourceActivity(activity, metadata); }
   async getResourceActivity(activityId: string) { return await this.repo.getResourceActivity(activityId, this.userId) as unknown as Record<string, unknown> | undefined; }
   async scheduleResourceFollowup(input: { goalId: string; activityId: string; title: string; evidence: string; startsAt: string; minutes: number }) {
@@ -588,7 +972,7 @@ class NeonStore implements Store {
   async registerOAuthGrant(input: { jti: string; userId: string; clientId: string; kind: string; scopes: string[]; expiresAt: string }) { await this.repo.registerOAuthGrant(input); }
   async oauthGrantUnavailable(jti: string) { return this.repo.oauthGrantUnavailable(jti); }
   async revokeOAuthGrant(jti: string) { await this.repo.revokeOAuthGrant(jti); }
-  async consumeOAuthGrant(jti: string, kind: "code" | "refresh") { await this.repo.consumeOAuthGrant(jti, kind); }
+  async consumeOAuthGrant(jti: string, kind: "code" | "refresh" | "consent") { await this.repo.consumeOAuthGrant(jti, kind); }
   async consumeOAuthCode(jti: string) { await this.consumeOAuthGrant(jti, "code"); }
 }
 

@@ -6,22 +6,36 @@ import {
   CrossrefProvider,
   deduplicateScholarlyWorks,
   OpenAlexProvider,
-  scholarSearchUrl,
+  planScholarlyQuery,
+  rankScholarlyWorks,
   ScholarlyProviderError,
   type NormalizedScholarlyWork,
 } from "@/lib/scholarly";
+import { zoteroMatches as matchZoteroByDoi } from "@/lib/openalex";
+import { getOpenAlexApiKeyForUser } from "@/lib/provider-credentials";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const querySchema = z.object({
-  q: z.string().trim().min(2).max(500),
+  q: z.string().trim().min(2).max(500).optional(),
   mode: z.enum(["keywords", "title", "author", "doi"]).default("keywords"),
-  provider: z.enum(["all", "openalex", "crossref"]).default("all"),
+  provider: z.enum(["all", "openalex", "crossref"]).default("openalex"),
   openAccess: z.enum(["true", "false"]).optional(),
   fromYear: z.coerce.number().int().min(1800).max(2200).optional(),
   toYear: z.coerce.number().int().min(1800).max(2200).optional(),
+  sort: z.enum(["relevance", "citations", "newest"]).default("relevance"),
+  cursor: z.string().max(2_000).optional(),
+  authorId: z.string().max(100).optional(),
+  institutionId: z.string().max(100).optional(),
+  sourceId: z.string().max(100).optional(),
+  topicId: z.string().max(100).optional(),
+  language: z.string().max(20).optional(),
+  relation: z.enum(["related", "cited_by", "references"]).optional(),
+  workId: z.string().max(100).optional(),
+  referenceIds: z.string().max(5_000).optional(),
+  entityType: z.enum(["author", "institution", "source", "topic"]).optional(),
 });
 
 const saveSchema = z.object({
@@ -46,6 +60,14 @@ const saveSchema = z.object({
     retrievedAt: z.string().datetime({ offset: true }),
     relatedWorkIds: z.array(z.string()).max(200),
     referenceIds: z.array(z.string()).max(500),
+    publicationDate: z.string().optional(),
+    openAccessStatus: z.string().optional(),
+    language: z.string().optional(),
+    retracted: z.boolean().optional(),
+    version: z.string().optional(),
+    sourceId: z.string().optional(),
+    metadataIncomplete: z.boolean().optional(),
+    authorDetails: z.array(z.object({ id: z.string().optional(), name: z.string(), orcid: z.string().optional(), institutions: z.array(z.string()) })).optional(),
   }),
 });
 
@@ -60,26 +82,93 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const parsed = querySchema.safeParse(Object.fromEntries(url.searchParams));
   if (!parsed.success || (parsed.data?.fromYear && parsed.data?.toYear && parsed.data.fromYear > parsed.data.toYear)) return NextResponse.json({ error: "Check the search query and date range." }, { status: 400 });
-  const cacheKey = JSON.stringify(parsed.data);
+  if (!parsed.data.q && !parsed.data.relation) return NextResponse.json({ error: "Enter a search query." }, { status: 400 });
+  const cacheKey = `${user.id}:${JSON.stringify(parsed.data)}`;
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return NextResponse.json(cached.payload, { headers: { "x-continuum-cache": "hit" } });
 
-  const input = { query: parsed.data.q, mode: parsed.data.mode, openAccessOnly: parsed.data.openAccess === "true", fromYear: parsed.data.fromYear, toYear: parsed.data.toYear, limit: 12 };
+  const plan = planScholarlyQuery(parsed.data.q ?? "", parsed.data.mode);
+  const input = {
+    query: plan.mode === "keywords" ? plan.broadQuery : plan.preciseQuery,
+    mode: plan.mode,
+    openAccessOnly: parsed.data.openAccess === "true",
+    fromYear: parsed.data.fromYear ?? plan.detectedYear,
+    toYear: parsed.data.toYear ?? plan.detectedYear,
+    limit: 12,
+    cursor: parsed.data.cursor,
+    sort: parsed.data.sort,
+    authorId: parsed.data.authorId,
+    institutionId: parsed.data.institutionId,
+    sourceId: parsed.data.sourceId,
+    topicId: parsed.data.topicId,
+    language: parsed.data.language,
+  };
+  const openAlexApiKey = await getOpenAlexApiKeyForUser(user.id);
+  const openalex = new OpenAlexProvider(openAlexApiKey);
+  if (parsed.data.relation) {
+    if (!parsed.data.workId && parsed.data.relation !== "references") return NextResponse.json({ error: "A valid OpenAlex work is required." }, { status: 400 });
+    try {
+      const results = parsed.data.relation === "related"
+        ? await openalex.related(parsed.data.workId!, 12)
+        : parsed.data.relation === "cited_by"
+          ? await openalex.citedBy(parsed.data.workId!, 12)
+          : await openalex.references((parsed.data.referenceIds ?? "").split(",").filter(Boolean), 25);
+      return NextResponse.json({ results, providers: [{ provider: "openalex", status: "live" }], attribution: ["OpenAlex"] }, { headers: { "cache-control": "private, max-age=0" } });
+    } catch (error) {
+      const message = error instanceof ScholarlyProviderError ? error.message : "OpenAlex relation lookup failed";
+      return NextResponse.json({ error: message }, { status: error instanceof ScholarlyProviderError && error.code === "unconfigured" ? 503 : 502 });
+    }
+  }
+  if (parsed.data.entityType) {
+    try {
+      const entities = await openalex.searchEntities(parsed.data.entityType, parsed.data.q ?? "", 10);
+      return NextResponse.json({ entities, attribution: ["OpenAlex"] }, { headers: { "cache-control": "private, max-age=0" } });
+    } catch (error) {
+      const message = error instanceof ScholarlyProviderError ? error.message : "OpenAlex entity lookup failed";
+      return NextResponse.json({ error: message }, { status: error instanceof ScholarlyProviderError && error.code === "unconfigured" ? 503 : 502 });
+    }
+  }
   const providers = {
-    openalex: new OpenAlexProvider(process.env.OPENALEX_API_KEY),
+    openalex,
     crossref: new CrossrefProvider(process.env.CROSSREF_MAILTO),
   };
   const requested = parsed.data.provider === "all" ? ["openalex", "crossref"] as const : [parsed.data.provider] as const;
+  let nextCursor: string | undefined;
+  let total: number | undefined;
+  let cost: number | undefined;
   const settled = await Promise.all(requested.map(async (provider) => {
-    try { return { provider, status: "live" as const, results: await providers[provider].search(input) }; }
+    try {
+      if (provider === "openalex") {
+        const page = await providers.openalex.searchPage(input);
+        nextCursor = page.nextCursor;
+        total = page.total;
+        cost = page.cost;
+        return { provider, status: "live" as const, results: page.results };
+      }
+      return { provider, status: "live" as const, results: await providers.crossref.search(input) };
+    }
     catch (error) {
       const known = error instanceof ScholarlyProviderError ? error : new ScholarlyProviderError(provider, `${provider} failed`, "upstream");
       return { provider, status: known.code === "unconfigured" ? "unconfigured" as const : "failed" as const, message: known.message, results: [] as NormalizedScholarlyWork[] };
     }
   }));
-  const results = deduplicateScholarlyWorks(settled.flatMap((entry) => entry.results)).sort((left, right) => Number(Boolean(right.abstract)) - Number(Boolean(left.abstract)) || (right.citedByCount ?? 0) - (left.citedByCount ?? 0));
+  const results = rankScholarlyWorks(
+    deduplicateScholarlyWorks(settled.flatMap((entry) => entry.results)),
+    input.query,
+    parsed.data.sort,
+  );
   const providerStatuses = settled.map((entry) => ({ provider: entry.provider, status: entry.status, ...("message" in entry ? { message: entry.message } : {}) }));
-  const payload = { results, providers: providerStatuses, scholarHandoffUrl: scholarSearchUrl(parsed.data.q), attribution: ["OpenAlex", "Crossref"] };
+  // AC-Z3, matching `/api/openalex`: the "In your Zotero" chip is answered
+  // server-side by an exact DOI join, so the precise-search path (title,
+  // author, DOI, +Crossref) shows the same truth as the keyword path. A Zotero
+  // outage degrades to no chips and never fails the search.
+  let zoteroMatches: Array<Record<string, unknown>> = [];
+  try {
+    zoteroMatches = await matchZoteroByDoi(user.id, results.map((work) => work.doi).filter((doi): doi is string => Boolean(doi)));
+  } catch (error) {
+    console.warn("zotero_match_failed", JSON.stringify({ userId: user.id, message: error instanceof Error ? error.name : "unknown" }));
+  }
+  const payload = { results, zoteroMatches, providers: providerStatuses, attribution: requested.map((provider) => provider === "openalex" ? "OpenAlex" : "Crossref"), nextCursor, total, cost, queryPlan: { mode: plan.mode, detectedYear: plan.detectedYear, expansions: plan.expansions } };
   if (cache.size > 100) cache.delete(cache.keys().next().value as string);
   cache.set(cacheKey, { expiresAt: Date.now() + 10 * 60_000, payload });
   return NextResponse.json(payload, { headers: { "cache-control": "private, max-age=0", "x-continuum-cache": "miss" } });

@@ -47,8 +47,9 @@ A judge who checks tasks off or edits data can always run `pnpm seed:demo` to re
   unauthenticated route into the workspace.
 - **No secret in the browser.** The demo password is never embedded in client
   JavaScript; the one-click route reads it from the server environment.
-- **Feature-flagged.** The demo shortcut is controlled by `demoLoginEnabled()`: on by
-  default outside production, and **off in production** unless `DEMO_LOGIN_ENABLED=true`.
+- **Feature-flagged.** All demo access is controlled by `demoLoginEnabled()`: both the
+  shortcut and direct `demo` / `demo@continuum.demo` credential login are on by default
+  outside production, and **off in production** unless `DEMO_LOGIN_ENABLED=true`.
 - **Password policy respected.** Production registration always requires ≥6 characters.
   The demo account is the one documented place a shorter password may be configured
   (via `DEMO_ACCOUNT_PASSWORD`), and only through the server-side seed command.
@@ -58,7 +59,7 @@ A judge who checks tasks off or edits data can always run `pnpm seed:demo` to re
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `DEMO_ACCOUNT_PASSWORD` | `demo123` | Password the seed hashes for the demo account. |
-| `DEMO_LOGIN_ENABLED` | unset | `true` forces the demo shortcut on (needed in production); `false` disables it everywhere. |
+| `DEMO_LOGIN_ENABLED` | unset | `true` enables demo credential login and the shortcut (needed in production); `false` disables both everywhere. |
 
 ## What is seeded
 

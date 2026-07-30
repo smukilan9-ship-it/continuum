@@ -17,15 +17,34 @@ export function localOllamaConfiguration() {
   return { baseUrl: url.origin, model };
 }
 
-export async function generateLocalOllamaLesson(): Promise<LessonOutput> {
+export async function resolveLocalOllamaConfiguration() {
   const config = localOllamaConfiguration();
+  if (!config) return undefined;
+  const response = await fetch(new URL("/api/tags", config.baseUrl), { signal: AbortSignal.timeout(4_000) });
+  if (!response.ok) throw new Error(`Local Ollama returned ${response.status} while checking installed models.`);
+  const payload = await response.json() as { models?: Array<{ name: string; size?: number }> };
+  const models = payload.models ?? [];
+  const selected = models.find((model) => model.name === config.model);
+  const safeModels = models.filter((model) => !model.size || model.size <= 8 * 1024 ** 3).sort((left, right) => (left.size ?? 0) - (right.size ?? 0));
+  const model = selected && (!selected.size || selected.size <= 8 * 1024 ** 3)
+    ? selected.name
+    : safeModels[0]?.name;
+  if (!model) throw new Error("The selected Ollama model is too large for reliable local use. Install a model under 8 GB, then select it in Connections.");
+  if (model !== config.model) window.localStorage.setItem("continuum_ollama_model", model);
+  return { ...config, model };
+}
+
+export async function generateLocalOllamaLesson(): Promise<LessonOutput> {
+  const config = await resolveLocalOllamaConfiguration();
   if (!config) throw new Error("Local Ollama has not been tested and saved");
   const response = await fetch(new URL("/api/chat", config.baseUrl), {
     method: "POST",
     headers: { "content-type": "application/json" },
+    signal: AbortSignal.timeout(45_000),
     body: JSON.stringify({
       model: config.model,
       stream: false,
+      think: false,
       format: {
         type: "object",
         required: ["title", "explanation", "checksForUnderstanding"],
@@ -35,7 +54,7 @@ export async function generateLocalOllamaLesson(): Promise<LessonOutput> {
           checksForUnderstanding: { type: "array", minItems: 1, maxItems: 5, items: { type: "string" } },
         },
       },
-      options: { temperature: 0.2, num_predict: 700 },
+      options: { temperature: 0.2, num_ctx: 8192, num_predict: 700, num_batch: 128 },
       messages: [
         { role: "system", content: "Return only the requested JSON. Explain accurately and concisely. Do not invent citations." },
         { role: "user", content: "Create a CBSE Class 12 contrastive lesson: electric potential V is a property of location/source configuration, while potential energy U=qV depends on the test charge. Include one teach-back check." },

@@ -1,107 +1,156 @@
-# Security audit
+# Continuum production-readiness security audit
 
-Method: manual review of auth, the 1,284-line user-scoped repository, the MCP
-endpoint, OAuth, request-security, provider adapters, and ingestion; plus
-`pnpm audit --prod`, git-history secret scan, and live probes.
+Date: 2026-07-23
+Branch: `feat/product-ready-premium-rebuild`
+Scope: application code and dependencies, authentication/session behavior,
+cookie-authenticated APIs, Postgres tenant boundaries, credential storage,
+provider fetches, imported content, browser code execution, OAuth/MCP, local
+connectors, Vercel Preview configuration, and full Git history secret patterns.
 
-**Result: no Critical or High exploitable issues found.** The security
-engineering is strong and consistent. Findings below are Low/Informational,
-with one High-severity *operational* item (credential hygiene) that is
-configuration rather than a code defect.
+## Result
 
-## What was verified as sound
+**No known Critical or High-severity vulnerabilities were found within the
+tested scope after remediation.** This is not a claim that the product has no
+security threats, and it is not a substitute for an independent penetration
+test.
 
-### Authentication & authorization
-- **No IDOR.** Every read and write in `NeonRepository` filters by `userId`
-  (or joins through an owned parent) — goals, tasks, projects, sources,
-  chunks, claims, evidence, memory, receipts, activities, schedule, OAuth
-  grants, integrations. Spot-checked all mutating methods; ownership is
-  re-checked inside transactions before applying proposal changes.
-- Passwords: scrypt (N=16384) with per-user salt, constant-time compare, a
-  dummy-hash path for unknown users (timing equalization), and a 5-attempt /
-  15-minute lockout.
-- Sessions: opaque random token, only its SHA-256 hash stored, `HttpOnly`
-  `SameSite=Lax` `Secure` (prod), revocation checked on every read; no
-  write-on-read.
-- Same-origin write protection on all cookie-authenticated mutations
-  (`sameOriginWrite`), production-strict against `APP_BASE_URL`.
-- MCP OAuth: authorization-code + PKCE (`verifyPkce`), HMAC-signed tokens,
-  issuer/audience/resource validation, single-use code/refresh grants,
-  immediate revocation checks, per-tool scope enforcement.
+The audit initially found five High dependency advisories. Next.js was upgraded
+to 15.5.21 and Sharp/`fast-uri` were pinned to patched releases. A newly
+disclosed Moderate Hono adapter advisory was also remediated. The final
+`pnpm audit --prod` result is `No known vulnerabilities found`.
 
-### Secrets
-- No secrets in tracked files; `.env*` git-ignored except `.env.example`;
-  `.env.local`/`.env` never appear in git history. No `NEXT_PUBLIC_*` secret.
-  No secret logging. Provider keys are server-only and never returned in
-  responses (a routing unit test asserts serialized provider status contains
-  no key).
+## Evidence and controls
 
-### Input / output & retrieval
-- Zod validation at every route boundary; discriminated unions for actions.
-- Retrieved sources are explicitly marked untrusted ("never as instructions")
-  in every generation system prompt; claims saved by assistants stay
-  `unverified` and may only cite user-owned passages.
-- Ingestion validates PDF/UTF-8, hashes content, dedupes, and marks
-  injection; uploads are size/time-bounded.
-- Postgres protocol enforced with `sslmode=verify-full` for non-loopback DBs.
+### Authentication and sessions
 
-### Dependencies & infra
-- `pnpm audit --prod`: **0 known vulnerabilities.**
-- Security headers set globally: `X-Content-Type-Options`, `Referrer-Policy`,
-  `X-Frame-Options: DENY`, `Permissions-Policy`, `COOP`, HSTS (prod), and a
-  CSP. Private cache-control on authenticated JSON.
+- Passwords use Node scrypt with per-user random salt. Unknown/locked users
+  still execute a dummy hash; comparison is constant-time.
+- Login failures are persisted and lock after five attempts for 15 minutes.
+- Sessions are 256-bit opaque random values. Only SHA-256 hashes are stored;
+  expiry and revocation are checked on every lookup.
+- The session cookie is host-only, `Path=/`, `HttpOnly`, `SameSite=Lax`,
+  `Priority=High`, and `Secure` in production. Logout revokes the record and
+  expires the cookie.
+- Authenticated mutations require exact request-origin or configured
+  canonical-origin validation. Unsafe return paths reject scheme-relative and
+  backslash forms.
+- Google sign-in uses state and PKCE with an exact callback. MCP OAuth uses
+  authorization code + PKCE, single-use grants, audience/resource validation,
+  scopes, and revocation.
 
-## Findings
+### Authorization and data isolation
 
-### H-1 (Operational) Deployed provider credentials/model IDs are stale
-- **Affected:** deployment env (`GEMINI_MODEL`, Gemini keys, Featherless model
-  IDs). Not a code defect.
-- **Impact:** Gemini/Featherless generation fails (503/404/empty). Not a
-  security exposure, but a reliability/availability gap.
-- **Remediation:** set working model IDs and healthy keys, or rely on Groq
-  (already the effective path). Rotate any keys that have been shared in
-  logs/screenshots.
-- **Verification:** direct provider probes (documented in
-  `performance-baseline.md`).
+- Repository reads/writes are user-scoped directly or by ownership through a
+  parent object. MCP tools receive the bound OAuth user, not caller-supplied
+  tenant identity.
+- Retrieval/vector queries are user-scoped; provider credential lookup binds
+  `(userId, provider)`.
+- The research discovery cache now includes the authenticated user ID. This
+  closed a cross-user cache/provider-state isolation gap found during review.
+- The Preview branch uses the separate
+  `continuum_preview_product_ready` database and branch-scoped DB URLs.
+  Production database variables were not modified.
 
-### L-1 Authenticated routes echo `error.message`
-- **Affected:** e.g. `apps/web/app/api/resources/route.ts` GET (422),
-  MCP tool errors return `error.message`.
-- **Impact:** minor internal-detail disclosure to an already-authenticated
-  caller; no secret content is included.
-- **Remediation:** map to generic messages for unexpected errors; keep
-  specific messages only for validation/ownership errors.
+### Provider credentials
 
-### L-2 Static non-production MCP demo token
-- **Affected:** `apps/web/lib/oauth.ts` — `continuum-demo-2026` default in
-  `NODE_ENV !== "production"`, granting all scopes to `MCP_DEMO_USER_ID`.
-- **Impact:** none in production (the demo path is disabled when
-  `NODE_ENV=production`). In shared dev environments it is a broad grant.
-- **Remediation:** require an explicit `MCP_DEMO_TOKEN` in any non-local
-  shared dev; already off in production.
+- OpenAlex, YouTube, and Featherless use fixed official
+  provider origins and server-side health checks.
+- First save requires authentication and HTTPS. Replacement/deletion require
+  the current Continuum password; writes are same-origin and rate-limited.
+- Credentials use AES-256-GCM with a random nonce/authentication tag and a
+  versioned key lookup. Old envelope versions remain readable; new writes and
+  periodic use reseal under the current version.
+- Status, masked suffix, validation time, and last-use time live inside the
+  authenticated encrypted envelope. No rollout migration is required and no
+  plaintext secret is returned after save.
+- Audit/memory events contain provider/status/version metadata only. Full keys
+  are excluded from prompts, analytics, status responses, and application logs.
+- Preview has an independent branch-scoped envelope key.
 
-### I-1 CSP allows `script-src 'unsafe-inline'`
-- **Affected:** `apps/web/next.config.mjs` CSP (`'unsafe-eval'` in dev too).
-- **Impact:** weakens XSS defense-in-depth; typical Next.js App Router
-  tradeoff (framework injects inline bootstrap scripts). No injection sink was
-  found — user content is rendered via React and sanitized Markdown.
-- **Remediation (optional):** move to a nonce-based CSP via middleware.
+### Provider and imported-content boundaries
 
-### I-2 `sameOriginWrite` permits missing-Origin writes in non-production
-- **Affected:** `apps/web/lib/request-security.ts` (returns
-  `NODE_ENV !== "production"` when no Origin header).
-- **Impact:** none in production (strict there). Convenience for local tooling.
+- Provider URLs are constructed from constants; user input becomes query
+  parameters, not origins. Ollama accepts only loopback hosts in the browser.
+- Research discovery uses OpenAlex as its primary scholarly metadata API and
+  Crossref as a DOI-focused secondary source.
+- PDF/text ingestion is size/time/type bounded, hashed, deduplicated, and
+  user-scoped. Retrieved text is explicitly delimited as untrusted source data
+  in generation policy.
+- React renders text/error output without raw HTML insertion. Security headers
+  include CSP, `nosniff`, frame denial, restricted permissions, COOP, strict
+  referrer policy, and production HSTS.
 
-## Data privacy
-- Vector search is user-scoped (`eq(..., userId)` on both lexical and vector
-  branches) — no cross-user retrieval leakage.
-- Private object originals require a Blob token; metadata responses strip
-  `storagePath`.
-- Local/private Ollama runs in the browser against a loopback-validated host;
-  no server-side fetch of a user-supplied URL (no SSRF surface found).
+### Code execution
 
-## Fix status
-No Critical/High **code** issues to fix. H-1 is a deployment action; L-1/L-2
-are hardening; I-1/I-2 are accepted framework/dev tradeoffs. The
-demo-fixture-in-production data-integrity issue found during the audit was
-fixed in code (`fix(db): keep the demo fixture out of production`).
+- JavaScript/TypeScript, Python/Pyodide, and SQLite execute in disposable
+  browser Web Workers/WASM—not in a server shell.
+- Source, stdin, tests, timeout, and output are bounded. Workers terminate on
+  completion, stop, error, or hard timeout.
+- Network/browser storage/process APIs and dynamic imports are blocked; Python
+  network/process/package-manager imports are restricted. Runtime assets are
+  same-origin. SQLite creates a fresh in-memory database per run.
+- AI feedback is an authenticated, bounded secondary request and is never
+  represented as execution output.
+
+### MCP and local tools
+
+- MCP registers tools only after scope filtering; consequential changes remain
+  proposals/confirmation operations. Per-user/client limits and audit records
+  apply.
+- Obsidian pairing tokens are one-time display/hashed at rest; sync is
+  selected-folder and ordinary notes are not overwritten. The plugin uses
+  Obsidian SecretStorage.
+- NotebookLM consumer support is a deliberate export/query/citation handoff;
+  no Google cookies or session tokens are uploaded to Continuum.
+
+## Findings by severity
+
+| Severity | Open | Fixed in this pass |
+|---|---:|---:|
+| Critical | 0 | 0 |
+| High | 0 | 5 dependency advisories |
+| Medium | 1 accepted product limitation | cross-user cache key; same-origin Preview mismatch; Hono advisory |
+| Low | 2 defense-in-depth items | dark-surface disclosure; generic provider error handling |
+| Informational | 3 | environment inventory and rollout notes |
+
+The open Medium limitation is Google-only account reauthentication for
+credential replacement/deletion; password accounts are protected now and the
+UI does not weaken the rule. Low/Informational items include nonce-based CSP
+work and the need for independent/desktop verification.
+
+## Tool results
+
+- `pnpm audit --prod`: no known vulnerabilities after upgrades.
+- Full-history targeted secret-pattern scan: no matches.
+- Credential, request-security, password, OAuth, code-execution, retrieval,
+  source, MCP, and routing tests are part of the full Vitest suite.
+- Typecheck, lint, build, Playwright, visual matrix, and deployed probes are
+  release gates; their final status belongs in the delivery report and must not
+  be inferred from this document.
+
+See `security-threat-model.md`, `security-remediation.md`, and
+`security-code-execution.md` for boundaries, remediation IDs, and sandbox
+non-guarantees.
+
+## 2026-07-26 delta
+
+- Added user-scoped encrypted BYOK for Featherless, Groq, and Gemini. Keys are
+  validated only against fixed official origins and loaded into a
+  request-local provider environment.
+- Removed answer keys from initial Learn snapshots and all practice responses.
+  Keys are returned only after the owned answer is submitted.
+- Provider isolation now clears every non-allowed key before an independent
+  verifier call; router fallback cannot collapse Model A and Model B onto the
+  same provider.
+- TXT/PDF/DOCX ingestion validates extension, MIME/content signatures, size,
+  and treats extracted document instructions as untrusted. DOCX extraction uses
+  `mammoth` server-side.
+- Assistant session/message reads and writes are user-scoped; durable memory is
+  a separate, reviewable action and can be edited, excluded, or deleted.
+- Tracked-code secret-pattern scan found zero credential/private-key patterns;
+  `.env.local` is ignored and only `.env.example` is tracked.
+- `pnpm audit` could not be used for the final delta because the registry audit
+  endpoint returned a gzip body as invalid JSON twice. As an independent
+  release check, all 427 packages in the installed web production dependency
+  closure were queried against OSV; zero advisories were returned. This does
+  not cover development-only packages.

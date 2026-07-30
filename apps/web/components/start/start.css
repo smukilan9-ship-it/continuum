@@ -1,0 +1,112 @@
+/* /start first run (redesign.md §9.3). Tokens only. */
+
+.start { min-height: 70vh; display: grid; place-items: center; padding: var(--s-10) var(--s-4); }
+
+/* Single column, max 560, centred, at every size (§9.3). */
+.start-panel { width: min(560px, 100%); display: grid; gap: var(--s-4); }
+.start-panel h1 { margin: 0; font-size: 28px; line-height: 1.25; font-weight: 600; letter-spacing: -.01em; }
+.start-panel > p { margin: 0; color: var(--ink-2); font-size: var(--t-body); line-height: 1.6; }
+
+.start-examples { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.start-examples button {
+  padding: var(--s-1) var(--s-3); min-height: 32px;
+  color: var(--ink-2); background: var(--surface-raised);
+  border: 1px solid var(--line); border-radius: var(--r-full);
+  cursor: pointer; font-size: var(--t-small);
+}
+.start-examples button:hover { color: var(--ink); border-color: var(--line-strong); }
+
+.start-commitments { display: grid; gap: var(--s-2); }
+.start-commitments button {
+  padding: var(--s-4);
+  display: grid; gap: 2px; text-align: left;
+  color: inherit; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  cursor: pointer;
+}
+.start-commitments button:hover { background: var(--accent-quiet); border-color: var(--line-strong); }
+.start-commitments strong { color: var(--ink); font-size: var(--t-body); font-weight: 500; }
+.start-commitments small { color: var(--ink-3); font-size: var(--t-small); }
+
+.start-actions { margin-top: var(--s-2); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+
+.start-stages { margin: var(--s-2) 0 0; padding: 0; list-style: none; display: grid; gap: var(--s-2); }
+.start-stages li { display: flex; align-items: center; gap: var(--s-2); color: var(--ink-3); font-size: var(--t-body); }
+.start-stages li span { display: grid; place-items: center; width: 18px; height: 18px; }
+.start-stages li.is-active { color: var(--ink); }
+.start-stages li.is-done { color: var(--ink-2); }
+
+.start-result { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: var(--s-5); }
+.start-result li { color: var(--ink-2); font-size: var(--t-small); }
+.start-result strong { display: block; color: var(--ink); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.start-schedule { margin: 0; padding: var(--s-3); color: var(--ink); background: var(--accent-quiet); border-radius: var(--r-md); font-size: var(--t-small); }
+
+.start-error { margin: 0; padding: var(--s-3); color: var(--danger); background: var(--danger-surface); border-radius: var(--r-md); font-size: var(--t-small); }
+
+
+/* ==========================================================================
+   Migrated out of globals.css by the §15.9 paydown. These rules were written
+   against the legacy token aliases; they compose the same values, now from
+   the file that owns the surface.
+   ========================================================================== */
+
+
+/* Forms and onboarding */
+.onboarding-card { max-width: 980px; padding: 30px; display: grid; grid-template-columns: .8fr 1.2fr; gap: 44px; }
+.onboarding-card h2 { margin: 18px 0 10px; color: var(--ink); font-size: 26px; }
+.onboarding-card p { color: var(--ink-2); line-height: 1.65; }
+
+/* Multi-step onboarding */
+.onboarding-shell { max-width: 720px; }
+.onboarding-steps { margin: 0 0 22px; padding: 0; display: flex; align-items: center; gap: 6px; list-style: none; overflow-x: auto; }
+.onboarding-steps li { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 12px; font-weight: 650; }
+.onboarding-steps .step-dot { width: 26px; height: 26px; flex: none; display: grid; place-items: center; color: var(--ink-2); background: var(--surface); border: 1.5px solid var(--line-strong); border-radius: 50%; font-size: 12px; font-weight: 750; }
+.onboarding-steps .step-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.onboarding-steps li.current .step-dot { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.onboarding-steps li.current { color: var(--ink); }
+.onboarding-steps li.done .step-dot { color: var(--on-accent-mark); background: var(--accent-mark); border-color: var(--accent-mark); }
+.onboarding-panel { padding: 26px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-1); }
+.onboarding-panel fieldset { margin: 0; padding: 0; border: 0; }
+.onboarding-panel legend { padding: 0; color: var(--ink); font-size: 21px; font-weight: 720; letter-spacing: -.02em; }
+.onboarding-help { margin: 6px 0 20px; color: var(--ink-2); line-height: 1.55; }
+.onboarding-panel > fieldset > label { display: grid; gap: 7px; margin-bottom: 16px; color: var(--ink); font-size: 13px; font-weight: 700; }
+.onboarding-panel input:not([type=checkbox]):not([type=radio]):not([type=range]), .onboarding-panel select, .onboarding-panel textarea { width: 100%; min-height: 44px; padding: 10px 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 9px; font-size: 14px; font-weight: 450; }
+.onboarding-panel textarea { min-height: 84px; resize: vertical; }
+.onboarding-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.onboarding-panel input[type=range] { width: 100%; min-height: auto; padding: 0; accent-color: var(--accent); }
+.range-value { color: var(--accent); font-size: 15px; }
+.onboarding-review { margin: 0; display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
+.onboarding-review div { padding: 12px 15px; display: grid; grid-template-columns: 92px 1fr; gap: 14px; background: var(--surface); }
+.onboarding-review dt { color: var(--ink-2); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.onboarding-review dd { margin: 0; color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
+.onboarding-create-note { margin: 16px 0 0; display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13px; }
+.onboarding-create-note svg { color: var(--accent); }
+.onboarding-actions { margin-top: 24px; padding-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); }
+.onboarding-progress-label { color: var(--ink-2); font-size: 12px; }@media (max-width: 600px) {
+  .onboarding-grid { grid-template-columns: 1fr; }
+  .onboarding-panel { padding: 20px; }
+  .onboarding-steps .step-label { display: none; }
+  .onboarding-steps li { flex: none; }
+  .onboarding-review div { grid-template-columns: 1fr; gap: 3px; }
+}
+@media (max-width: 600px) {
+  .onboarding-card { padding: 20px; gap: 22px; }
+}
+
+.intake-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+
+/* §10.2 Onboarding — real progress and an honest completion state. */
+.onboarding-building { display: grid; gap: var(--s-4); }
+.onboarding-complete { display: grid; gap: var(--s-4); }
+.onboarding-complete h2 { margin: 0; font-size: var(--t-h2); }
+.onboarding-rationale { margin: 0; color: var(--ink-2); font-size: var(--t-small); line-height: 1.5; }
+
+/* §10 First run — welcome route, tour, shortcut sheet. */
+.welcome-shell { display: block; }
+.welcome-shell .main-area { max-width: 900px; margin-inline: auto; }
+.welcome-skip { padding: var(--s-6) 0; text-align: center; }
+.welcome-skip button { color: var(--ink-2); background: transparent; border: 0; font-size: var(--t-small); text-decoration: underline; cursor: pointer; }
+html[data-theme="dark"] .onboarding-panel, html[data-theme="dark"] .onboarding-review div {
+  background-color: var(--surface);
+  color: var(--ink);
+}

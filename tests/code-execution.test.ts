@@ -5,6 +5,7 @@ import {
   EXECUTION_LIMITS,
   capExecutionOutput,
   emptyExecutionResult,
+  formatPythonError,
   gradeExecutionTest,
   normalizeRunnableLanguage,
   normalizedOutput,
@@ -79,11 +80,28 @@ describe("browser code execution contract", () => {
     expect(emptyExecutionResult(request(), "provider_error", "runtime unavailable", 2)).toMatchObject({ outcome: "provider_error", stdout: "", exitCode: 1 });
   });
 
+  it("keeps Pyodide internals out of the student-facing Python error", () => {
+    const raw = `PythonError: Traceback (most recent call last):
+  File "/lib/python314.zip/_pyodide/_base.py", line 1, in eval_code_async
+  File "<exec>", line 1
+    print(
+         ^
+SyntaxError: '(' was never closed
+    at new_error (http://localhost/runtime/pyodide.asm.mjs:1:2)
+    at wasm://wasm/module:wasm-function[2]:0x1`;
+    expect(formatPythonError(raw)).toBe(`Traceback (most recent call last):
+  File "<exec>", line 1
+    print(
+         ^
+SyntaxError: '(' was never closed`);
+  });
+
   it("keeps network and process APIs blocked in the worker implementation", () => {
     const source = readFileSync(new URL("../apps/web/lib/code-execution.worker.ts", import.meta.url), "utf8");
-    for (const blocked of ["fetch", "XMLHttpRequest", "WebSocket", "EventSource", "WebTransport", "importScripts", "indexedDB", "caches"]) expect(source).toContain(blocked);
+    for (const blocked of ["fetch", "XMLHttpRequest", "WebSocket", "EventSource", "WebTransport", "importScripts", "Worker", "SharedWorker", "indexedDB", "caches"]) expect(source).toContain(blocked);
     for (const blockedImport of ["'socket'", "'urllib'", "'http'", "'subprocess'", "'micropip'"]) expect(source).toContain(blockedImport);
     expect(source).toContain("env: Object.freeze({})");
+    expect(source).not.toContain("AsyncFunction");
   });
 
   it("loads Python and SQLite WASM only from same-origin runtime paths", () => {

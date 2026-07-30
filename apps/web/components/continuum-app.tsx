@@ -9,55 +9,89 @@ import {
   Command,
   Code2,
   Database,
-  FlaskConical,
+  Library,
   Goal,
-  Link2,
   LogOut,
   Menu,
+  MessageCircle,
   Search,
+  ShieldCheck,
+  Sparkles,
   X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import type { Route } from "next";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AssistantProvider, useAssistantController } from "@/components/assistant/use-assistant";
+import type { AssistantSession, PageContext } from "@/components/assistant/types";
+import { BrandMark } from "@/components/brand-mark";
+import { CommandPalette, type PaletteAction } from "@/components/shell/command-palette";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { SKIP_ONBOARDING_KEY } from "@/components/start/start-screen";
 import { normalizeWorkspaceState, WorkspaceScreens, type WorkspaceState } from "@/components/workspace-screens";
-import { workspaceMeta, workspacePath, workspaceViews, type WorkspaceView } from "@/lib/workspace-routes";
-
-const pathToView = new Map<string, WorkspaceView>(workspaceViews.map((value) => [workspacePath[value] as string, value]));
-function viewFromPath(pathname: string): WorkspaceView {
-  return pathToView.get(pathname) ?? "today";
-}
+import { canonicalView, workspaceMeta, workspacePath, type WorkspaceView } from "@/lib/workspace-routes";
 
 export type View = WorkspaceView;
 
 type NavItem = { id: WorkspaceView; label: string; icon: typeof CalendarDays };
-type NavGroup = { label: string; items: NavItem[] };
+type NavGroup = { label: string; items: NavItem[]; variant?: "primary" | "utility" };
 
+/**
+ * §7.1: six fixed destinations, then the user's own goals.
+ *
+ * It used to be thirteen destinations grouped by storage ("Work", "Sources"),
+ * so a goal's plan, material, study, and research lived in four unconnected
+ * tabs and nothing on screen said which goal you were working on. The fixed
+ * entries are now only the things that genuinely span goals; everything else
+ * hangs off the goal itself. Learn and Research remain reachable routes — Learn
+ * owns the practice-set builder, and Research is where a project without a goal
+ * still lives — but they are not destinations in their own right.
+ */
 const navGroups: NavGroup[] = [
   {
-    label: "Workspace",
+    label: "",
+    variant: "primary",
     items: [
-      { id: "today", label: "Today", icon: CalendarDays },
+      { id: "today", label: "Home", icon: CalendarDays },
+      { id: "assistant", label: "Ask", icon: MessageCircle },
       { id: "goals", label: "Plan", icon: Goal },
-      { id: "learn", label: "Learn", icon: BookOpen },
-      { id: "code", label: "Code", icon: Code2 },
-      { id: "research", label: "Research", icon: FlaskConical },
     ],
   },
   {
-    label: "Library",
+    label: "Across your work",
     items: [
-      { id: "memory", label: "Memory", icon: Database },
-      { id: "activity", label: "Review", icon: Activity },
+      { id: "library", label: "Library", icon: Library },
+      { id: "code", label: "Build", icon: Code2 },
+      { id: "memory", label: "Context", icon: Database },
     ],
   },
   {
-    label: "Account",
-    items: [{ id: "integrations", label: "Connections", icon: Link2 }],
+    label: "",
+    variant: "utility",
+    items: [
+      { id: "activity", label: "Review", icon: Activity },
+      { id: "account", label: "Settings", icon: ShieldCheck },
+    ],
   },
 ];
 
-const mobileItems = navGroups[0]!.items.filter((item) => item.id !== "research");
+/** §8.9: Home · Ask · Study · Build · More. */
+const mobileItems: NavItem[] = [
+  { id: "today", label: "Home", icon: CalendarDays },
+  { id: "assistant", label: "Ask", icon: MessageCircle },
+  { id: "learn", label: "Study", icon: BookOpen },
+  { id: "code", label: "Build", icon: Code2 },
+];
+
+/**
+ * The ⌘J panel is mounted by the shell, so importing it eagerly pulled
+ * react-markdown, remark-gfm and the whole thread renderer into the first load
+ * of every route — 38 kB past §19.9's 180 kB app-shell budget for a surface
+ * most page views never open. It loads when it is first opened.
+ */
+const AssistantPanel = dynamic(() => import("@/components/assistant/assistant-panel").then((module) => module.AssistantPanel), { ssr: false });
 
 const IntegrationsScreen = dynamic(() => import("@/components/integrations-screen").then((module) => module.IntegrationsScreen), { loading: () => <ScreenLoading /> });
 
@@ -69,55 +103,98 @@ function initials(name: string) {
   return name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
 }
 
-export function ContinuumApp({ user, initialState, view }: { user: AuthUser; initialState: Record<string, unknown>; view: WorkspaceView }) {
+
+/**
+ * §8.5: the panel attaches the page it was opened from as a removable chip.
+ * Derived from the route rather than from each screen, so a screen cannot
+ * forget to supply it.
+ */
+function pageContextFor(view: WorkspaceView, state: WorkspaceState | undefined, goalId?: string, projectId?: string): PageContext | undefined {
+  if (view === "project" && projectId) {
+    return { kind: "project", id: projectId, label: "Project: this project" };
+  }
+  if (view === "goal" && goalId) {
+    const goal = state?.goals.find((row) => String(row.id) === goalId);
+    return { kind: "goal", id: goalId, label: `Goal: ${String(goal?.title ?? "this goal")}` };
+  }
+  if (view === "research") {
+    const project = state?.projects[0];
+    return project ? { kind: "project", id: String(project.id), label: `Project: ${String(project.title)}` } : undefined;
+  }
+  if (view === "code") return { kind: "build", label: "Build: current file and last run" };
+  if (view === "today" || view === "goals") return { kind: "week", label: "This week" };
+  return undefined;
+}
+
+/** What the shell chrome needs, read once per route by the server component. */
+export type ShellData = {
+  goals: Array<{ id: string; title: string; progress: number; targetDate: string; status: string }>;
+  projects: Array<{ id: string; title: string; goalId: string | null }>;
+  pendingProposals: number;
+};
+
+export function ContinuumApp({ user, initialState, shell, view, goalId, projectId, serverNow, needsOnboarding = false }: { user: AuthUser; initialState: Record<string, unknown>; shell: ShellData; view: WorkspaceView; goalId?: string; projectId?: string; serverNow: string; needsOnboarding?: boolean }) {
+  const router = useRouter();
+  const activeGoalId = goalId;
   const [mobileNav, setMobileNav] = useState(false);
+  const [compactNavigation, setCompactNavigation] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
-  const [currentView, setCurrentView] = useState<WorkspaceView>(view);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const currentView = view;
+  const sidebarRef = useRef<HTMLElement>(null);
+  const closeNavigationRef = useRef<HTMLButtonElement>(null);
+  const openNavigationRef = useRef<HTMLButtonElement>(null);
+  const mainAreaRef = useRef<HTMLElement>(null);
+  const mobileNavigationRef = useRef<HTMLElement>(null);
 
-  // Per-view cache seeded with the server-rendered snapshot. Navigation switches
-  // the visible view instantly from cache and refreshes it in the background, so a
-  // click never waits on a full-page server round-trip to the remote database.
-  const cacheRef = useRef<Map<WorkspaceView, WorkspaceState>>(new Map([[view, normalizeWorkspaceState(initialState)]]));
-  const inflight = useRef<Set<WorkspaceView>>(new Set());
-  const [, bumpCache] = useReducer((count: number) => count + 1, 0);
+  /**
+   * C25: the per-view `Map<view, state>` cache, its in-flight set, its manual
+   * `pushState` and its `popstate` listener are gone. They reimplemented the
+   * router — every route already server-renders its own view — and the cost was
+   * a client holding N views of stale workspace data and a Back button that
+   * only worked because a second listener put it back. Navigation is now real
+   * router navigation; the shell keeps only UI state.
+   */
   const meta = workspaceMeta[currentView];
-  const state = cacheRef.current.get(currentView);
+  const state = useMemo(() => normalizeWorkspaceState(initialState), [initialState]);
+  const pendingProposals = shell.pendingProposals;
 
-  const refreshView = useCallback(async (target: WorkspaceView) => {
-    if (target === "integrations" || inflight.current.has(target)) return;
-    inflight.current.add(target);
-    try {
-      const response = await fetch(`/api/state?view=${encodeURIComponent(target)}`, { cache: "no-store" });
-      const payload = await response.json() as { data?: Record<string, unknown> };
-      if (response.ok && payload.data) { cacheRef.current.set(target, normalizeWorkspaceState(payload.data)); bumpCache(); }
-    } catch { /* Keep the last good cached view rather than blanking the screen. */ } finally {
-      inflight.current.delete(target);
-    }
-  }, []);
+  /**
+   * Nearest deadline first, completed last, capped so a long list never pushes
+   * the rest of the sidebar out of reach. Read from shell data, so it is right
+   * on every route rather than only on the ones that select goals.
+   */
+  const sidebarGoals = useMemo(() => [...shell.goals]
+    .sort((left, right) => {
+      const done = Number(left.status === "completed") - Number(right.status === "completed");
+      if (done !== 0) return done;
+      return String(left.targetDate ?? "").localeCompare(String(right.targetDate ?? ""));
+    })
+    .slice(0, 8), [shell.goals]);
+  const moreActive = !mobileItems.some((item) => canonicalView(currentView) === item.id);
 
   const navigate = useCallback((next: WorkspaceView) => {
     setMobileNav(false);
     setCommandOpen(false);
-    setCurrentView(next);
-    if (typeof window !== "undefined" && window.location.pathname !== (workspacePath[next] as string)) {
-      window.history.pushState({ view: next }, "", workspacePath[next]);
-    }
-    void refreshView(next);
-  }, [refreshView]);
+    router.push(workspacePath[next]);
+  }, [router]);
 
-  const refreshCurrent = useCallback(() => refreshView(currentView), [refreshView, currentView]);
+  // `router.refresh()` re-runs the server component for this route, which is
+  // what a screen means when it says its data changed.
+  const refreshCurrent = useCallback(async () => { router.refresh(); }, [router]);
 
-  // Keep browser back/forward working with the client-side view switch.
-  useEffect(() => {
-    const onPopState = () => {
-      const next = viewFromPath(window.location.pathname);
-      setCurrentView(next);
-      if (!cacheRef.current.has(next)) void refreshView(next);
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, [refreshView]);
+  // One conversation, mounted twice (§8.5, AC-A9): the `/assistant` screen and
+  // the `⌘J` panel both read this controller, so switching between them never
+  // loses or forks the thread.
+  const assistant = useAssistantController({
+    initialSessions: (state?.assistantSessions ?? []) as unknown as AssistantSession[],
+    onWorkspaceChange: refreshCurrent,
+  });
+  const { setPageContext, setPanelOpen, panelOpen } = assistant;
+
+  const pageContext = useMemo(() => pageContextFor(currentView, state, activeGoalId, projectId), [currentView, state, activeGoalId, projectId]);
+  useEffect(() => { setPageContext(pageContext); }, [pageContext, setPageContext]);
 
   useEffect(() => {
     if (!toast) return;
@@ -130,18 +207,69 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setCommandOpen((open) => !open);
+        return;
+      }
+      // §8.8: `⌘J` toggles the assistant from anywhere, including while typing —
+      // asking about what you are writing is the point of having it everywhere.
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
+        event.preventDefault();
+        setPanelOpen(!panelOpen);
+        return;
+      }
+      // `?` opens the shortcut sheet, but never while the user is typing.
+      const target = event.target as HTMLElement | null;
+      const typing = target?.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target?.tagName ?? "");
+      if (event.key === "?" && !typing && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        setShortcutsOpen((open) => !open);
       }
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
+  }, [panelOpen, setPanelOpen]);
+
+  // First run: point an un-onboarded user at /start unless they chose to explore.
+  useEffect(() => {
+    if (!needsOnboarding) return;
+    if (window.localStorage.getItem(SKIP_ONBOARDING_KEY) === "1") return;
+    window.location.assign("/start");
+  }, [needsOnboarding]);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 840px)");
+    const sync = () => {
+      setCompactNavigation(query.matches);
+      if (!query.matches) setMobileNav(false);
+    };
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
   }, []);
 
-  // Intercept in-app link clicks so navigation is instant, while preserving
-  // new-tab and modifier-click behavior against the real server routes.
-  const linkHandler = (next: WorkspaceView) => (event: React.MouseEvent) => {
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    navigate(next);
+  useEffect(() => {
+    const setInert = (element: HTMLElement | null, inert: boolean) => {
+      if (!element) return;
+      (element as HTMLElement & { inert: boolean }).inert = inert;
+    };
+    setInert(sidebarRef.current, compactNavigation && !mobileNav);
+    setInert(mainAreaRef.current, compactNavigation && mobileNav);
+    setInert(mobileNavigationRef.current, compactNavigation && mobileNav);
+
+    if (!compactNavigation || !mobileNav) return;
+    closeNavigationRef.current?.focus();
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setMobileNav(false);
+      window.requestAnimationFrame(() => openNavigationRef.current?.focus());
+    };
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [compactNavigation, mobileNav]);
+
+  const closeMobileNavigation = () => {
+    setMobileNav(false);
+    window.requestAnimationFrame(() => openNavigationRef.current?.focus());
   };
 
   async function signOut() {
@@ -150,117 +278,174 @@ export function ContinuumApp({ user, initialState, view }: { user: AuthUser; ini
     else setToast("Sign out failed. Your current session is still active.");
   }
 
+  /** §8.4's minimum action set — verbs first, so the palette is a command bar
+   *  and not only a finder. */
+  const paletteActions = useMemo<PaletteAction[]>(() => [
+    { id: "ask", label: "Ask Continuum about…", hint: "Open the assistant with this page attached", run: () => assistant.askFromPage({ ...(pageContext ? { page: pageContext } : {}) }) },
+    { id: "new-goal", label: "New goal", hint: "Add an outcome with a deadline", run: () => navigate("goals") },
+    { id: "new-task", label: "New task", hint: "Add work to a goal", run: () => navigate("goals") },
+    { id: "new-project", label: "New project", hint: "Start a research project", run: () => navigate("research") },
+    { id: "add-source", label: "Add a source", hint: "Bring a paper or document into your Library", run: () => navigate("library") },
+    { id: "build-week", label: "Build my week", hint: "Draft a schedule from your real deadlines", run: () => navigate("goals") },
+    { id: "study", label: "Start a study session", hint: "Practise the concept you are weakest on", run: () => navigate("learn") },
+    { id: "open-build", label: "Open Build", hint: "Write and run code beside your material", run: () => navigate("code") },
+    { id: "review", label: "Review proposals", hint: "Approve or reject pending changes", run: () => navigate("activity"), ...(pendingProposals ? { badge: `(${pendingProposals})` } : {}) },
+    { id: "settings", label: "Open settings", hint: "Account, appearance, AI, connections, privacy", run: () => navigate("account") },
+  ], [assistant, navigate, pageContext, pendingProposals]);
+
   return (
+    <AssistantProvider value={assistant}>
     <div className="app-shell">
-      <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`} aria-label="Workspace navigation">
+      <aside
+        ref={sidebarRef}
+        className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}
+        aria-label="Workspace navigation"
+        aria-hidden={compactNavigation && !mobileNav ? true : undefined}
+      >
         <div className="sidebar-head">
-          <Link className="brand" href="/" onClick={linkHandler("today")} aria-label="Continuum home">
-            <span className="brand-symbol">C</span>
-            <span>Continuum</span>
+          <Link className="brand" href={workspacePath.today} aria-label="Continuum workspace home">
+            <BrandMark className="brand-symbol" />
+            <span>continuum</span>
           </Link>
-          <button className="icon-button mobile-only" onClick={() => setMobileNav(false)} aria-label="Close navigation"><X size={20} /></button>
+          <button ref={closeNavigationRef} className="icon-button mobile-only" onClick={closeMobileNavigation} aria-label="Close navigation"><X size={20} /></button>
         </div>
 
         <nav className="main-nav" aria-label="Primary navigation">
-          {navGroups.map((group) => (
-            <div className="nav-group" key={group.label}>
-              <p>{group.label}</p>
+          {navGroups.map((group, index) => (
+            <div className={`nav-group${group.variant ? ` nav-group-${group.variant}` : ""}`} key={group.label || `group-${index}`}>
+              {group.label ? <p>{group.label}</p> : null}
               {group.items.map((item) => {
                 const Icon = item.icon;
                 const count = item.id === "activity" ? (state?.proposals.filter((proposal) => proposal.status === "pending").length ?? 0) : undefined;
+                const active = canonicalView(currentView) === item.id;
                 return (
-                  <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={currentView === item.id ? "nav-item active" : "nav-item"} aria-current={currentView === item.id ? "page" : undefined} onClick={linkHandler(item.id)} onMouseEnter={() => void refreshView(item.id)} onFocus={() => void refreshView(item.id)}>
+                  <Link key={item.id} href={workspacePath[item.id]} className={active ? "nav-item active" : "nav-item"} aria-current={active ? "page" : undefined}>
                     <Icon size={18} strokeWidth={1.8} />
                     <span>{item.label}</span>
-                    {typeof count === "number" && count > 0 ? <small>{count}</small> : null}
+                    {typeof count === "number" && count > 0 ? <small aria-label={`${count} pending`}>{count}</small> : null}
                   </Link>
                 );
               })}
             </div>
           ))}
+
+          {/* The user's own goals, between the daily entry points and the
+              cross-cutting tools, so the sidebar reads as their work rather than
+              as a menu of Continuum's features. */}
+          {sidebarGoals.length ? (
+            <div className="nav-group nav-group-goals">
+              <p>Your goals</p>
+              {sidebarGoals.map((goal) => {
+                const id = String(goal.id ?? "");
+                const progress = Math.round(Number(goal.progress ?? 0) * 100);
+                const active = currentView === "goal" && activeGoalId === id;
+                return (
+                  <Link
+                    key={id}
+                    href={`/g/${encodeURIComponent(id)}` as Route}
+                    className={active ? "nav-goal active" : "nav-goal"}
+                    aria-current={active ? "page" : undefined}
+                    title={String(goal.title ?? "")}
+                    onClick={() => setMobileNav(false)}
+                  >
+                    <span className="nav-goal-title">{String(goal.title ?? "Untitled goal")}</span>
+                    <small aria-label={`${progress}% complete`}>{progress}%</small>
+                    <i className="nav-goal-progress" style={{ width: `${Math.max(3, progress)}%` }} aria-hidden="true" />
+                  </Link>
+                );
+              })}
+            </div>
+          ) : null}
         </nav>
 
         <div className="sidebar-spacer" />
         <button className="command-hint" onClick={() => setCommandOpen(true)}><Command size={16} /><span>Jump to anything</span><kbd>⌘K</kbd></button>
         <div className="profile-card">
           <div className="avatar">{initials(user.displayName)}</div>
-          <div><strong>{user.displayName}</strong><span>{user.educationLevel ?? user.email}</span></div>
+          <button className="profile-details" onClick={() => navigate("account")}><strong>{user.displayName}</strong><span>{user.educationLevel ?? `@${user.username}`}</span></button>
           <button className="profile-signout" onClick={() => void signOut()} aria-label="Sign out"><LogOut size={16} /></button>
         </div>
       </aside>
 
-      {mobileNav ? <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} /> : null}
+      {mobileNav ? <button className="sidebar-scrim" aria-label="Close navigation" onClick={closeMobileNavigation} /> : null}
 
-      <main className="main-area">
+      <main ref={mainAreaRef} className="main-area" aria-hidden={compactNavigation && mobileNav ? true : undefined}>
         <header className="topbar">
-          <button className="icon-button mobile-only" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Menu size={20} /></button>
+          <button ref={openNavigationRef} className="icon-button mobile-only" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Menu size={20} /></button>
           <div className="location-label"><span>Continuum</span><strong>{meta.title}</strong></div>
-          <button className="search-button" onClick={() => setCommandOpen(true)}><Search size={17} /><span>Search workspace</span><kbd>⌘K</kbd></button>
-          <div className="topbar-right"><span className="privacy-state"><i />Saved</span></div>
+          <button className="search-button" aria-label="Search workspace" onClick={() => setCommandOpen(true)}><Search size={17} /><span>Search workspace</span><kbd>⌘K</kbd></button>
+          <div className="topbar-right">
+            <button className={panelOpen ? "topbar-ask active" : "topbar-ask"} onClick={() => setPanelOpen(!panelOpen)} aria-pressed={panelOpen} aria-label="Ask Continuum about this page">
+              <Sparkles size={16} /><span>Ask</span><kbd>⌘J</kbd>
+            </button>
+            <ThemeToggle />
+            <span className="privacy-state"><i />Saved</span>
+          </div>
         </header>
 
         <div className="content-wrap">
           {currentView === "integrations"
             ? <IntegrationsScreen showToast={setToast} />
             : state
-              ? <WorkspaceScreens view={currentView} state={state} user={user} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} onNavigate={navigate} onRefresh={refreshCurrent} showToast={setToast} />
+              ? <WorkspaceScreens view={currentView} state={state} shellGoals={shell.goals} projectId={projectId} user={user} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} serverNow={serverNow} goalId={activeGoalId} onNavigate={navigate} onRefresh={refreshCurrent} showToast={setToast} />
               : <ScreenLoading />}
         </div>
       </main>
 
-      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+      <nav ref={mobileNavigationRef} className="mobile-bottom-nav" aria-label="Mobile navigation" aria-hidden={compactNavigation && mobileNav ? true : undefined}>
         {mobileItems.map((item) => {
           const Icon = item.icon;
-          return <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={currentView === item.id ? "active" : ""} aria-current={currentView === item.id ? "page" : undefined} onClick={linkHandler(item.id)}><Icon size={19} /><span>{item.label}</span></Link>;
+          const active = canonicalView(currentView) === item.id;
+          return <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={active ? "active" : ""} aria-current={active ? "page" : undefined}><Icon size={19} /><span>{item.label}</span></Link>;
         })}
-        <button className={["research", "memory", "integrations", "activity"].includes(currentView) ? "active" : ""} onClick={() => setMobileNav(true)}><Menu size={19} /><span>More</span></button>
+        <button className={moreActive ? "active" : ""} onClick={() => setMobileNav(true)} aria-label={pendingProposals ? `More sections, ${pendingProposals} pending in Review` : "More sections"}><Menu size={19} /><span>More</span>{pendingProposals ? <i className="nav-dot" aria-hidden="true" /> : null}</button>
       </nav>
 
-      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} state={state} onNavigate={navigate} />
+      {state ? <AssistantPanel open={panelOpen} onOpenChange={setPanelOpen} state={state} /> : null}
+
+      <CommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        actions={paletteActions}
+        goals={sidebarGoals.map((goal) => ({ id: String(goal.id ?? ""), title: String(goal.title ?? "Untitled goal") }))}
+        projects={(state?.projects ?? []).map((project) => ({ id: String(project.id ?? ""), title: String(project.title ?? "Untitled project") }))}
+        onNavigate={navigate}
+      />
+
+      <Dialog.Root open={shortcutsOpen} onOpenChange={setShortcutsOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="modal-backdrop" />
+          <Dialog.Content className="modal-content shortcut-sheet">
+            <Dialog.Title>Keyboard shortcuts</Dialog.Title>
+            <Dialog.Description>Available from anywhere in the workspace.</Dialog.Description>
+            <dl>
+              {SHORTCUTS.map((shortcut) => (
+                <div key={shortcut.keys}><dt><kbd>{shortcut.keys}</kbd></dt><dd>{shortcut.description}</dd></div>
+              ))}
+            </dl>
+            <Dialog.Close className="button button-secondary">Close</Dialog.Close>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+
+
       {toast ? <div className="toast" role="status"><span className="toast-icon">✓</span><span>{toast}</span><button onClick={() => setToast(null)} aria-label="Dismiss"><X size={16} /></button></div> : null}
     </div>
+    </AssistantProvider>
   );
 }
 
-type SearchAction = { id: string; label: string; hint: string; view: WorkspaceView };
-
-function rowString(row: Record<string, unknown>, key: string) {
-  return typeof row[key] === "string" ? row[key] : undefined;
-}
-
-function workspaceActions(state: WorkspaceState | undefined): SearchAction[] {
-  const destinations = navGroups.flatMap((group) => group.items.map((item) => ({ id: `view-${item.id}`, label: item.label, hint: workspaceMeta[item.id].description, view: item.id })));
-  if (!state) return destinations;
-  const goals = state.goals.map((goal) => ({ id: `goal-${rowString(goal, "id")}`, label: rowString(goal, "title") ?? "Untitled goal", hint: "Goal", view: "goals" as const }));
-  const tasks = state.tasks.map((task) => ({ id: `task-${rowString(task, "id")}`, label: rowString(task, "title") ?? "Untitled task", hint: "Task", view: "goals" as const }));
-  const projects = state.projects.map((project) => ({ id: `project-${rowString(project, "id")}`, label: rowString(project, "title") ?? "Untitled project", hint: "Research project", view: "research" as const }));
-  const receipts = state.receipts.map((receipt) => ({ id: `receipt-${rowString(receipt, "id")}`, label: rowString(receipt, "summary") ?? "Outcome receipt", hint: "Memory receipt", view: "memory" as const }));
-  return [...destinations, ...goals, ...tasks, ...projects, ...receipts];
-}
-
-function CommandPalette({ open, onOpenChange, state, onNavigate }: { open: boolean; onOpenChange: (open: boolean) => void; state: WorkspaceState | undefined; onNavigate: (view: WorkspaceView) => void }) {
-  const [query, setQuery] = useState("");
-  const actions = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return workspaceActions(state).filter((item) => !needle || `${item.label} ${item.hint}`.toLowerCase().includes(needle)).slice(0, 12);
-  }, [query, state]);
-
-  return (
-    <Dialog.Root open={open} onOpenChange={(next) => { onOpenChange(next); if (!next) setQuery(""); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="command-overlay" />
-        <Dialog.Content className="command-panel" aria-describedby="command-description">
-          <Dialog.Title className="sr-only">Search Continuum</Dialog.Title>
-          <Dialog.Description className="sr-only" id="command-description">Search sections, goals, tasks, projects, and outcome receipts.</Dialog.Description>
-          <div className="command-input"><Search size={19} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sections, goals, tasks, and projects" /><Dialog.Close aria-label="Close search"><X size={17} /></Dialog.Close></div>
-          <div className="command-results">
-            <p>{query ? "Matches" : "Workspace"}</p>
-            {actions.map((action) => <button key={action.id} onClick={() => onNavigate(action.view)}><span>{action.label}</span><small>{action.hint}</small></button>)}
-            {!actions.length ? <div className="command-empty"><Search size={20} /><span>No workspace item matches “{query}”.</span></div> : null}
-          </div>
-          <footer><span><kbd>esc</kbd> close</span><span>Search opens the matching workspace; it never changes your data.</span></footer>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
-}
+/**
+ * §8.8: the `?` sheet is the single source of truth for shortcuts, generated
+ * from this one constant so a binding cannot exist without being documented.
+ */
+const SHORTCUTS = [
+  { keys: "⌘K", description: "Find any goal, source, paper, conversation, or concept — or run a command" },
+  { keys: "⌘J", description: "Ask Continuum about the page you are on" },
+  { keys: "⌘↵", description: "Run your program in Build, or send a message" },
+  { keys: "⇧↵", description: "New line in the composer" },
+  { keys: "↑", description: "Edit your last message from an empty composer" },
+  { keys: "Esc", description: "Stop a run or a response, or close the topmost panel" },
+  { keys: "?", description: "Open this sheet" },
+] as const;

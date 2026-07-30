@@ -1,0 +1,175 @@
+/* /home (redesign.md §9.4). Tokens only. */
+
+.home { max-width: var(--content-max); margin: 0 auto; padding: var(--s-8) var(--s-6) var(--s-16); display: grid; gap: var(--s-8); }
+
+.home-head h1 { margin: 0; font-size: 28px; line-height: 1.2; font-weight: 600; letter-spacing: -.01em; }
+.home-head p { margin: var(--s-1) 0 0; color: var(--ink-3); font-size: var(--t-body); }
+
+.home-layout { display: grid; grid-template-columns: minmax(0, 720px) 360px; gap: var(--s-8); align-items: start; }
+/* Every one-column grid below declares minmax(0, 1fr) rather than relying on
+   the implicit `auto` track, which resolves to max-content and lets a long
+   goal title push the rail past the viewport. */
+.home-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-8); min-width: 0; }
+.home-rail { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-8); min-width: 0; }
+.home-rail > section { min-width: 0; }
+
+/* The single accent element on the page (AC-H1). It is marked with a 2px rail
+   and a quiet tint — never a saturated fill, which is what made the old nav
+   pill the loudest object on every screen (C18). */
+.next-action {
+  padding: var(--s-5);
+  display: grid;
+  gap: var(--s-2);
+  background: var(--accent-quiet);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent-mark);
+  border-radius: var(--r-lg);
+}
+.next-action h2 { margin: 0; font-size: var(--t-h2); font-weight: 600; line-height: 1.3; }
+.next-action-context { margin: 0; color: var(--ink-2); font-size: var(--t-small); }
+.next-action-reason { margin: 0; color: var(--ink-2); font-size: var(--t-small); line-height: 1.55; }
+.next-action-actions { margin-top: var(--s-2); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+
+.home-section { display: grid; gap: var(--s-3); }
+.home-section h2 { margin: 0; font-size: var(--t-h3); font-weight: 600; }
+.home-section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.home-section-head h2 { margin: 0; font-size: var(--t-h3); font-weight: 600; }
+
+.home-link {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  padding: 0; color: var(--ink-2); background: none; border: 0; cursor: pointer;
+  font-size: var(--t-small);
+}
+.home-link:hover { color: var(--ink); }
+
+.resume-list { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); }
+.resume-list li { border-bottom: 1px solid var(--line); }
+.resume-list li:last-child { border-bottom: 0; }
+.resume-list button {
+  width: 100%; min-height: 48px;
+  padding: var(--s-2) var(--s-2) var(--s-2) 0;
+  display: flex; align-items: center; gap: var(--s-3);
+  color: inherit; background: none; border: 0; cursor: pointer; text-align: left;
+}
+.resume-list button:hover { background: var(--surface-raised); }
+.resume-icon { flex: none; display: grid; place-items: center; width: 28px; height: 28px; color: var(--ink-3); background: var(--surface-raised); border-radius: var(--r-sm); }
+.resume-copy { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.resume-copy strong { color: var(--ink); font-size: var(--t-body); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resume-copy small { color: var(--ink-3); font-size: var(--t-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.week-summary { margin: 0; color: var(--ink-2); font-size: var(--t-small); font-variant-numeric: tabular-nums; }
+
+.day-agenda { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); }
+.agenda-block {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center; gap: var(--s-2);
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+.agenda-block:last-child { border-bottom: 0; }
+.agenda-time { color: var(--ink-3); font-size: var(--t-small); font-variant-numeric: tabular-nums; }
+.agenda-copy { min-width: 0; display: grid; gap: 1px; }
+.agenda-copy strong { color: var(--ink); font-size: var(--t-small); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agenda-copy small { color: var(--ink-3); font-size: var(--t-micro); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agenda-block.is-done .agenda-copy strong { color: var(--ink-3); text-decoration: line-through; }
+.agenda-block.is-now { box-shadow: inset 2px 0 0 var(--accent-mark); padding-left: var(--s-2); }
+
+.goal-rail { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); }
+.goal-rail li { border-bottom: 1px solid var(--line); }
+.goal-rail li:last-child { border-bottom: 0; }
+.goal-rail button {
+  width: 100%; min-width: 0; padding: var(--s-2) 0;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-1);
+  color: inherit; background: none; border: 0; cursor: pointer; text-align: left;
+}
+.goal-rail-head { min-width: 0; }
+.goal-rail button:hover .goal-rail-head strong { color: var(--accent); }
+.goal-rail-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2); }
+.goal-rail-head strong { min-width: 0; color: var(--ink); font-size: var(--t-small); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal-rail-head b { flex: none; color: var(--ink-3); font-size: var(--t-micro); font-variant-numeric: tabular-nums; }
+.goal-rail small { color: var(--ink-3); font-size: var(--t-micro); }
+
+@media (max-width: 1120px) {
+  .home-layout { grid-template-columns: minmax(0, 1fr); }
+  .home-rail { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+}
+@media (max-width: 900px) {
+  .home { padding: var(--s-6) var(--s-4) var(--s-12); gap: var(--s-6); }
+  .home-head h1 { font-size: 24px; }
+  .home-rail { grid-template-columns: minmax(0, 1fr); }
+}
+
+
+/* ==========================================================================
+   Migrated out of globals.css by the §15.9 paydown. These rules were written
+   against the legacy token aliases; they compose the same values, now from
+   the file that owns the surface.
+   ========================================================================== */
+
+
+/* Today */
+.today-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .85fr); gap: 16px; }
+.today-grid > .card { padding: 22px; }
+.next-action-card { display: flex; flex-direction: column; align-items: flex-start; background: var(--ink); border-color: var(--ink); color: var(--on-accent); }
+.next-action-card h2 { max-width: 700px; margin: 26px 0 10px; font-size: clamp(27px, 3vw, 38px); line-height: 1.12; letter-spacing: -.03em; }
+.next-action-card > p { max-width: 650px; margin: 0; color: var(--ink-inverse-2); line-height: 1.6; }
+.next-action-card .button { color: var(--ink); background: var(--surface); border-color: var(--on-accent); }
+.action-evidence { margin: 16px 0 22px; display: flex; align-items: center; gap: 8px; color: var(--ink-inverse-2); font-size: 13px; }
+.summary-card { min-height: 0; }
+.workspace-metrics { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.workspace-metrics div { min-height: 84px; padding: 15px 16px; display: grid; align-content: center; gap: 3px; background: var(--surface-raised); border-radius: 11px; }
+.workspace-metrics strong { color: var(--ink); font-size: 27px; letter-spacing: -.02em; }
+.workspace-metrics span { color: var(--ink-2); font-size: 12px; }
+.summary-card .workspace-metrics { margin-top: 20px; grid-template-columns: 1fr; gap: 0; border-top: 1px solid var(--line); }
+.summary-card .workspace-metrics div { min-height: 48px; padding: 8px 2px; display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 8px; background: transparent; border-bottom: 1px solid var(--line); border-radius: 0; }
+.summary-card .workspace-metrics strong { font-size: 19px; }
+.summary-card .workspace-metrics span { font-size: 11px; }
+/* Same reasoning as .next-action-card — these sit in a column beside it and a
+   fixed minimum left the right rail stranded with empty space below its content. */
+.schedule-card, .resume-card { min-height: 0; }
+.schedule-card > p, .resume-card > p { color: var(--ink-2); line-height: 1.6; }
+.schedule-card > .button, .resume-card > .button { margin-top: 20px; }
+.next-block { margin-top: 20px; padding: 16px; display: grid; gap: 7px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 9px; }
+.next-block span { display: flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 13px; }
+.next-block small { color: var(--accent); }
+.resume-card ul { padding-left: 19px; color: var(--ink-2); line-height: 1.7; }@media (max-width: 600px) {
+  .next-action-card { min-height: 0; }
+}
+
+
+/* Content-sized: stretching left a ~380px hole under a short day plan,
+   which reads worse than two columns of honest, different heights. */
+.today-grid { grid-template-columns: minmax(0, 1.55fr) minmax(260px, .62fr); gap: 22px; align-items: start; }
+/* Height follows content. A fixed 390px minimum with the CTA pinned to the
+   bottom left a ~100px hole in the middle of the card whenever the action
+   description was short, which is the common case. */
+.next-action-card { min-height: 0; color: var(--ink-inverse); background: var(--surface-inverse); border: 0; border-radius: 24px; }
+.next-action-card h2 { margin-top: 26px; font-size: clamp(33px, 4vw, 50px); }
+.next-action-card .button { margin-top: 28px; }
+.next-action-card > p, .action-evidence { color: var(--ink-inverse-2); }
+.next-action-card .button { color: var(--on-accent-mark); background: var(--accent-mark); border-color: var(--accent-mark); }
+.summary-card { min-height: 0; background: color-mix(in srgb, var(--surface) 72%, transparent); border: 0; }
+.summary-card .workspace-metrics { border-top-color: var(--line); }
+.summary-card .workspace-metrics strong { color: var(--ink); }
+.schedule-card, .resume-card { background: color-mix(in srgb, var(--surface) 88%, transparent); }
+@media (max-width: 760px) {
+  .today-grid { grid-template-columns: 1fr; }
+  .next-action-card { min-height: 0; }
+}
+
+.today-technical summary { color: var(--ink-2); font-size: var(--t-micro); cursor: pointer; }
+.today-technical p { margin: var(--s-2) 0 0; color: var(--ink-2); font-family: var(--font-mono), monospace; font-size: var(--t-micro); word-break: break-all; }
+
+/* §8.2 The next action is the one thing to read on Today, but at 38px it was
+   display type inside a card. `title` is the largest size a workspace screen
+   uses. */
+.next-action-card h2 { margin: var(--s-4) 0 var(--s-2); font-size: var(--t-h1); line-height: 1.25; letter-spacing: -.01em; }
+.next-action-card { min-height: 0; }
+.next-action-card > p { font-size: var(--t-body); }
+
+/* The next-action card is dark in both themes, so text inside it cannot use the
+   page's muted token — that combination measured 2.71:1. */
+.next-action-card .today-technical summary { color: var(--ink-inverse-2); }
+.next-action-card .today-technical p { color: var(--ink-inverse-2); }
+.today-grid > .card { padding: 28px; }
+html[data-theme="dark"] .next-action-card .button { color: var(--on-accent); }

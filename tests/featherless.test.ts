@@ -20,7 +20,7 @@ describe("Featherless catalog routing", () => {
     }));
 
     const selected = await selectFeatherlessModel("research_synthesis", {
-      FEATHERLESS_API_KEY: "test-key",
+      FEATHERLESS_API_KEY_PRIMARY: "test-key",
     } as NodeJS.ProcessEnv);
 
     // Live-verified curated fallback: Featherless removed /v1/models (404 "Gone"),
@@ -35,10 +35,25 @@ describe("Featherless catalog routing", () => {
   it("honors an explicit fallback override", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("Gone.", { status: 404 })));
     await expect(selectFeatherlessModel("classification", {
-      FEATHERLESS_API_KEY: "test-key",
+      FEATHERLESS_API_KEY_PRIMARY: "test-key",
       FEATHERLESS_FALLBACK_MODEL: "owner/reviewed-model",
       FEATHERLESS_MODEL_CONCURRENCY_COST: "3",
     } as NodeJS.ProcessEnv)).resolves.toMatchObject({ id: "owner/reviewed-model", concurrencyCost: 3 });
+  });
+
+  it("uses the fast override for summarization", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(selectFeatherlessModel("summarization", {
+      FEATHERLESS_API_KEY_PRIMARY: "test-key",
+      FEATHERLESS_FAST_MODEL: "owner/fast-summary-model",
+      FEATHERLESS_REASONING_MODEL: "owner/reasoning-model",
+    } as NodeJS.ProcessEnv)).resolves.toMatchObject({
+      id: "owner/fast-summary-model",
+      selectedBy: "configured_policy",
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -46,15 +61,13 @@ describe("Featherless credential pool", () => {
   beforeEach(() => resetFeatherlessCredentialState());
 
   const env = {
-    FEATHERLESS_API_KEY: "primary-secret",
-    FEATHERLESS_API_KEY_1: "second-secret",
-    FEATHERLESS_API_KEY_2: "third-secret",
-    FEATHERLESS_API_KEY_3: "second-secret",
+    FEATHERLESS_API_KEY_PRIMARY: "primary-secret",
+    FEATHERLESS_API_KEY_SECONDARY: "secondary-secret",
   } as NodeJS.ProcessEnv;
 
-  it("deduplicates credentials and rotates bounded identifiers", () => {
-    expect(featherlessCredentials(env).map((credential) => credential.id)).toEqual(["primary", "key_1", "key_2"]);
-    expect(Array.from({ length: 3 }, () => selectFeatherlessCredential(env).id)).toEqual(["primary", "key_1", "key_2"]);
+  it("uses only the two server-side slots and rotates stable identifiers", () => {
+    expect(featherlessCredentials(env).map((credential) => credential.id)).toEqual(["primary", "secondary"]);
+    expect(Array.from({ length: 4 }, () => selectFeatherlessCredential(env).id)).toEqual(["primary", "secondary", "primary", "secondary"]);
   });
 
   it("backs a rate-limited key off without exposing key material", () => {

@@ -5,7 +5,8 @@ import {
   normalizeCrossrefWork,
   normalizeOpenAlexWork,
   OpenAlexProvider,
-  scholarSearchUrl,
+  planScholarlyQuery,
+  rankScholarlyWorks,
   ScholarlyProviderError,
   type NormalizedScholarlyWork,
 } from "../apps/web/lib/scholarly";
@@ -89,10 +90,14 @@ describe("scholarly discovery adapters", () => {
       expect(url.origin).toBe("https://api.openalex.org");
       expect(url.searchParams.get("search")).toBe("knowledge graph");
       expect(url.searchParams.get("filter")).toContain("open_access.is_oa:true");
-      expect(url.searchParams.get("per-page")).toBe("25");
-      return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      expect(url.searchParams.get("per-page")).toBe("100");
+      expect(url.searchParams.get("sort")).toBe("cited_by_count:desc");
+      return new Response(JSON.stringify({ results: [], meta: { next_cursor: "next-page", count: 42 } }), { status: 200 });
     });
-    await new OpenAlexProvider("fixture-key", openAlexFetch).search({ query: "knowledge graph", mode: "keywords", openAccessOnly: true, limit: 100 });
+    const page = await new OpenAlexProvider("fixture-key", openAlexFetch).searchPage({ query: "knowledge graph", mode: "keywords", openAccessOnly: true, limit: 100, sort: "citations", cursor: "previous-page" });
+    expect(page).toMatchObject({ nextCursor: "next-page", total: 42 });
+    expect(openAlexFetch).toHaveBeenCalledOnce();
+    expect(new URL(String(openAlexFetch.mock.calls[0]![0])).searchParams.get("cursor")).toBe("previous-page");
 
     const crossrefFetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
@@ -104,11 +109,30 @@ describe("scholarly discovery adapters", () => {
     await new CrossrefProvider("research@example.com", crossrefFetch).search({ query: "Ada Lovelace", mode: "author" });
   });
 
-  it("fails closed when OpenAlex is unconfigured and emits a search-only Scholar handoff", async () => {
+  it("fails closed when OpenAlex is unconfigured and plans DOI/title/year queries deterministically", async () => {
     await expect(new OpenAlexProvider(undefined).search({ query: "continuum", mode: "keywords" })).rejects.toEqual(expect.objectContaining<Partial<ScholarlyProviderError>>({ code: "unconfigured" }));
-    const url = new URL(scholarSearchUrl("continuum memory"));
-    expect(url.origin).toBe("https://scholar.google.com");
-    expect(url.pathname).toBe("/scholar");
-    expect(url.searchParams.get("q")).toBe("continuum memory");
+    expect(planScholarlyQuery('Please find "A Continuum Study" from 2025')).toMatchObject({
+      mode: "title",
+      preciseQuery: "A Continuum Study",
+      detectedYear: 2025,
+    });
+    expect(planScholarlyQuery("doi:10.1000/CONTINUUM")).toMatchObject({ mode: "doi", preciseQuery: "10.1000/continuum" });
+  });
+
+  it("retries rate limits only twice, then returns a specific failure", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ error: "rate limited" }), { status: 429 }));
+    await expect(new OpenAlexProvider("fixture-key", fetcher).search({ query: "knowledge", mode: "keywords" }))
+      .rejects.toEqual(expect.objectContaining<Partial<ScholarlyProviderError>>({ code: "rate_limited" }));
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it("ranks by requested order without discarding deterministic relevance", () => {
+    const works: NormalizedScholarlyWork[] = [
+      { providerId: "W1", title: "Unrelated methods", authors: [], year: 2026, citedByCount: 100, openAccess: false, topics: [], institutions: [], sourceProvider: "openalex", retrievedAt, relatedWorkIds: [], referenceIds: [] },
+      { providerId: "W2", title: "Spatial transcriptomics atlas", authors: [], year: 2024, citedByCount: 4, openAccess: true, topics: ["Gene expression"], institutions: [], sourceProvider: "openalex", retrievedAt, relatedWorkIds: [], referenceIds: [] },
+    ];
+    expect(rankScholarlyWorks(works, "spatial transcriptomics", "relevance")[0]?.providerId).toBe("W2");
+    expect(rankScholarlyWorks(works, "spatial transcriptomics", "citations")[0]?.providerId).toBe("W1");
+    expect(rankScholarlyWorks(works, "spatial transcriptomics", "newest")[0]?.providerId).toBe("W1");
   });
 });

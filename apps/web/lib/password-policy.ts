@@ -18,15 +18,32 @@ export const passwordSchema = z
   .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters`)
   .max(PASSWORD_MAX_LENGTH);
 
+export const USERNAME_MIN_LENGTH = 3;
+export const USERNAME_MAX_LENGTH = 32;
+export const USERNAME_HELP = `${USERNAME_MIN_LENGTH}–${USERNAME_MAX_LENGTH} characters using letters, numbers, underscores, or hyphens.`;
+export const usernameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(USERNAME_MIN_LENGTH, `Username must be at least ${USERNAME_MIN_LENGTH} characters`)
+  .max(USERNAME_MAX_LENGTH, `Username must be at most ${USERNAME_MAX_LENGTH} characters`)
+  .regex(/^[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?$/, "Username must start and end with a letter or number");
+
 /** The canonical demo identity. Shared with the seed command and demo-login route. */
 export const DEMO_USERNAME = "demo";
 export const DEMO_EMAIL = "demo@continuum.demo";
 
+/** Match both public identifiers for the seeded demo account. */
+export function isDemoLoginIdentifier(identifier: string): boolean {
+  const normalized = identifier.trim().toLowerCase();
+  return normalized === DEMO_USERNAME || normalized === DEMO_EMAIL;
+}
+
 /**
- * Accept either an email or the bare demo username on the login form. Anything
- * that is not the demo username is passed through untouched so the normal email
- * path (and its validation) is unchanged.
+ * Keep the seeded demo account compatible with its historical database
+ * identifier. Other usernames pass through unchanged.
  */
 export function resolveLoginIdentifier(identifier: string): string {
-  return identifier.trim().toLowerCase() === DEMO_USERNAME ? DEMO_EMAIL : identifier;
+  const normalized = identifier.trim().toLowerCase();
+  return normalized === DEMO_USERNAME ? DEMO_EMAIL : normalized;
 }

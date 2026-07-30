@@ -4,3 +4,24 @@
 .env*
 skills-lock.json
 next.md
+
+# A .vercelignore replaces .gitignore for upload filtering, so anything the
+# web build does not need has to be listed here even if git already ignores it.
+
+# Rendered video output. @continuum/video stays a workspace member so the
+# lockfile still resolves, but its media never reaches the web deployment —
+# out/segments/hook.mov alone is 107MB, past Vercel's 100MB per-file limit.
+apps/video/out
+apps/video/build
+apps/video/assets
+
+# Screenshot dumps kept for review history; 53MB the build never reads.
+docs/audit-screenshots
+docs/screenshots
+docs/hackathon
+
+# Agent worktrees. `.gitignore` already excludes them, but `.vercelignore`
+# replaces `.gitignore` for upload filtering — and an agent writing Playwright
+# artifacts into one mid-upload makes the deploy fail with ENOENT on a file
+# that existed when the file list was built.
+.claude

@@ -22,12 +22,32 @@ export async function GET(request: Request) {
   let reports;
   try {
     reports = await providerHealth();
-  } catch (error) {
-    return NextResponse.json({ error: "Provider health probe failed", detail: error instanceof Error ? error.message : "unknown" }, { status: 502 });
+  } catch {
+    return NextResponse.json({ error: "Provider health probe failed" }, { status: 502 });
   }
   const anyHealthy = reports.some((report) => report.status === "healthy");
+  const publicReports = reports.map((report) => ({
+    provider: report.provider,
+    configured: report.configured,
+    status: report.status,
+    ...(report.model ? { model: report.model } : {}),
+    ...(typeof report.latencyMs === "number" ? { latencyMs: report.latencyMs } : {}),
+    checkedAt: report.checkedAt,
+    ...(report.capabilities ? { capabilities: report.capabilities } : {}),
+    ...(report.credentialHealth ? {
+      credentialHealth: report.credentialHealth.map((credential) => ({
+        id: credential.id,
+        status: credential.status,
+        inFlight: credential.inFlight,
+        failures: credential.failures,
+        lastStatus: credential.lastStatus,
+        retryAfter: credential.retryAfter,
+      })),
+    } : {}),
+    detail: report.status === "healthy" ? "Available" : report.status === "degraded" ? "Temporarily limited" : report.status === "not_configured" ? "Not configured" : "Temporarily unavailable",
+  }));
   return NextResponse.json(
-    { status: anyHealthy ? "operational" : "degraded", configured, providers: reports, checkedAt: new Date().toISOString() },
+    { status: anyHealthy ? "operational" : "degraded", configured, providers: publicReports, checkedAt: new Date().toISOString() },
     { headers: { "cache-control": "private, no-store" } },
   );
 }

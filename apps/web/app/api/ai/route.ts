@@ -1,10 +1,10 @@
-import { configuredProviders, generateStructured, routeTask } from "@continuum/ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
-import { checkDailyAiBudget, logModelUsage } from "@/lib/ai-budget";
+import { getRequestUser, sameOriginWrite } from "@/lib/auth";
+import { aiErrorResponse, runStructuredAi } from "@/lib/ai-gateway";
 import { buildAcademicPrompt } from "@/lib/prompt-context";
 import { getStore } from "@/lib/store";
+import { promptContracts } from "@/lib/prompt-registry";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -40,24 +40,7 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const parsed = requestSchema.safeParse(await request.json().catch(() => undefined));
   if (!parsed.success) return NextResponse.json({ error: "Invalid generation request", issues: parsed.error.issues }, { status: 400 });
-  const rate = await enforceRateLimit(request, "ai", Number(process.env.AI_REQUESTS_PER_MINUTE ?? 30), 60_000, user.id);
-  if (!rate.allowed) return NextResponse.json({ error: "AI request rate limit exceeded", resetAt: rate.resetAt }, { status: 429, headers: { "retry-after": "60" } });
-  const providers = configuredProviders();
-  const availableProviders = [
-    ...(providers.groq ? ["groq" as const] : []),
-    ...(providers.featherless ? ["featherless" as const] : []),
-    ...(providers.gemini ? ["gemini" as const] : []),
-    ...(providers.aiGateway ? ["ai_gateway" as const] : []),
-  ];
-  if (!availableProviders.length) return NextResponse.json({ error: "Cloud assistance is temporarily unavailable" }, { status: 503 });
-  const decision = routeTask({
-    id: `route_${Date.now()}`,
-    taskClass: parsed.data.taskClass,
-    sourceLocked: parsed.data.sourceLocked,
-    availableProviders,
-  });
   try {
-    await checkDailyAiBudget(user.id, 10_000);
     const relevantContext = await getStore(user.id).read("load_context", { focus: parsed.data.prompt.slice(0, 500), maxTokens: 800 });
     const academicPrompt = buildAcademicPrompt({
       surface: "learning",
@@ -66,24 +49,25 @@ export async function POST(request: Request) {
       educationLevel: user.educationLevel,
       curriculum: "Use the learner's stored board/curriculum when present; otherwise do not infer one.",
       relevantContext,
-      outputContract: parsed.data.taskClass === "misconception_diagnosis"
-        ? "Return the diagnostic schema with a calibrated score, explicit misconception evidence, prerequisites, intervention, and rationale."
-        : "Return the lesson schema with a concise explanation and one to six checks for understanding.",
+      outputContract: promptContracts.learning[parsed.data.taskClass],
       additionalPolicy: parsed.data.sourceLocked ? ["This task is source-locked. Make no factual claim beyond supplied source evidence."] : [],
     });
     const common = {
-      decision,
+      request,
+      userId: user.id,
+      feature: parsed.data.taskClass === "misconception_diagnosis" ? "learn.diagnosis" : "learn.lesson",
+      taskClass: parsed.data.taskClass,
       system: academicPrompt.system,
       prompt: academicPrompt.prompt,
       maxOutputTokens: 1800,
-      userId: user.id,
+      sourceLocked: parsed.data.sourceLocked,
+      cacheable: true,
     };
     const result = parsed.data.taskClass === "misconception_diagnosis"
-      ? await generateStructured({ ...common, schema: diagnosisContentSchema })
-      : await generateStructured({ ...common, schema: lessonContentSchema });
-    await logModelUsage({ userId: user.id, decision: result.decision, usage: result.usage });
+      ? await runStructuredAi({ ...common, schema: diagnosisContentSchema })
+      : await runStructuredAi({ ...common, schema: lessonContentSchema });
     return NextResponse.json({ output: result.output, assistance: { reason: result.decision.reason, verification: result.decision.verification, fallbackUsed: result.decision.fallbackUsed } });
-  } catch {
-    return NextResponse.json({ error: "Cloud assistance could not complete this request" }, { status: 502 });
+  } catch (error) {
+    return aiErrorResponse(error);
   }
 }

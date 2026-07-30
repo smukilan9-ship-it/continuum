@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEMO_EMAIL, DEMO_USERNAME, PASSWORD_MIN_LENGTH, passwordSchema, resolveLoginIdentifier } from "../apps/web/lib/password-policy";
+import { DEMO_EMAIL, DEMO_USERNAME, PASSWORD_MIN_LENGTH, isDemoLoginIdentifier, passwordSchema, resolveLoginIdentifier, usernameSchema } from "../apps/web/lib/password-policy";
 import { demoAccountPassword, demoLoginEnabled } from "../apps/web/lib/env";
 
 describe("password policy", () => {
@@ -21,11 +21,28 @@ describe("password policy", () => {
   });
 });
 
+describe("username policy", () => {
+  it("normalizes safe usernames and rejects email addresses or unsafe punctuation", () => {
+    expect(usernameSchema.parse("  Mukilan_9  ")).toBe("mukilan_9");
+    expect(usernameSchema.safeParse("mu").success).toBe(false);
+    expect(usernameSchema.safeParse("user@example.com").success).toBe(false);
+    expect(usernameSchema.safeParse("-leading").success).toBe(false);
+    expect(usernameSchema.safeParse("trailing_").success).toBe(false);
+  });
+});
+
 describe("demo login resolution", () => {
   it("maps the bare demo username to the demo email, passing everything else through", () => {
     expect(resolveLoginIdentifier(DEMO_USERNAME)).toBe(DEMO_EMAIL);
     expect(resolveLoginIdentifier("DEMO")).toBe(DEMO_EMAIL);
     expect(resolveLoginIdentifier("maya@continuum.demo")).toBe("maya@continuum.demo");
+  });
+
+  it("recognises both ways the seeded demo account can be entered", () => {
+    expect(isDemoLoginIdentifier(DEMO_USERNAME)).toBe(true);
+    expect(isDemoLoginIdentifier(" DEMO ")).toBe(true);
+    expect(isDemoLoginIdentifier(DEMO_EMAIL)).toBe(true);
+    expect(isDemoLoginIdentifier("maya@continuum.demo")).toBe(false);
   });
 });
 

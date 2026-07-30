@@ -1,0 +1,166 @@
+/* ==========================================================================
+   Goal page — §9.6, the product's primary object.
+
+   Co-located and token-only (§15.9), migrated out of globals.css. The legacy
+   aliases it used (`--space-*`, `--type-*`, `--muted`, `--surface-strong`,
+   `--lime`, `--blue`) are resolved to the real §15.2 tokens here so the alias
+   block can be deleted.
+   ========================================================================== */
+
+/* --- Header --------------------------------------------------------------- */
+
+.goal-header { display: grid; gap: var(--s-2); margin-bottom: var(--s-5); }
+.goal-header-line { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-3); }
+.goal-header-actions { margin-inline-start: auto; }
+
+.goal-title { padding: 0; border: 0; background: none; color: inherit; text-align: start; cursor: text; }
+.goal-title h1 { margin: 0; color: var(--ink); font-size: var(--t-h1); line-height: var(--t-h1-lh); letter-spacing: -.02em; }
+.goal-title:hover h1 { text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 4px; }
+
+.goal-title-input {
+  min-width: min(520px, 100%);
+  flex: 1;
+  padding: 0;
+  border: 0;
+  border-bottom: 2px solid var(--accent);
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--t-h1);
+  line-height: var(--t-h1-lh);
+  font-weight: 600;
+  letter-spacing: -.02em;
+}
+
+.goal-header-outcome { margin: 0; color: var(--ink-2); font-size: var(--t-body); max-width: 70ch; }
+
+.goal-progress-strip { display: flex; align-items: center; gap: var(--s-3); margin-top: var(--s-1); }
+.goal-progress-track { flex: 1; height: 4px; max-width: 320px; background: var(--surface-sunken); border-radius: 999px; overflow: hidden; }
+.goal-progress-track > i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.goal-progress-strip > span { color: var(--ink-3); font-size: var(--t-small); }
+.goal-progress-strip strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* --- Overview ------------------------------------------------------------- */
+
+.goal-overview { display: grid; gap: var(--s-4); }
+.goal-next-card { padding: var(--s-5); display: grid; gap: var(--s-2); justify-items: start; }
+.goal-next-card h2 { margin: 0; color: var(--ink); font-size: var(--t-h2); line-height: var(--t-h2-lh); letter-spacing: -.02em; }
+.goal-next-card p { margin: 0; color: var(--ink-3); }
+/* AC-G2: the concept map must be visible without scrolling at 1280×720, so the
+   one card above it stays compact and everything else moves below it. */
+.goal-next-compact { padding: var(--s-4) var(--s-5); }
+.goal-next-compact h2 { font-size: var(--t-h3); }
+
+.goal-milestones { padding: var(--s-4); }
+.goal-milestone-list { margin: var(--s-3) 0 0; padding: 0; display: grid; gap: var(--s-2); list-style: none; }
+.goal-milestone-list li { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: var(--s-2); }
+.goal-milestone-list strong { display: block; color: var(--ink); font-size: var(--t-body); font-weight: 600; }
+.goal-milestone-list small { color: var(--ink-3); font-size: var(--t-micro); }
+.milestone-mark { width: 15px; height: 15px; margin-top: 2px; display: grid; place-items: center; color: var(--canvas); background: var(--surface-sunken); border-radius: 50%; }
+.goal-milestone-list li.is-completed .milestone-mark { background: var(--success); }
+.goal-milestone-list li.is-in_progress .milestone-mark { background: var(--accent); }
+.goal-milestone-list li.is-completed strong { color: var(--ink-3); text-decoration: line-through; }
+
+.goal-project-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s-3); }
+.goal-project-cards .card { padding: var(--s-4); display: grid; align-content: start; gap: var(--s-2); }
+.goal-project-cards h3 { margin: 0; color: var(--ink); font-size: var(--t-h3); letter-spacing: -.02em; }
+.goal-project-cards p { margin: 0; color: var(--ink-3); font-size: var(--t-small); }
+
+.goal-overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s-3); }
+.goal-overview-grid .card { padding: var(--s-4); display: grid; align-content: start; gap: var(--s-2); }
+.goal-overview-grid h3 { margin: 0; color: var(--ink); font-size: var(--t-h3); letter-spacing: -.02em; }
+.goal-overview-grid p { margin: 0; color: var(--ink-3); font-size: var(--t-small); }
+
+.goal-event-list, .goal-question-list { margin: 0; padding: 0; display: grid; gap: var(--s-2); list-style: none; }
+.goal-event-list strong { display: block; color: var(--ink); font-size: var(--t-small); font-weight: 500; }
+.goal-event-list small { color: var(--ink-3); font-size: var(--t-micro); }
+.goal-question-list li { color: var(--ink-2); font-size: var(--t-small); line-height: 1.5; }
+
+.goal-inline-link { padding: 0; display: inline-flex; align-items: center; gap: var(--s-1); color: var(--accent); background: transparent; border: 0; cursor: pointer; font-size: var(--t-small); font-weight: 600; }
+.goal-inline-link:hover { text-decoration: underline; }
+
+/* AC-G5: a goal with nothing in it offers three ways to start. */
+.goal-empty { display: grid; justify-items: center; gap: var(--s-3); padding: var(--s-12) var(--s-4); text-align: center; }
+.goal-empty h2 { margin: 0; color: var(--ink); font-size: var(--t-h2); }
+.goal-empty p { margin: 0; color: var(--ink-3); }
+.goal-empty > div { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-2); }
+
+/* --- Plan ----------------------------------------------------------------- */
+
+.goal-plan { display: grid; gap: var(--s-4); }
+.goal-task-group { display: grid; gap: var(--s-2); }
+.goal-task-group h2 { margin: 0 0 var(--s-1); color: var(--ink-3); font-size: var(--t-micro); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.goal-task-row { padding: var(--s-3); display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: var(--s-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); }
+.goal-task-row strong { display: block; color: var(--ink); font-size: var(--t-body); font-weight: 600; }
+.goal-task-row small { color: var(--ink-3); font-size: var(--t-micro); }
+.goal-task-mark { width: 15px; height: 15px; display: grid; place-items: center; color: var(--canvas); border: 1.5px solid var(--line-strong); border-radius: 50%; }
+.goal-task-row.is-done { opacity: .6; }
+.goal-task-row.is-done .goal-task-mark { background: var(--success); border-color: var(--success); }
+.goal-task-row.is-done strong { text-decoration: line-through; }
+.goal-done-group > summary { padding: var(--s-2) 0; color: var(--ink-3); cursor: pointer; font-size: var(--t-small); }
+.goal-done-group > .goal-task-row { margin-top: var(--s-2); }
+
+/* --- Study ---------------------------------------------------------------- */
+
+.goal-study { display: grid; gap: var(--s-5); }
+.goal-study-section { display: grid; gap: var(--s-2); }
+.goal-study-section h2 { margin: 0 0 var(--s-1); color: var(--ink); font-size: var(--t-h3); }
+.goal-concept-row { padding: var(--s-3); display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--s-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); }
+.goal-concept-row strong { display: block; color: var(--ink); font-size: var(--t-body); font-weight: 600; }
+.goal-concept-row small { color: var(--ink-3); font-size: var(--t-micro); }
+.goal-quiet-line { margin: 0; color: var(--ink-3); font-size: var(--t-small); }
+
+/* --- Sources -------------------------------------------------------------- */
+
+.goal-sources { display: grid; gap: var(--s-2); }
+.goal-sources-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-bottom: var(--s-2); }
+.goal-source-row { padding: var(--s-3); display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: var(--s-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); }
+.goal-source-row > span:first-child { width: 34px; height: 34px; display: grid; place-items: center; color: var(--ink-3); background: var(--surface-sunken); border-radius: var(--r-sm); }
+.goal-source-row strong { display: block; color: var(--ink); font-size: var(--t-body); font-weight: 600; }
+.goal-source-row small { color: var(--ink-3); font-size: var(--t-micro); }
+
+@media (max-width: 720px) {
+  .goal-task-row { grid-template-columns: 18px minmax(0, 1fr); row-gap: var(--s-2); }
+  .goal-concept-row { grid-template-columns: minmax(0, 1fr); }
+  .goal-source-row { grid-template-columns: 34px minmax(0, 1fr); }
+  .goal-progress-strip { flex-wrap: wrap; }
+  /* §9.6: the switcher becomes a scrollable strip rather than wrapping. */
+  .goal-screen .section-tabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .goal-screen .section-tabs::-webkit-scrollbar { display: none; }
+}
+
+
+/* ==========================================================================
+   Migrated out of globals.css by the §15.9 paydown. These rules were written
+   against the legacy token aliases; they compose the same values, now from
+   the file that owns the surface.
+   ========================================================================== */
+
+.goal-card { padding: 24px; }
+.goal-card-head { display: grid; grid-template-columns: 1fr auto; gap: 30px; }
+.goal-card-head h2 { margin: 10px 0 7px; color: var(--ink); font-size: 23px; }
+.goal-card-head p { max-width: 800px; margin: 0; color: var(--ink-2); line-height: 1.55; }
+.goal-progress { display: grid; align-content: start; text-align: right; }
+.goal-progress strong { color: var(--accent); font-size: 30px; }
+.goal-progress span { color: var(--ink-2); font-size: 12px; }
+.goal-meta { margin: 20px 0 12px; display: flex; flex-wrap: wrap; gap: 18px; color: var(--ink-2); font-size: 13px; }
+.goal-meta span { display: flex; align-items: center; gap: 6px; }
+.goal-progress-track { height: 6px; overflow: hidden; background: var(--surface-sunken); border-radius: 999px; }
+.goal-progress-track span { height: 100%; display: block; background: var(--accent); }
+.goal-link-field { margin-top: 2px; }@media (max-width: 600px) {
+  .goal-card-head { grid-template-columns: 1fr; gap: 10px; }
+  .goal-progress { text-align: left; }
+}
+
+
+/* ── Today: goal standing ───────────────────────────────────────────────── */
+.goal-progress-list { margin: 14px 0 18px; padding: 0; display: grid; gap: 16px; list-style: none; }
+.goal-progress-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.goal-progress-head strong { min-width: 0; color: var(--ink); font-size: 13px; font-weight: 700; line-height: 1.35; }
+.goal-progress-head b { color: var(--accent); font-size: 12px; font-variant-numeric: tabular-nums; }
+.goal-progress-bar { height: 6px; margin: 7px 0 5px; overflow: hidden; background: var(--surface-raised); border-radius: 99px; }
+.goal-progress-bar i { height: 100%; display: block; background: var(--accent); border-radius: 99px; }
+.goal-progress-list small { color: var(--ink-2); font-size: 11px; }
+.goal-progress-list small.is-soon { color: var(--danger, var(--danger)); font-weight: 700; }
+.goal-list { display: grid; gap: 14px; }
+.goal-card { content-visibility: auto; contain-intrinsic-size: auto 180px; }

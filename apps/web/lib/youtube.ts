@@ -63,7 +63,7 @@ export class YouTubeProviderError extends Error {
 }
 
 export async function searchLearningVideos(input: { query: string; apiKey?: string; maxResults?: number; trustedChannelIds?: string[] }, fetcher: YouTubeFetch = fetch) {
-  if (!input.apiKey?.trim()) throw new YouTubeProviderError("YouTube search needs a YOUTUBE_API_KEY", "unconfigured");
+  if (!input.apiKey?.trim()) throw new YouTubeProviderError("Connect a YouTube Data API key in Connections to search learning videos.", "unconfigured");
   const url = new URL("https://www.googleapis.com/youtube/v3/search");
   url.searchParams.set("key", input.apiKey.trim());
   url.searchParams.set("part", "snippet");

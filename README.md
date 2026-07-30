@@ -13,7 +13,7 @@ Its two product rules are:
 - User-scoped goals, tasks, projects, learning states, research notes and decisions, source passages, claims, schedule blocks, resource activities, audit events, and compact outcome receipts.
 - Token-efficient context assembly: structured current state plus hybrid semantic/lexical retrieval, ranking, a caller-selected token budget, provenance, and an access log. Raw transcripts are not copied into memory chunks.
 - A remote Streamable HTTP MCP server with OAuth authorization code + PKCE, dynamic client registration, per-tool scopes, durable grants, token rotation, and immediate revocation checks.
-- Thirty-three canonical actions for context, projects, goals, learning, research evidence, schedule, resources, safe proposals, session synchronization, artifacts, and specialist routing. Thirty-one are remotely available; approval and accepted-decision writes stay app-only.
+- Fifteen outcome-shaped MCP tools, each named for a question a student would ask: find what I have, what am I working on, open this goal or project, read this passage, show the evidence behind this claim, what changed since last time, what do I know, what should I do next, start and record practice, save work, and propose a change. Every documented workflow completes in at most two calls. Accepting a decision, confirming a proposal, and committing a schedule stay app-only, because they are the user's actions.
 - A reviewed resource registry and deterministic native-versus-external ranking policy. Recommendations include exact location, authority, access, time, focus, completion, alternatives, and a return-verification contract.
 - A real external-resource lifecycle: save handoff, leave, record return, verify or hold for review, update mastery only from valid evidence, save an outcome receipt, and schedule a spaced follow-up.
 - Deterministic plan generation and repair. Generated schedules become expiring proposals; explicit confirmation and commit are separate writes.
@@ -21,7 +21,7 @@ Its two product rules are:
 - Private PDF/text ingestion with sanitization, stable chunks, content hashes, duplicate detection, optional private Blob originals, pgvector embeddings, lexical fallback, and source deletion from retrieval.
 - A syllabus-aware Code Lab with disposable browser workers for real JavaScript, TypeScript, Python (Pyodide), and SQLite execution; stdout/stderr/exit/timeout/test reporting; persisted local sessions; and visibly separate streaming AI coaching. Java, C/C++, and Rust remain honestly editor-only.
 - Featherless task-aware routing from the live plan/catalog with up to four server-side Featherless keys, health/backoff-aware least-busy selection, reviewed task fallbacks, Groq low-latency and reasoning routes, direct Gemini generation/embeddings with up to ten server-side keys, AI Gateway fallback, Featherless embeddings, and optional local Ollama.
-- Real user connection flows for Claude remote MCP, Google Calendar OAuth and explicit two-way schedule sync, encrypted paginated Zotero library indexing, NotebookLM source-pack handoff, Obsidian, and Ollama. Personal NotebookLM is correctly labeled as a handoff because it exposes no general account API.
+- Real user connection flows for Claude remote MCP, encrypted paginated Zotero library indexing, NotebookLM source-pack handoff, Obsidian, and Ollama. Continuum’s own editable planner has no external-calendar dependency. Personal NotebookLM is correctly labeled as a handoff because it exposes no general account API.
 - An optional Obsidian plugin. The user chooses one folder or explicitly opts into the whole vault; secrets use Obsidian SecretStorage, generated Continuum notes cannot overwrite ordinary notes, and original binaries require private Blob storage.
 
 Zero-credential local mode uses an explicitly labeled in-memory development identity. The optional Maya database seed is a separate acceptance fixture. Ordinary persistent accounts never receive its goals or research data; they start with honest onboarding and user-owned records.
@@ -89,17 +89,30 @@ Full details, the reset guarantees, and a 2–4 minute walkthrough are in [docs/
 
 ## Provider configuration
 
-- Featherless: set `FEATHERLESS_API_KEY` and optionally `_1`, `_2`, `_3`. Values stay server-only; status exposes stable IDs (`primary`, `key_1`…) and health, never keys. Least-busy round-robin, per-key/global weighted concurrency, bounded three-key failover, and 429/auth/transient backoff prevent retry storms. Model overrides are optional; the router uses reviewed fallbacks when discovery is unavailable. The default embedding model is `Qwen/Qwen3-Embedding-8B` at 1,536 dimensions.
+- Featherless: set exactly `FEATHERLESS_API_KEY_PRIMARY` and
+  `FEATHERLESS_API_KEY_SECONDARY` in the server environment. Values never enter
+  client configuration, payloads, HTML, logs, status responses, or source maps.
+  The central gateway balances healthy slots, backs off rate-limited/provider-error
+  slots, and performs at most one safe failover. Model overrides are optional;
+  the router uses reviewed fallbacks when discovery is unavailable. The default
+  embedding model is `Qwen/Qwen3-Embedding-8B` at 1,536 dimensions.
 - Groq: set `GROQ_API_KEY`. The default policy uses Llama 3.1 8B Instant for bounded work, Qwen3.6 27B for reasoning, GPT-OSS 120B for code, and GPT-OSS 20B for verification, subject to the live models enabled for the Groq project.
 - Gemini: set `GEMINI_API_KEY_1` through `GEMINI_API_KEY_10` or `GEMINI_API_KEYS`, then explicitly set `GEMINI_DATA_USE_ACKNOWLEDGED=true`. Keys are server-only and responses never expose them. Multiple keys in one Google Cloud project do not multiply project quota.
 - Embeddings: keep `EMBEDDING_DIMENSIONS=1536`. Provider order may include Gemini, Featherless, AI Gateway, or Ollama. Lexical retrieval remains available if every embedding provider fails.
 - Ollama: browser-local generation accepts only loopback endpoints by default. Server-side remote Ollama is rejected unless `ALLOW_REMOTE_OLLAMA=true` is deliberately set.
 
-Structured (JSON-schema) generation is bounded by an overall deadline (`AI_STRUCTURED_DEADLINE_MS`, default 40 s) and a per-attempt timeout (`AI_ATTEMPT_TIMEOUT_MS`, default 20 s), and it uses a schema-capable model per provider (`GROQ_STRUCTURED_MODEL`, default `openai/gpt-oss-120b`). Groq's GPT-OSS models are the most reliable JSON-schema route and are tried first for schema-bound tasks; if a configured provider's model IDs are unavailable, generation routes around it and fails fast rather than hanging.
+Structured (JSON-schema) generation is bounded by the central request deadline
+(`AI_REQUEST_TIMEOUT_MS`, default 30 s). Policy chooses the lowest-cost qualified
+model for each task; safe bounded requests may fail over once, while expensive
+or high-stakes requests are never repeatedly retried.
 
 Provider keys belong in an encrypted deployment secret store or the ignored local environment file. No system can make a key literally impossible to compromise; Continuum reduces exposure through server-only access, least privilege, no logging/display of values, rotation, and revocation.
 
-The model layer is now **discovery- and health-aware** (`packages/ai/src/health.ts`): Gemini models are discovered at runtime and a working, untripped model is selected automatically, so a temporarily-503 or unavailable default is skipped rather than fatal. The shipped `GEMINI_MODEL` and Featherless model IDs are **live-verified** (`gemini-flash-lite-latest`, Qwen2.5 family), not forward-dated. Live provider health is exposed at `GET /api/ai/status`. Featherless removed its public `/v1/models` catalogue endpoint, so its curated IDs are used directly. See [REAL_APP_REPORT.md](REAL_APP_REPORT.md), [docs/provider-registry.md](docs/provider-registry.md), [docs/gemini-verification.md](docs/gemini-verification.md), and [docs/featherless-verification.md](docs/featherless-verification.md).
+The model layer is health-aware (`packages/ai/src/health.ts`), and every route,
+fallback, timeout, quota, and unsupported category is documented in
+[model routing](docs/model-routing.md). Prompt composition, trust boundaries,
+schemas, and actual limitations are documented in
+[prompt engineering](docs/prompt-engineering.md).
 
 See [deployment and configuration](docs/deployment.md) and the [exact integration setup guide](docs/integrations.md). A full audit of performance, security, and feature verification is in [AUDIT_REPORT.md](AUDIT_REPORT.md).
 

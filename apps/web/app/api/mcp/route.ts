@@ -1,14 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { continuumResources, continuumTools, executeTool } from "@continuum/mcp";
-import { z } from "zod";
+import { continuumResources, discoverableTools, executeTool, registrationShape } from "@continuum/mcp";
 import { authorizedMcpIdentity, type AuthorizedMcpIdentity } from "@/lib/oauth";
 import { enforceRateLimit } from "@/lib/auth";
 import { getStore } from "@/lib/store";
-import { configuredProviders, generateStructured, routeTask } from "@continuum/ai";
-import { randomUUID } from "node:crypto";
-import { checkDailyAiBudget, logModelUsage } from "@/lib/ai-budget";
-import { buildAcademicPrompt, type PromptSurface } from "@/lib/prompt-context";
+import { logRequestFailure, publicErrorMessage } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,8 +24,11 @@ async function resourceData(uri: string, identity: AuthorizedMcpIdentity) {
 function createServer(identity: AuthorizedMcpIdentity) {
   const server = new McpServer({ name: "continuum", version: "1.0.0" }, { capabilities: { logging: {} } });
 
-  for (const tool of continuumTools.filter((candidate) => candidate.remoteAccessible !== false && identity.scopes.includes(candidate.requiredScope))) {
-    const shape = (tool.inputSchema as z.ZodObject<z.ZodRawShape>).shape;
+  // Only the outcome-shaped set is advertised. Superseded operations stay
+  // callable by name through executeTool so an in-flight request does not fail,
+  // but a client selecting a tool chooses from the current surface.
+  for (const tool of discoverableTools.filter((candidate) => identity.scopes.includes(candidate.requiredScope))) {
+    const shape = registrationShape(tool);
     server.registerTool(tool.name, {
       title: tool.title,
       description: `${tool.description} Required scope: ${tool.requiredScope}.`,
@@ -47,7 +46,7 @@ function createServer(identity: AuthorizedMcpIdentity) {
         const result = await executeTool(tool.name, args, {
           scopes: identity.scopes,
           now,
-          read: (name, readArgs) => name === "route_specialist_task" ? runSpecialistTask(readArgs, identity) : store.read(name, readArgs, identity.clientId),
+          read: (name, readArgs) => store.read(name, readArgs, identity.clientId),
           write: (name, writeArgs) => store.write(name, writeArgs, now, "mcp", identity.clientId),
         });
         return {
@@ -55,7 +54,11 @@ function createServer(identity: AuthorizedMcpIdentity) {
           structuredContent: result as unknown as Record<string, unknown>,
         };
       } catch (error) {
-        return { isError: true, content: [{ type: "text" as const, text: error instanceof Error ? error.message : "Tool execution failed" }] };
+        // The client gets a safe message; the operator gets the real one. Without
+        // this, a failing tool produced "Tool execution failed" and no log line
+        // anywhere, so the cause could only be found by reading the source.
+        logRequestFailure("mcp_tool_failed", { tool: tool.name, clientId: identity.clientId }, error);
+        return { isError: true, content: [{ type: "text" as const, text: publicErrorMessage(error, "Tool execution failed") }] };
       }
     });
   }
@@ -77,81 +80,19 @@ function createServer(identity: AuthorizedMcpIdentity) {
   return server;
 }
 
-const specialistOutput = z.object({ answer: z.string(), evidence: z.array(z.string()).default([]), limitations: z.array(z.string()).default([]), confidence: z.number().min(0).max(1) });
-const verifierOutput = z.object({ supported: z.boolean(), reason: z.string(), confidence: z.number().min(0).max(1) });
-
-async function runSpecialistTask(args: Record<string, unknown>, identity: AuthorizedMcpIdentity) {
-  const status = configuredProviders();
-  const available = [status.featherless ? "featherless" : undefined, status.gemini ? "gemini" : undefined, status.aiGateway ? "ai_gateway" : undefined, status.groq ? "groq" : undefined].filter((item): item is "featherless" | "gemini" | "ai_gateway" | "groq" => Boolean(item));
-  if (!available.length) throw new Error("No specialist model provider is configured");
-  const reservedTokens = args.budgetClass === "high" ? 12_000 : args.budgetClass === "medium" ? 8_000 : 4_000;
-  await checkDailyAiBudget(identity.userId, reservedTokens);
-  const taskClass = args.taskClass as Parameters<typeof routeTask>[0]["taskClass"];
-  const surface: PromptSurface = taskClass === "code_reasoning"
-    ? "code"
-    : ["research_synthesis", "citation_entailment", "extraction", "summarization"].includes(taskClass)
-      ? "research"
-      : ["lesson_generation", "quiz_generation", "misconception_diagnosis"].includes(taskClass)
-        ? "learning"
-        : "specialist";
-  const store = getStore(identity.userId);
-  const relevantContext = await store.read("load_context", { focus: String(args.task).slice(0, 500), maxTokens: args.budgetClass === "high" ? 1400 : 900 }, identity.clientId);
-  const academicPrompt = buildAcademicPrompt({
-    surface,
-    taskClass,
-    userRequest: String(args.task),
-    relevantContext,
-    outputContract: "Return an answer, exact supplied evidence identifiers, material limitations, and calibrated confidence using the required schema.",
-    additionalPolicy: args.evidenceRequired ? ["The result is evidence-bound. Unsupported claims must be omitted or explicitly labelled inference."] : [],
-  });
-  const decision = routeTask({ id: `route_${randomUUID().replaceAll("-", "").slice(0, 20)}`, taskClass, sourceLocked: Boolean(args.evidenceRequired), highStakes: Boolean(args.verificationRequired), schemaRequired: true, availableProviders: available });
-  const primary = await generateStructured({
-    decision,
-    schema: specialistOutput,
-    userId: identity.userId,
-    maxOutputTokens: args.budgetClass === "high" ? 2400 : args.budgetClass === "medium" ? 1400 : 700,
-    system: academicPrompt.system,
-    prompt: academicPrompt.prompt,
-  });
-  await logModelUsage({ userId: identity.userId, decision: primary.decision, usage: primary.usage });
-  let verification: z.infer<typeof verifierOutput> | undefined;
-  let verifierRoute: unknown;
-  if (args.verificationRequired) {
-    const independent = available.filter((provider) => provider !== primary.decision.route);
-    if (!independent.length) throw new Error("Independent verification was requested, but no second provider is configured");
-    const verificationDecision = routeTask({ id: `route_${randomUUID().replaceAll("-", "").slice(0, 20)}`, taskClass: "citation_entailment", sourceLocked: Boolean(args.evidenceRequired), schemaRequired: true, availableProviders: independent });
-    const verificationPrompt = buildAcademicPrompt({
-      surface: "research",
-      taskClass: "citation_entailment",
-      userRequest: String(args.task),
-      sourceContent: { proposedResult: primary.output },
-      outputContract: "Independently decide whether the proposed result is supported. Reject invented or overstated support and return the verifier schema.",
-    });
-    const checked = await generateStructured({ decision: verificationDecision, schema: verifierOutput, userId: identity.userId, maxOutputTokens: 600, system: verificationPrompt.system, prompt: verificationPrompt.prompt });
-    verification = checked.output;
-    verifierRoute = checked.decision;
-    await logModelUsage({ userId: identity.userId, decision: checked.decision, usage: checked.usage });
-  }
-  await store.appendEvent({ type: "model.specialist.routed", summary: `Used specialist assistance for ${taskClass.replaceAll("_", " ")}${verification ? " with an independent check" : ""}.`, entityIds: [primary.decision.id], payload: { route: primary.decision, verifierRoute, verification }, source: { surface: "mcp" }, importance: 0.55 });
-  return {
-    result: primary.output,
-    assistance: { reason: `Selected for ${taskClass.replaceAll("_", " ")} based on capability, context, reliability, and cost policy.`, verification: primary.decision.verification, fallbackUsed: primary.decision.fallbackUsed },
-    verification,
-    ...(verificationDecisionSummary(verifierRoute) ? { verifierAssistance: verificationDecisionSummary(verifierRoute) } : {}),
-  };
-}
-
-function verificationDecisionSummary(value: unknown) {
-  if (!value || typeof value !== "object") return undefined;
-  const decision = value as { reason?: unknown; verification?: unknown; fallbackUsed?: unknown };
-  return { reason: "Used a separate qualified route for the independent evidence check.", verification: typeof decision.verification === "string" ? decision.verification : "completed", fallbackUsed: decision.fallbackUsed === true };
-}
-
 async function handle(request: Request) {
   const requestOrigin = request.headers.get("origin");
   const serviceOrigin = new URL(request.url).origin;
   const configuredOrigins = (process.env.MCP_ALLOWED_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
-  const allowedOrigins = new Set([serviceOrigin, process.env.APP_BASE_URL?.replace(/\/$/, ""), "https://claude.ai", "https://www.claude.ai", ...configuredOrigins].filter(Boolean));
+  const allowedOrigins = new Set([
+    serviceOrigin,
+    process.env.APP_BASE_URL?.replace(/\/$/, ""),
+    "https://claude.ai",
+    "https://www.claude.ai",
+    "https://claude.com",
+    "https://www.claude.com",
+    ...configuredOrigins,
+  ].filter(Boolean));
   if (requestOrigin && !allowedOrigins.has(requestOrigin)) {
     return new Response(JSON.stringify({ jsonrpc: "2.0", error: { code: -32003, message: "Origin is not allowed" }, id: null }), { status: 403, headers: { "content-type": "application/json" } });
   }
@@ -184,7 +125,15 @@ export function OPTIONS(request: Request) {
   const requestOrigin = request.headers.get("origin");
   const serviceOrigin = new URL(request.url).origin;
   const configuredOrigins = (process.env.MCP_ALLOWED_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
-  const allowed = !requestOrigin || new Set([serviceOrigin, process.env.APP_BASE_URL?.replace(/\/$/, ""), "https://claude.ai", "https://www.claude.ai", ...configuredOrigins].filter(Boolean)).has(requestOrigin);
+  const allowed = !requestOrigin || new Set([
+    serviceOrigin,
+    process.env.APP_BASE_URL?.replace(/\/$/, ""),
+    "https://claude.ai",
+    "https://www.claude.ai",
+    "https://claude.com",
+    "https://www.claude.com",
+    ...configuredOrigins,
+  ].filter(Boolean)).has(requestOrigin);
   if (!allowed) return new Response(null, { status: 403 });
   return new Response(null, { status: 204, headers: {
     ...(requestOrigin ? { "access-control-allow-origin": requestOrigin } : {}),

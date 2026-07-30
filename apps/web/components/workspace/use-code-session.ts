@@ -28,7 +28,23 @@ export type RuntimeAttempt = {
   result: ExecutionResult;
 };
 
+export type CodeChatMessage = {
+  id: string;
+  at: number;
+  role: "user" | "assistant";
+  content: string;
+  mode?: string;
+};
+
+export type CodeWorkspaceFile = {
+  id: string;
+  name: string;
+  language: string;
+  content: string;
+};
+
 export type CodeSession = {
+  fileName: string;
   goalId: string;
   topic: string;
   language: string;
@@ -41,9 +57,16 @@ export type CodeSession = {
   runtimeResult?: ExecutionResult;
   runtimeHistory: RuntimeAttempt[];
   answer: string;
+  conversation: CodeChatMessage[];
   hintsRevealed: number;
   attempts: CodeAttempt[];
   updatedAt: number;
+  timeoutMs: number;
+  files: CodeWorkspaceFile[];
+  activeFileId: string;
+  panel: "console" | "io" | "assistant" | "tests";
+  panelWidth: number;
+  panelCollapsed: boolean;
 };
 
 const VERSION = "v1";
@@ -51,6 +74,7 @@ const storageKey = (userId: string) => `continuum.code-session.${VERSION}.${user
 
 export function makeDefaultSession(defaults: Partial<CodeSession>): CodeSession {
   return {
+    fileName: "main.py",
     goalId: "",
     topic: "",
     language: "Python",
@@ -62,9 +86,16 @@ export function makeDefaultSession(defaults: Partial<CodeSession>): CodeSession 
     tests: [],
     runtimeHistory: [],
     answer: "",
+    conversation: [],
     hintsRevealed: 0,
     attempts: [],
     updatedAt: Date.now(),
+    timeoutMs: 5_000,
+    files: [],
+    activeFileId: "",
+    panel: "console",
+    panelWidth: 410,
+    panelCollapsed: false,
     ...defaults,
   };
 }
@@ -78,8 +109,22 @@ export function mergeSavedSession(current: CodeSession, savedJson: string | null
       ...current,
       ...parsed,
       attempts: Array.isArray(parsed.attempts) ? parsed.attempts : current.attempts,
+      conversation: Array.isArray(parsed.conversation)
+        ? parsed.conversation
+        : parsed.answer
+          ? [
+              { id: "migrated_user", at: parsed.updatedAt ?? Date.now(), role: "user" as const, content: parsed.prompt ?? "Explain this code", mode: parsed.mode },
+              { id: "migrated_assistant", at: parsed.updatedAt ?? Date.now(), role: "assistant" as const, content: parsed.answer },
+            ]
+          : current.conversation,
       tests: Array.isArray(parsed.tests) ? parsed.tests : current.tests,
       runtimeHistory: Array.isArray(parsed.runtimeHistory) ? parsed.runtimeHistory : current.runtimeHistory,
+      files: Array.isArray(parsed.files) && parsed.files.length
+        ? parsed.files
+        : [{ id: "file_main", name: parsed.fileName ?? current.fileName, language: parsed.language ?? current.language, content: parsed.code ?? current.code }],
+      activeFileId: parsed.activeFileId || "file_main",
+      panel: ["console", "io", "assistant", "tests"].includes(String(parsed.panel)) ? parsed.panel as CodeSession["panel"] : current.panel,
+      panelWidth: Number.isFinite(parsed.panelWidth) ? Math.max(300, Math.min(620, Number(parsed.panelWidth))) : current.panelWidth,
     };
   } catch {
     return current; // corrupt draft → keep defaults
@@ -92,6 +137,7 @@ export function useCodeSession(userId: string, defaults: Partial<CodeSession>) {
   // we never clobber a saved session with defaults before it loads.
   const [session, setSession] = useState<CodeSession>(() => makeDefaultSession(defaults));
   const [restored, setRestored] = useState(false);
+  const [remoteReady, setRemoteReady] = useState(false);
   const key = storageKey(userId);
   const defaultsRef = useRef(defaults);
   defaultsRef.current = defaults;
@@ -115,6 +161,34 @@ export function useCodeSession(userId: string, defaults: Partial<CodeSession>) {
     }
   }, [session, restored, key]);
 
+  useEffect(() => {
+    if (!restored) return;
+    let cancelled = false;
+    void fetch("/api/code/workspace", { cache: "no-store" })
+      .then(async (response) => response.ok ? response.json() as Promise<{ state?: Partial<CodeSession> | null }> : { state: null })
+      .then((payload) => {
+        if (cancelled || !payload.state) return;
+        setSession((current) => Number(payload.state?.updatedAt ?? 0) > current.updatedAt
+          ? mergeSavedSession(current, JSON.stringify(payload.state))
+          : current);
+      })
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setRemoteReady(true); });
+    return () => { cancelled = true; };
+  }, [restored]);
+
+  useEffect(() => {
+    if (!remoteReady) return;
+    const timeout = window.setTimeout(() => {
+      void fetch("/api/code/workspace", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(session),
+      }).catch(() => undefined);
+    }, 1_200);
+    return () => window.clearTimeout(timeout);
+  }, [remoteReady, session]);
+
   const update = useCallback((patch: Partial<CodeSession> | ((current: CodeSession) => Partial<CodeSession>)) => {
     setSession((current) => ({ ...current, ...(typeof patch === "function" ? patch(current) : patch), updatedAt: Date.now() }));
   }, []);
@@ -136,6 +210,20 @@ export function useCodeSession(userId: string, defaults: Partial<CodeSession>) {
     }));
   }, []);
 
+  const pushChatExchange = useCallback((input: { prompt: string; answer: string; mode: string }) => {
+    const at = Date.now();
+    setSession((current) => ({
+      ...current,
+      answer: input.answer,
+      conversation: [
+        ...current.conversation,
+        { id: `chat_user_${at}`, at, role: "user" as const, content: input.prompt, mode: input.mode },
+        { id: `chat_assistant_${at}`, at: at + 1, role: "assistant" as const, content: input.answer, mode: input.mode },
+      ].slice(-40),
+      updatedAt: at,
+    }));
+  }, []);
+
   const reset = useCallback(() => {
     const fresh = makeDefaultSession(defaultsRef.current);
     setSession(fresh);
@@ -146,5 +234,5 @@ export function useCodeSession(userId: string, defaults: Partial<CodeSession>) {
     }
   }, [key]);
 
-  return { session, update, pushAttempt, pushRuntimeAttempt, reset, restored };
+  return { session, update, pushAttempt, pushRuntimeAttempt, pushChatExchange, reset, restored };
 }

@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid_client_metadata", error_description: "A public PKCE client with safe redirect URIs is required" }, { status: 400 });
   }
   const requestedScopes = (parsed.data.scope?.split(" ") ?? [...supportedScopes]).filter((scope) => supportedScopes.includes(scope as (typeof supportedScopes)[number]));
-  const clientId = issueClientRegistration({
+  const clientId = await issueClientRegistration({
     clientName: parsed.data.client_name,
     redirectUris: parsed.data.redirect_uris,
     scopes: requestedScopes,

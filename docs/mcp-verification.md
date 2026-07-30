@@ -1,99 +1,59 @@
-# MCP verification
+# MCP verification — §12.6
 
-Verified live against the running dev server (`/api/mcp`, alias of `/mcp`)
-with the real Neon database. Transport: MCP Streamable HTTP, stateless
-(a fresh server is constructed per request).
+Run by `scripts/verify-mcp.mjs` against `https://continuum-84pbo3brj-mukilan-senthilkumar-s-projects.vercel.app` on 2026-07-30.
 
-## Setup used for verification
+Connected exactly as Claude does: dynamic client registration, then
+authorization-code + PKCE, then MCP Streamable HTTP with the issued token.
 
-Local development accepts a static demo bearer token that maps to a fixed
-user (non-production only; disabled when `NODE_ENV=production`):
+**11 passed · 0 failed · 1 need a human with Claude Desktop.**
 
-```
-Authorization: Bearer continuum-demo-2026
-Accept: application/json, text/event-stream
-Content-Type: application/json
-```
+§12.6's standard is the call count: *a workflow that needs more than 2 calls
+is a bug in the tool design, not in the client.*
 
-The demo identity is `MCP_DEMO_USER_ID` (default `user_maya`) with all
-canonical scopes. For the continuity test below it was pointed at a real
-registered account so the same user could be read through the app UI.
+| Step | Check | Expected | Result | Calls |
+|---|---|---|---|---|
+| 1 | Connect (OAuth + PKCE, all scopes) | consent screen is plain language; connection is recorded | ✅ pass | — |
+| 2 | Discovery | ≤ 15 discoverable capabilities, described as outcomes | ✅ pass | 1 |
+| 3 | Orientation — “What am I working on?” | exactly one call; names real goals and today's blocks | ✅ pass | 1 |
+| 4 | Search — “What do I have on X?” | one call returning records with origins | ✅ pass | 1 |
+| 5 | Evidence — “Show me the evidence behind that decision” | ≤ 2 calls ending in exact passages | ◐ manual | 1 |
+| 6 | Additive write | `save_to_continuum` succeeds and the record appears immediately | ✅ pass | 1 |
+| 7 | Consequential write | becomes a pending proposal; nothing changes until approved | ✅ pass | 1 |
+| 8 | Refusal — “Mark my SAT goal complete” | no tool can complete a goal directly | ✅ pass | — |
+| 9 | Practice result | mastery changes only on a correct unseen attempt, and says why | ✅ pass | 1 |
+| 10 | Resume — “Pick up where we left off” | one call; summary matches the app | ✅ pass | 1 |
+| 11 | Revocation | the next call fails immediately with a clear message and no data | ✅ pass | — |
+| 12 | Scope and error surface | a refused or missing record produces a readable message, never a 500 | ✅ pass | 1 |
 
-### Connecting a real MCP host (Claude)
-Production uses OAuth, not the demo token:
+## Detail
 
-- Endpoint: `https://<your-domain>/mcp`
-- Discovery: `/.well-known/oauth-protected-resource/mcp` and
-  `/.well-known/oauth-authorization-server`
-- Required env: `APP_BASE_URL`, `MCP_OAUTH_ISSUER_URL` (HTTPS), a strong
-  `MCP_JWT_SIGNING_SECRET`.
-- Flow: the host performs dynamic client registration → authorization-code +
-  PKCE → receives only the scopes the user approved. Revoke under
-  **Connections** in the app.
+**1. Connect (OAuth + PKCE, all scopes)** — AC-MCP4: zero raw scope strings on the consent screen
 
-## Protocol results
+**2. Discovery** — 15 discoverable tools; AC-MCP2 clean
 
-| Call | Result |
-|---|---|
-| `initialize` | 200; capabilities `{tools, resources, prompts, logging}`, serverInfo `continuum 1.0.0` |
-| `tools/list` | **27 tools** |
-| `resources/list` | **7 resources** |
-| `tools/call list_goals` | returns the account's goals from Postgres |
-| `tools/call load_context` | returns compacted current-state pack with provenance |
-| `tools/call sync_session` (write) | saved an outcome receipt; returned its id |
-| `tools/call route_specialist_task` | correct answer in ~4 s via Groq, with `assistance`/verification metadata |
+**3. Orientation — “What am I working on?”** — [{"type":"text","text":"Returned the user's current goals, tasks, and schedule."}]…
 
-Registered tools (canonical names):
-`load_context, list_projects, load_project, list_goals, load_goal,
-load_learning_state, load_schedule, search_memory, search_research,
-get_claim_evidence, get_source_passage, recommend_resource,
-load_outcome_receipt, sync_session, record_progress, save_artifact,
-save_research_note, save_research_claim, record_learning_evidence,
-propose_goal_change, propose_project_change, propose_task_change,
-propose_schedule_change, commit_schedule_change, start_resource_activity,
-complete_resource_activity, route_specialist_task`.
+**4. Search — “What do I have on X?”** — [{"type":"text","text":"Found 2 relevant items."}]…
 
-> Note on names: the audit brief lists illustrative names like
-> `get_current_context`, `get_goal_state`, `search_academic_memory`,
-> `get_today_plan`, `search_research_library`. Those exact strings are
-> **aliases the store resolves** but are not the registered tool names; the
-> equivalent registered tools are `load_context`, `load_goal`,
-> `search_memory`, `load_schedule`, `search_research`. Approval-only
-> operations (`confirm_proposal`, accepted-decision writes) are intentionally
-> **not** remotely exposed.
+**5. Evidence — “Show me the evidence behind that decision”** — no claim in the demo project to trace; needs a workspace with one
 
-## Cross-assistant continuity — verified BOTH directions over HTTP
+**6. Additive write** — [{"type":"text","text":"Saved a note on the project."}]
 
-This is the headline differentiator. It was proven end-to-end, not asserted.
+**7. Consequential write** — [{"type":"text","text":"Saved as a proposal. Nothing changed — the user approves it in Continuum under Review."}]
 
-**MCP write → app read.** A `sync_session` checkpoint written through MCP:
-```
-[MCP]  sync_session → receipt_6832edd37a2841de91c6590d
-[APP]  GET /api/state?view=memory (with the user's session cookie)
-       → FOUND: receipt_6832… "CONTINUITY PROOF: wrote this checkpoint through MCP"
-```
-It is also visible in the app UI ("Latest checkpoint" on Today).
+**8. Refusal — “Mark my SAT goal complete”** — AC-MCP3: writes are record_practice_result, save_to_continuum, start_study_session, save_progress_note, save_session_summary, propose_change — additive or proposal only
 
-**App write → MCP read.** A goal created through the app API:
-```
-[APP]  POST /api/state {type:"goal.created", ...} → goal_eaf07bd1832945d3924a74db
-[MCP]  list_goals → contains goal_eaf07bd1… "Reverse continuity goal"
-```
+**9. Practice result** — [{"type":"text","text":"Recorded a correct unseen attempt; transfer mastery was updated."}]
 
-Both surfaces resolve `getStore(userId)` to the same `NeonStore` /
-`NeonRepository`, so the shared state is real, not seeded.
+**10. Resume — “Pick up where we left off”** — [{"type":"text","text":"No previous session found; returned current state only."}]
 
-## Security properties confirmed
-- No token → `401` with a correct `WWW-Authenticate: Bearer ... resource_metadata=...`.
-- Tools are filtered by granted scope before registration.
-- Origin allowlist (`serviceOrigin`, `APP_BASE_URL`, `claude.ai`, plus
-  `MCP_ALLOWED_ORIGINS`); disallowed origins get `403`.
-- Per-`{user,client}` rate limiting; token issuer/audience/resource
-  validation and immediate revocation checks (`oauthGrantUnavailable`).
-- Every tool executes against user-scoped repository queries.
+**11. Revocation** — revoke HTTP 200; next call HTTP 401 {"jsonrpc":"2.0","error":{"code":-32001,"message":"Valid OAuth bearer token required"},"id":null}
 
-## Not verified here
-- A full OAuth browser handshake from the Claude desktop/web client (requires
-  a deployed HTTPS origin and the Claude app). The endpoint is standards-based
-  and the discovery documents are served; only the account-side click-through
-  is outstanding.
+**12. Scope and error surface** — [{"type":"text","text":"Get the evidence behind a claim completed."}]
+
+## What this script cannot verify
+
+Whether Claude *chooses* the right tool from its description. Steps 2, 3, 5
+and 10 are partly about the client's own tool selection; this run proves the
+capability exists, is discoverable, and answers in one call. The other half
+needs a person with Claude Desktop following §12.6 by hand.

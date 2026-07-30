@@ -10,7 +10,49 @@ describe("model routing", () => {
   });
 
   it("routes bounded classification to a fast provider", () => {
-    expect(routeTask({ id: "route_classify", taskClass: "classification" }).route).toBe("groq");
+    expect(routeTask({ id: "route_classify", taskClass: "classification" }).route).toBe("featherless");
+  });
+
+  /**
+   * A chat turn used to fall through to the general branch and pick the
+   * reasoning model, so "hi" was answered by a 72B model on a four-unit
+   * concurrency plan and took about thirty seconds.
+   */
+  it("never sends an interactive chat turn to the reasoning model", () => {
+    const decision = routeTask({
+      id: "route_chat",
+      taskClass: "conversational_support",
+      availableProviders: ["featherless", "groq", "gemini", "ai_gateway"],
+    });
+    expect(decision.costClass).toBe("low");
+    expect(decision.model).not.toMatch(/reasoning|specialist/i);
+  });
+
+  it("prefers the lowest-latency route for an interactive chat turn", () => {
+    expect(routeTask({
+      id: "route_chat_groq",
+      taskClass: "conversational_support",
+      availableProviders: ["featherless", "groq"],
+    }).route).toBe("groq");
+  });
+
+  it("still answers a chat turn on a small shared model when groq is absent", () => {
+    const decision = routeTask({
+      id: "route_chat_nogroq",
+      taskClass: "conversational_support",
+      availableProviders: ["featherless"],
+    });
+    expect(decision.route).toBe("featherless");
+    expect(decision.costClass).toBe("low");
+  });
+
+  it("keeps the stronger route when the user explicitly asks for depth", () => {
+    const decision = routeTask({
+      id: "route_deep",
+      taskClass: "research_synthesis",
+      availableProviders: ["featherless", "groq"],
+    });
+    expect(decision.costClass).toBe("medium");
   });
 
   it("uses a multimodal provider for images", () => {
@@ -51,17 +93,17 @@ describe("model routing", () => {
     expect(providers.groqModels?.fast).toBe("llama-3.1-8b-instant");
   });
 
-  it("leads structured generation with Groq and never leaves a JSON-capable provider out", () => {
+  it("leads structured generation with the policy route and keeps every qualified provider", () => {
     const decision = routeTask({ id: "route_structured", taskClass: "research_synthesis", availableProviders: ["featherless", "gemini", "groq", "ai_gateway"] });
-    const env = { FEATHERLESS_API_KEY: "configured", GROQ_API_KEY: "configured", GEMINI_API_KEY: "configured", GEMINI_DATA_USE_ACKNOWLEDGED: "true", AI_GATEWAY_API_KEY: "configured", AI_GATEWAY_ENABLED: "true" };
+    const env = { FEATHERLESS_API_KEY_PRIMARY: "configured", GROQ_API_KEY: "configured", GEMINI_API_KEY: "configured", GEMINI_DATA_USE_ACKNOWLEDGED: "true", AI_GATEWAY_API_KEY: "configured", AI_GATEWAY_ENABLED: "true" };
     const order = structuredRouteOrder(decision, env);
-    expect(order[0]).toBe("groq");
+    expect(order[0]).toBe("featherless");
     expect(new Set(order)).toEqual(new Set(["groq", "featherless", "gemini", "ai_gateway"]));
   });
 
   it("falls back to the routed provider for structured generation when Groq is absent", () => {
     const decision = routeTask({ id: "route_structured_nogroq", taskClass: "citation_entailment", highStakes: true, availableProviders: ["featherless", "gemini"] });
-    const order = structuredRouteOrder(decision, { FEATHERLESS_API_KEY: "configured", GEMINI_API_KEY: "configured", GEMINI_DATA_USE_ACKNOWLEDGED: "true" });
+    const order = structuredRouteOrder(decision, { FEATHERLESS_API_KEY_PRIMARY: "configured", GEMINI_API_KEY: "configured", GEMINI_DATA_USE_ACKNOWLEDGED: "true" });
     expect(order[0]).toBe("featherless");
     expect(order).not.toContain("groq");
   });
@@ -69,7 +111,7 @@ describe("model routing", () => {
   it("keeps every configured provider in the generation fallback path", () => {
     const decision = routeTask({ id: "route_all_fallbacks", taskClass: "lesson_generation", availableProviders: ["featherless", "gemini", "groq", "ai_gateway"] });
     expect(generationRouteOrder(decision, {
-      FEATHERLESS_API_KEY: "configured",
+      FEATHERLESS_API_KEY_PRIMARY: "configured",
       GROQ_API_KEY: "configured",
       GEMINI_API_KEY: "configured",
       GEMINI_DATA_USE_ACKNOWLEDGED: "true",

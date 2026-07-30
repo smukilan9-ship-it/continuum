@@ -4,5 +4,6 @@ export * from "./learning";
 export * from "./memory";
 export * from "./permissions";
 export * from "./scheduler";
+export * from "./obsidian-sync";
 export * from "./resources";
 export * from "./onboarding";

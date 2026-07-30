@@ -14,6 +14,6 @@ references, and related works. It never exposes the API key to the browser.
 
 Unconfigured, timeout, rate-limit, and upstream failures become typed provider
 states rather than fake empty success. A real deployment must set
-`OPENALEX_API_KEY`; no Google OAuth is used. The release suite avoids claiming a
+`OPENALEX_API_KEY`. The release suite avoids claiming a
 live call: unit fixtures verify the official response contract and Playwright uses a
 named normalized fixture before exercising the real authenticated save endpoint.
