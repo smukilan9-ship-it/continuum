@@ -172,3 +172,58 @@ describe("idempotency by construction", () => {
     }
   });
 });
+
+describe("practice sets", () => {
+  it("seeds practice sets, because Study reading '0 practice sets' is the demo's own claim failing", () => {
+    expect(data.questionBankRows.length).toBeGreaterThanOrEqual(3);
+    expect(data.questionBankRows.every((bank) => bank.questions.length >= 3)).toBe(true);
+  });
+
+  it("grounds every question in a real source chunk", () => {
+    // A question with no chunk cannot show the learner the sentence that
+    // settles it, which is the only thing distinguishing this from a quiz app.
+    const chunks = idSet(data.chunkRows);
+    for (const bank of data.questionBankRows) {
+      for (const question of bank.questions) {
+        expect(question.sourceChunkIds.length).toBeGreaterThan(0);
+        for (const chunkId of question.sourceChunkIds) expect(chunks.has(chunkId)).toBe(true);
+      }
+    }
+  });
+
+  it("points every bank at a source that exists, and every attempt at a bank that exists", () => {
+    const sources = idSet(data.sourceRows);
+    for (const bank of data.questionBankRows) expect(sources.has(bank.sourceId)).toBe(true);
+    const banks = idSet(data.questionBankRows);
+    for (const attempt of data.questionBankAttemptRows) expect(banks.has(attempt.questionBankId)).toBe(true);
+  });
+
+  it("agrees with the review schedule about which concept is weak", () => {
+    // The parameterized-queries concept carries the most lapses, so its
+    // practice attempt must be the low-scoring one. A demo that contradicts
+    // itself is worse than a demo with less data in it.
+    const weakest = data.learningStateRows.reduce((worst, state) => state.lapses > worst.lapses ? state : worst);
+    expect(weakest.conceptId).toBe("concept_demo_sql_param");
+    const paramBank = data.questionBankRows.find((bank) => bank.conceptId === weakest.conceptId);
+    expect(paramBank).toBeDefined();
+    const paramAttempt = data.questionBankAttemptRows.find((attempt) => attempt.questionBankId === paramBank!.id);
+    const otherAttempt = data.questionBankAttemptRows.find((attempt) => attempt.questionBankId !== paramBank!.id);
+    expect(paramAttempt!.score).toBeLessThan(otherAttempt!.score);
+  });
+
+  it("scores each attempt as the mean of its own evaluations", () => {
+    for (const attempt of data.questionBankAttemptRows) {
+      const mean = attempt.evaluations.reduce((total, item) => total + item.score, 0) / attempt.evaluations.length;
+      expect(attempt.score).toBeCloseTo(mean, 4);
+      expect(attempt.answers).toHaveLength(attempt.evaluations.length);
+    }
+  });
+
+  it("resets practice sets with the rest of the demo account", () => {
+    const prefixes = RESET_TARGETS.map(([, prefix]) => prefix);
+    expect(prefixes).toContain("qbank_demo_");
+    expect(prefixes).toContain("qattempt_demo_");
+    // Attempts reference banks, so they must be deleted first.
+    expect(prefixes.indexOf("qattempt_demo_")).toBeLessThan(prefixes.indexOf("qbank_demo_"));
+  });
+});

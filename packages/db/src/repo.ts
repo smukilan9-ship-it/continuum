@@ -83,9 +83,18 @@ function publicSourceMetadata(source: typeof sources.$inferSelect) {
   return { ...metadata, hasStoredOriginal: Boolean(storagePath) };
 }
 
-function publicQuestionBankSummary(bank: typeof questionBanks.$inferSelect) {
+/**
+ * `bestScore` is carried on the summary rather than left to the caller.
+ *
+ * Study rendered "best N%" from `bank.attempts`, which no list view ever
+ * returns — only the single-bank read joins attempts. The label was therefore
+ * never shown for any bank, which reads as "you have not practised this" for a
+ * set the learner has in fact completed. One aggregate below settles it.
+ */
+function publicQuestionBankSummary(bank: typeof questionBanks.$inferSelect, bestScore?: number) {
   return {
     ...bank,
+    ...(bestScore === undefined ? {} : { bestScore }),
     questions: bank.questions.map((question) => ({
       id: question.id,
       prompt: question.prompt,
@@ -545,6 +554,16 @@ export class NeonRepository {
   }
 
   /** Ownership check shared by every per-goal read (§16.10). */
+  /** Best completed score per practice set, for the list views. */
+  private async bestBankScores(userId: string): Promise<Map<string, number>> {
+    const rows = await this.db
+      .select({ bankId: questionBankAttempts.questionBankId, best: sql<number>`max(${questionBankAttempts.score})` })
+      .from(questionBankAttempts)
+      .where(and(eq(questionBankAttempts.userId, userId), isNotNull(questionBankAttempts.completedAt)))
+      .groupBy(questionBankAttempts.questionBankId);
+    return new Map(rows.map((row) => [row.bankId, Number(row.best)]));
+  }
+
   private async ownedGoal(goalId: string, userId: string) {
     const [goal] = await this.db.select().from(goals)
       .where(and(eq(goals.id, goalId), eq(goals.userId, userId), eq(goals.deleted, false))).limit(1);
@@ -579,19 +598,20 @@ export class NeonRepository {
     }
 
     if (view === "study") {
-      const [conceptRows, bankRows, activityRows] = await Promise.all([
+      const [conceptRows, bankRows, activityRows, bankScores] = await Promise.all([
         this.db.select({ concept: concepts, state: learningStates }).from(learningStates)
           .innerJoin(concepts, eq(learningStates.conceptId, concepts.id))
           .where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false), eq(concepts.deleted, false)))
           .orderBy(desc(learningStates.updatedAt)),
         this.db.select().from(questionBanks).where(and(eq(questionBanks.userId, userId), eq(questionBanks.deleted, false))).orderBy(desc(questionBanks.updatedAt)).limit(20),
         this.db.select().from(resourceActivities).where(and(eq(resourceActivities.userId, userId), eq(resourceActivities.goalId, goalId))).orderBy(desc(resourceActivities.startedAt)).limit(10),
+        this.bestBankScores(userId),
       ]);
       return {
         goal: header,
         concepts: conceptRows.map(({ concept, state }) => ({ ...concept, mastery: state })),
         learningStates: conceptRows.map(({ state }) => state),
-        questionBanks: bankRows.map(publicQuestionBankSummary),
+        questionBanks: bankRows.map((bank) => publicQuestionBankSummary(bank, bankScores.get(bank.id))),
         resourceActivities: activityRows,
       };
     }
@@ -726,7 +746,7 @@ export class NeonRepository {
     // projects hanging off it in a single read rather than four screens' worth
     // of separate snapshots.
     if (view === "goal") {
-      const [goalRows, taskRows, dependencyRows, milestoneRows, projectRows, masteryRows, sourceRows, paperRows, scheduleRows, receiptRows, eventRows, questionBankRows] = await Promise.all([
+      const [goalRows, taskRows, dependencyRows, milestoneRows, projectRows, masteryRows, sourceRows, paperRows, scheduleRows, receiptRows, eventRows, questionBankRows, bankScores] = await Promise.all([
         userGoals(), userTasks(), this.listTaskDependencies(userId), userMilestones(), userProjects(),
         this.db.select().from(learningStates).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false))),
         this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false))).orderBy(desc(sources.createdAt)).limit(100),
@@ -734,6 +754,7 @@ export class NeonRepository {
         this.listSchedule(userId),
         userReceipts(10), userEvents(30),
         this.db.select().from(questionBanks).where(and(eq(questionBanks.userId, userId), eq(questionBanks.deleted, false))).orderBy(desc(questionBanks.updatedAt)).limit(20),
+        this.bestBankScores(userId),
       ]);
       return {
         ...empty,
@@ -748,11 +769,11 @@ export class NeonRepository {
         schedule: scheduleRows,
         receipts: receiptRows,
         events: eventView(eventRows),
-        questionBanks: questionBankRows.map(publicQuestionBankSummary),
+        questionBanks: questionBankRows.map((bank) => publicQuestionBankSummary(bank, bankScores.get(bank.id))),
       };
     }
     if (view === "learn") {
-      const [goalRows, taskRows, dependencyRows, masteryRows, activityRows, questionBankRows, receiptRows] = await Promise.all([
+      const [goalRows, taskRows, dependencyRows, masteryRows, activityRows, questionBankRows, receiptRows, bankScores] = await Promise.all([
         userGoals(), userTasks(),
         this.listTaskDependencies(userId),
         // Joined to `concepts` so each state carries the concept's real title.
@@ -766,6 +787,7 @@ export class NeonRepository {
         this.db.select().from(resourceActivities).where(eq(resourceActivities.userId, userId)).orderBy(desc(resourceActivities.startedAt)).limit(20),
         this.db.select().from(questionBanks).where(and(eq(questionBanks.userId, userId), eq(questionBanks.deleted, false))).orderBy(desc(questionBanks.updatedAt)).limit(20),
         userReceipts(5),
+        this.bestBankScores(userId),
       ]);
       return {
         ...empty,
@@ -774,7 +796,7 @@ export class NeonRepository {
         taskDependencies: dependencyRows,
         learningStates: masteryRows.map((row) => ({ ...row.state, conceptLabel: row.conceptLabel })),
         resourceActivities: activityRows,
-        questionBanks: questionBankRows.map(publicQuestionBankSummary),
+        questionBanks: questionBankRows.map((bank) => publicQuestionBankSummary(bank, bankScores.get(bank.id))),
         receipts: receiptRows,
       };
     }

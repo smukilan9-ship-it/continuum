@@ -39,6 +39,8 @@ import {
   profiles,
   projectDecisions,
   projects,
+  questionBankAttempts,
+  questionBanks,
   researchClaims,
   researchNotes,
   resourceActivities,
@@ -85,6 +87,8 @@ export const RESET_TARGETS: Array<[table: { id: unknown }, prefix: string]> = [
   [papers, "paper_demo_"],
   [scheduleBlocks, "block_demo_"],
   [taskDependencies, "dep_demo_"],
+  [questionBankAttempts, "qattempt_demo_"],
+  [questionBanks, "qbank_demo_"],
   [sourceChunks, "chunk_demo_"],
   [sources, "source_demo_"],
   [tasks, "task_demo_"],
@@ -331,6 +335,86 @@ export function buildDemoData(now: Date) {
     { id: "attempt_demo_sql_txn", assessmentId: "assessment_demo_sql_txn", userId: DEMO_ACCOUNT_USER_ID, answers: [{ correct: true }, { correct: true }], score: 1.0, unseen: true },
     { id: "attempt_demo_sat_geo", assessmentId: "assessment_demo_sat_geo", userId: DEMO_ACCOUNT_USER_ID, answers: [{ correct: false, given: "6π" }, { correct: true }], score: 0.5, unseen: true },
   ];
+  /**
+   * Practice sets, built from the same two source passages the concepts came
+   * from — which is the point. Every question carries the `sourceChunkIds` it
+   * was drawn from, so a wrong answer can be shown next to the sentence that
+   * settles it rather than next to a model's opinion of it.
+   *
+   * The demo previously seeded assessments but no question banks, so Study read
+   * "0 practice sets" and the panel that is supposed to prove learning happens
+   * was empty on the one screen a judge is most likely to open.
+   */
+  const questionBankRows = [
+    {
+      id: "qbank_demo_sql_param", userId: DEMO_ACCOUNT_USER_ID, sourceId: "source_demo_sql", conceptId: "concept_demo_sql_param",
+      title: "Parameterized queries — injection and parameter order", mode: "mixed_review",
+      questions: [
+        { id: "question_001", prompt: "Rewrite this so it cannot be injected: cursor.execute(\"INSERT INTO students VALUES ({},{})\".format(roll, name))", expectedAnswer: "cursor.execute(\"INSERT INTO students VALUES (%s,%s)\", (roll, name))", explanation: "The values travel as parameters, separate from the SQL text, so the driver never parses them as SQL. .format() builds one string and a quote inside `name` becomes syntax.", type: "short_answer", difficulty: 0.45, sourceChunkIds: ["chunk_demo_sql_2"] },
+        { id: "question_002", prompt: "Is %s in cursor.execute() the same as Python's % string formatting?", expectedAnswer: "No. It is a placeholder the database driver fills in separately; the value is never substituted into the SQL string.", explanation: "This is the misconception that makes people write %d for an integer, or quote the placeholder as '%s'. Both break, because the driver — not Python — does the substitution and it handles types and quoting itself.", type: "short_answer", difficulty: 0.6, sourceChunkIds: ["chunk_demo_sql_2"] },
+        { id: "question_003", prompt: "cursor.execute(\"UPDATE students SET name=%s WHERE roll=%s\", (roll, name)) runs without error and updates the wrong row. Why?", expectedAnswer: "The tuple is in the wrong order — it must match the order the placeholders appear, so (name, roll).", explanation: "Parameters are positional. Nothing checks that a name belongs in the name column, so this fails silently, which is why it is worth practising rather than reading.", type: "short_answer", difficulty: 0.7, sourceChunkIds: ["chunk_demo_sql_2"] },
+        { id: "question_004", prompt: "Which of these still allows SQL injection?", expectedAnswer: "cursor.execute(f\"DELETE FROM students WHERE roll={roll}\")", choices: ["cursor.execute(\"DELETE FROM students WHERE roll=%s\", (roll,))", "cursor.execute(f\"DELETE FROM students WHERE roll={roll}\")", "cursor.execute(\"DELETE FROM students WHERE roll=%s\", (int(roll),))"], explanation: "An f-string is the same hazard as .format() — the value is inside the SQL before the driver ever sees it.", type: "multiple_choice", difficulty: 0.4, sourceChunkIds: ["chunk_demo_sql_2"] },
+      ],
+    },
+    {
+      id: "qbank_demo_sql_txn", userId: DEMO_ACCOUNT_USER_ID, sourceId: "source_demo_sql", conceptId: "concept_demo_sql_txn",
+      title: "commit(), rollback() and what another connection can see", mode: "mixed_review",
+      questions: [
+        { id: "question_001", prompt: "You run an INSERT and do not call con.commit(). A second connection runs SELECT. Does it see the row?", expectedAnswer: "No. The row is not visible to another connection until commit() persists it.", explanation: "The uncommitted row exists inside your transaction only. This is the whole reason commit() is not optional after INSERT/UPDATE/DELETE.", type: "short_answer", difficulty: 0.5, sourceChunkIds: ["chunk_demo_sql_1"] },
+        { id: "question_002", prompt: "What exactly does con.rollback() undo?", expectedAnswer: "Every uncommitted change made since the last commit.", explanation: "Not the last statement, and not anything already committed — the whole uncommitted span.", type: "short_answer", difficulty: 0.55, sourceChunkIds: ["chunk_demo_sql_1"] },
+        { id: "question_003", prompt: "Does a SELECT need a commit() afterwards?", expectedAnswer: "No — SELECT, SHOW and DESC are read queries and change nothing to persist.", explanation: "Only data-changing statements need committing.", type: "short_answer", difficulty: 0.3, sourceChunkIds: ["chunk_demo_sql_1"] },
+      ],
+    },
+    {
+      id: "qbank_demo_ihc", userId: DEMO_ACCOUNT_USER_ID, sourceId: "source_demo_ihc", conceptId: null as string | null,
+      title: "OASIS — what the statistic is allowed to claim", mode: "mixed_review",
+      questions: [
+        { id: "question_001", prompt: "Why can a CD8 cell and a TIM-3 cell in this pipeline never be the same cell?", expectedAnswer: "They are stained on serial sections, which are different physical slices of tissue.", explanation: "This is the constraint the whole method is built around: it measures population-level spatial association, never single-cell co-expression.", type: "short_answer", difficulty: 0.5, sourceChunkIds: ["chunk_demo_ihc_1"] },
+        { id: "question_002", prompt: "Which null hypothesis answers cell-scale engagement rather than co-infiltration?", expectedAnswer: "The reweighted inhomogeneous null at 75 µm bandwidth.", choices: ["Homogeneous CSR", "The reweighted inhomogeneous null at 75 µm bandwidth", "Benjamini–Hochberg FDR"], explanation: "CSR answers whether two populations share a compartment, which is trivially true for almost any two immune markers. The reweighted null is the one carrying the strong claim.", type: "multiple_choice", difficulty: 0.75, sourceChunkIds: ["chunk_demo_ihc_2"] },
+        { id: "question_003", prompt: "Why is a non-rigid warp forbidden before a cross-K test, even though it registers more accurately?", expectedAnswer: "It fabricates the inter-cell distances that cross-K consumes, so the radii stop meaning anything.", explanation: "Accuracy on a registration benchmark and validity for this statistic are different properties — the more accurate transform is the invalid one here.", type: "short_answer", difficulty: 0.85, sourceChunkIds: ["chunk_demo_ihc_3"] },
+      ],
+    },
+  ];
+
+  /**
+   * One completed attempt per SQL set, scored the way the runner would score it.
+   * The parameter set is deliberately the weak one — 50%, with the parameter-order
+   * question wrong — because that is the concept carrying two lapses in the
+   * review schedule. The demo should agree with itself.
+   */
+  const questionBankAttemptRows = [
+    {
+      id: "qattempt_demo_sql_param", questionBankId: "qbank_demo_sql_param", userId: DEMO_ACCOUNT_USER_ID, mode: "mixed_review",
+      answers: [
+        { questionId: "question_001", answer: "cursor.execute(\"INSERT INTO students VALUES (%s,%s)\", (roll, name))", answeredAt: daysFromNow(0), selfConfidence: 0.8 },
+        { questionId: "question_002", answer: "It's the same as % formatting but safer", answeredAt: daysFromNow(0), selfConfidence: 0.6 },
+        { questionId: "question_003", answer: "Because roll comes first in the table", answeredAt: daysFromNow(0), selfConfidence: 0.5 },
+        { questionId: "question_004", answer: "cursor.execute(f\"DELETE FROM students WHERE roll={roll}\")", answeredAt: daysFromNow(0), selfConfidence: 0.9 },
+      ],
+      evaluations: [
+        { questionId: "question_001", score: 1, correct: true, verdict: "correct", completeness: 1, confidence: 0.95, correctPoints: ["Values passed as a parameter tuple"], missingPoints: [], incorrectPoints: [], explanation: "Exactly right.", sourceChunkIds: ["chunk_demo_sql_2"] },
+        { questionId: "question_002", score: 0.25, correct: false, verdict: "partially_correct", completeness: 0.25, confidence: 0.9, correctPoints: ["Recognises it is safer"], missingPoints: ["The driver substitutes it, not Python"], incorrectPoints: ["Calling it the same as % formatting"], explanation: "The source says the values are passed separately — that is the difference, and it is why %d and '%s' both break.", sourceChunkIds: ["chunk_demo_sql_2"] },
+        { questionId: "question_003", score: 0, correct: false, verdict: "incorrect", completeness: 0, confidence: 0.92, correctPoints: [], missingPoints: ["Parameters bind by placeholder order, not column order"], incorrectPoints: ["Column order in the table decides the tuple order"], explanation: "The tuple matches the order the %s placeholders appear in the query, which here is name then roll.", sourceChunkIds: ["chunk_demo_sql_2"] },
+        { questionId: "question_004", score: 1, correct: true, verdict: "correct", completeness: 1, confidence: 0.98, correctPoints: ["Identified the f-string"], missingPoints: [], incorrectPoints: [], explanation: "Correct — an f-string interpolates before the driver sees the SQL.", sourceChunkIds: ["chunk_demo_sql_2"] },
+      ],
+      score: 0.5625, currentIndex: 4, completedAt: daysFromNow(0),
+    },
+    {
+      id: "qattempt_demo_sql_txn", questionBankId: "qbank_demo_sql_txn", userId: DEMO_ACCOUNT_USER_ID, mode: "mixed_review",
+      answers: [
+        { questionId: "question_001", answer: "No, not until commit() — it only exists in my transaction", answeredAt: daysFromNow(-2), selfConfidence: 0.85 },
+        { questionId: "question_002", answer: "Everything uncommitted since the last commit", answeredAt: daysFromNow(-2), selfConfidence: 0.8 },
+        { questionId: "question_003", answer: "No, reads don't change anything", answeredAt: daysFromNow(-2), selfConfidence: 0.9 },
+      ],
+      evaluations: [
+        { questionId: "question_001", score: 1, correct: true, verdict: "correct", completeness: 1, confidence: 0.96, correctPoints: ["Not visible until commit"], missingPoints: [], incorrectPoints: [], explanation: "Correct.", sourceChunkIds: ["chunk_demo_sql_1"] },
+        { questionId: "question_002", score: 1, correct: true, verdict: "correct", completeness: 1, confidence: 0.94, correctPoints: ["Uncommitted changes since the last commit"], missingPoints: [], incorrectPoints: [], explanation: "Correct.", sourceChunkIds: ["chunk_demo_sql_1"] },
+        { questionId: "question_003", score: 1, correct: true, verdict: "correct", completeness: 1, confidence: 0.97, correctPoints: ["Reads need no commit"], missingPoints: [], incorrectPoints: [], explanation: "Correct.", sourceChunkIds: ["chunk_demo_sql_1"] },
+      ],
+      score: 1, currentIndex: 3, completedAt: daysFromNow(-2),
+    },
+  ];
+
   const misconceptionRows = [
     { id: "misc_demo_sat_geo", userId: DEMO_ACCOUNT_USER_ID, conceptId: "concept_demo_sat_geo", attemptId: "attempt_demo_sat_geo", label: "Swaps arc-length and sector-area formulas under time pressure", status: "active", confidence: 0.72 },
     { id: "misc_demo_sql_commit", userId: DEMO_ACCOUNT_USER_ID, conceptId: "concept_demo_sql_txn", attemptId: "attempt_demo_sql_txn", label: "Assumed data-changing queries persist without commit()", status: "resolved", confidence: 0.8 },
@@ -565,6 +649,7 @@ export function buildDemoData(now: Date) {
     goalRows, milestoneRows, taskRows, taskDeps, projectRows, sourceRows, chunkRows, paperRows,
     decisionRows, noteRows, claimRows, evidenceRows, curriculumRows, curriculumNodeRows, conceptRows,
     learningStateRows, assessmentRows, attemptRows, misconceptionRows, scheduleRows, calendarRows,
+    questionBankRows, questionBankAttemptRows,
     receiptRows, eventRows, recordRows, memoryChunkRows, resourceRows, activityRows, routeRows, proposalRows,
     assistantSessionRows, assistantMessageRows,
   };
@@ -652,6 +737,8 @@ export async function seedDemoAccount(options: SeedDemoOptions): Promise<SeedDem
   await db.insert(claimEvidence).values(data.evidenceRows).onConflictDoNothing();
   await db.insert(assessments).values(data.assessmentRows).onConflictDoNothing();
   await db.insert(assessmentAttempts).values(data.attemptRows).onConflictDoNothing();
+  await db.insert(questionBanks).values(data.questionBankRows).onConflictDoNothing();
+  await db.insert(questionBankAttempts).values(data.questionBankAttemptRows).onConflictDoNothing();
   await db.insert(learningStates).values(data.learningStateRows).onConflictDoNothing();
   await db.insert(misconceptions).values(data.misconceptionRows).onConflictDoNothing();
   await db.insert(scheduleBlocks).values(data.scheduleRows).onConflictDoNothing();
@@ -682,6 +769,8 @@ export async function seedDemoAccount(options: SeedDemoOptions): Promise<SeedDem
       notes: data.noteRows.length,
       claims: data.claimRows.length,
       learningStates: data.learningStateRows.length,
+      questionBanks: data.questionBankRows.length,
+      questions: data.questionBankRows.reduce((total, bank) => total + bank.questions.length, 0),
       scheduleBlocks: data.scheduleRows.length,
       receipts: data.receiptRows.length,
       events: data.eventRows.length,

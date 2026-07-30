@@ -18,7 +18,13 @@ import { Button, EmptyState, List, Row } from "@/components/ui";
 import { formatLabel } from "@/lib/labels";
 import { list, number, text, type Row as StateRow } from "@/components/workspace/types";
 
+/**
+ * The view carries `bestScore` as an aggregate. It used to be derived here from
+ * `bank.attempts`, which the list views never return — so the label silently
+ * never rendered and a completed set looked untouched.
+ */
 function bestScore(bank: StateRow) {
+  if (typeof bank.bestScore === "number") return Math.round(bank.bestScore * 100);
   const attempts = Array.isArray(bank.attempts) ? bank.attempts as Array<Record<string, unknown>> : [];
   const scores = attempts.map((attempt) => typeof attempt.score === "number" ? attempt.score : 0);
   return scores.length ? Math.round(Math.max(...scores) * 100) : undefined;
