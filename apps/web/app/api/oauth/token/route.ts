@@ -19,8 +19,9 @@ async function tokenResponse(payload: { sub: string; clientId: string; scopes: s
     })
     : Promise.resolve();
   const [accessToken, refreshToken] = await Promise.all([
-    issueToken({ ...payload, type: "access", exp: now + 3600 }),
-    issueToken({ ...payload, type: "refresh", exp: now + 30 * 24 * 3600 }),
+    // `payload.resource` comes from a token this deployment already verified.
+    issueToken({ ...payload, trustedResource: true, type: "access", exp: now + 3600 }),
+    issueToken({ ...payload, trustedResource: true, type: "refresh", exp: now + 30 * 24 * 3600 }),
     connection,
   ]);
   return {

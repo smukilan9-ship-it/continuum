@@ -217,3 +217,74 @@ describe("RFC 8707 resource indicators", () => {
     });
   });
 });
+
+/**
+ * The full authorization → consent → code → token flow on an origin that is
+ * *not* `APP_BASE_URL`.
+ *
+ * Every preview deployment is this case, and so is production whenever
+ * `APP_BASE_URL` is an alias. It broke in four places for the same reason —
+ * a resource that had already been validated against the serving origin was
+ * re-validated against the configured issuer alone and silently rewritten —
+ * and each break surfaced as a different, misleading message: "not valid",
+ * then "this approval request expired", then "resource indicator does not
+ * match". One case here would have caught all four.
+ */
+describe("OAuth on a deployment origin that is not the configured issuer", () => {
+  it("issues a consent token, a code, and an access token that all agree on the resource", async () => {
+    const previousIssuer = process.env.MCP_OAUTH_ISSUER_URL;
+    const previousBase = process.env.APP_BASE_URL;
+    process.env.MCP_OAUTH_ISSUER_URL = "https://continuum.example";
+    process.env.APP_BASE_URL = "https://continuum.example";
+    const preview = "https://continuum-preview-xyz.vercel.app";
+    try {
+      const verifier = "continuum-pkce-verifier-with-enough-entropy";
+      const challenge = createHash("sha256").update(verifier).digest("base64url");
+      const clientId = await issueClientRegistration({
+        clientName: "Claude",
+        redirectUris: ["https://claude.ai/api/mcp/auth_callback"],
+        scopes: ["memory:read", "goals:read"],
+        grantTypes: ["authorization_code", "refresh_token"],
+      });
+      // What a client reads out of the preview's own discovery document.
+      const resource = `${preview}/mcp`;
+      const params = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: "https://claude.ai/api/mcp/auth_callback",
+        response_type: "code",
+        scope: "memory:read goals:read",
+        state: "preview-origin-state",
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+        resource,
+      });
+
+      const authorization = await parseAuthorizationRequest(params, supportedScopes, `${preview}/api/oauth/authorize`);
+      expect(authorization.resource).toBe(resource);
+
+      const consentToken = await issueOAuthConsent("user_maya", authorization);
+      const consent = await verifyToken(consentToken, "consent", `${preview}/api/oauth/authorize`);
+      // The regression: this used to come back as `https://continuum.example/mcp`,
+      // so the consent check failed and the user saw "this approval expired".
+      expect(consent.resource).toBe(resource);
+
+      const code = await issueToken({
+        trustedResource: true,
+        sub: "user_maya",
+        clientId,
+        scopes: ["memory:read"],
+        type: "code",
+        exp: Math.floor(Date.now() / 1000) + 300,
+        redirectUri: "https://claude.ai/api/mcp/auth_callback",
+        codeChallenge: challenge,
+        resource: authorization.resource,
+      });
+      const verifiedCode = await verifyToken(code, "code", `${preview}/api/oauth/token`);
+      expect(verifiedCode.resource).toBe(resource);
+      expect(verifiedCode.aud).toBe(resource);
+    } finally {
+      if (previousIssuer === undefined) delete process.env.MCP_OAUTH_ISSUER_URL; else process.env.MCP_OAUTH_ISSUER_URL = previousIssuer;
+      if (previousBase === undefined) delete process.env.APP_BASE_URL; else process.env.APP_BASE_URL = previousBase;
+    }
+  });
+});

@@ -128,6 +128,8 @@ export async function POST(request: Request) {
       .filter((scope) => consent.scopes.includes(scope) && authorization.client.scopes.includes(scope));
     const now = Math.floor(Date.now() / 1000);
     const code = await issueToken({
+      // Already validated against the serving origin by the parse above.
+      trustedResource: true,
       sub: user.id,
       clientId: authorization.clientId,
       scopes: selectedScopes,

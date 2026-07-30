@@ -101,7 +101,7 @@ async function main() {
         redirect_uri: redirectUri, code_verifier: verifier, resource,
       }).toString(),
     });
-    if (!token.ok()) throw new Error(`token exchange HTTP ${token.status()}`);
+    if (!token.ok()) throw new Error(`token exchange HTTP ${token.status()}: ${(await token.text()).slice(0, 300)}`);
     ({ access_token: accessToken } = await token.json());
     record(1, "Connect (OAuth + PKCE, all scopes)", "consent screen is plain language; connection is recorded",
       rawScopes.length ? "fail" : "pass",
