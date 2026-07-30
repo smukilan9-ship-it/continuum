@@ -85,6 +85,11 @@
   --glow-lg:  0 0 0 1px var(--brand-strong), 0 4px 10px -2px rgba(50, 50, 93, .20), 0 14px 40px -8px var(--brand-glow);
 
   --gradient-brand: linear-gradient(101deg, var(--cyan) 0%, var(--brand) 48%, var(--violet) 100%);
+  /* The marketing hero's wash: a brand bloom over a cool white-to-blue field. */
+  --gradient-wash:
+    radial-gradient(60% 55% at 78% 18%, rgba(99, 91, 255, .16), transparent 68%),
+    radial-gradient(45% 45% at 96% 4%, rgba(0, 212, 255, .14), transparent 70%),
+    linear-gradient(168deg, #ffffff 0%, #f6f9fc 58%, #eef2fb 100%);
   --gradient-ink:   linear-gradient(160deg, #0a2540 0%, #163a5f 60%, #1d4c7c 100%);
 
   /* Goal identity: assigned by hash, rendered only as a 3px edge bar. */

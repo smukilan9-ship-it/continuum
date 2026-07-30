@@ -38,7 +38,7 @@ export const workspaceMeta: Record<WorkspaceView, { title: string; description: 
   goals: { title: "Plan", description: "Outcomes, deadlines, tasks, calendar constraints, and proof of completion." },
   goal: { title: "Goal", description: "Everything for one goal: its plan, what you are learning, and the material behind it." },
   project: { title: "Project", description: "The evidence, claims, and decisions behind one research question." },
-  learn: { title: "Learn", description: "Choose the best resource for your goal and verify progress afterward." },
+  learn: { title: "Study", description: "Choose the best resource for your goal and verify progress afterward." },
   code: { title: "Build", description: "Understand the task, write code, run it, check the tests, and ask for help when needed." },
   research: { title: "Research", description: "Projects, source-backed claims, decisions, and unresolved questions." },
   library: { title: "Library", description: "Find sources in the public scholarly graph, keep the ones that matter, and browse your connected Zotero libraries." },

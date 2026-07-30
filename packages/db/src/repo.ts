@@ -755,7 +755,14 @@ export class NeonRepository {
       const [goalRows, taskRows, dependencyRows, masteryRows, activityRows, questionBankRows, receiptRows] = await Promise.all([
         userGoals(), userTasks(),
         this.listTaskDependencies(userId),
-        this.db.select().from(learningStates).where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false))),
+        // Joined to `concepts` so each state carries the concept's real title.
+        // Without it the screen falls back to humanising the id, and a student
+        // reads "SQL param" and "SAT geo" where the record says "Parameterized
+        // queries (%s)" and "SAT advanced geometry — circles & parabolas".
+        this.db.select({ state: learningStates, conceptLabel: concepts.title })
+          .from(learningStates)
+          .leftJoin(concepts, eq(learningStates.conceptId, concepts.id))
+          .where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false))),
         this.db.select().from(resourceActivities).where(eq(resourceActivities.userId, userId)).orderBy(desc(resourceActivities.startedAt)).limit(20),
         this.db.select().from(questionBanks).where(and(eq(questionBanks.userId, userId), eq(questionBanks.deleted, false))).orderBy(desc(questionBanks.updatedAt)).limit(20),
         userReceipts(5),
@@ -765,7 +772,7 @@ export class NeonRepository {
         goals: goalRows,
         tasks: taskRows.map(({ task }) => task),
         taskDependencies: dependencyRows,
-        learningStates: masteryRows,
+        learningStates: masteryRows.map((row) => ({ ...row.state, conceptLabel: row.conceptLabel })),
         resourceActivities: activityRows,
         questionBanks: questionBankRows.map(publicQuestionBankSummary),
         receipts: receiptRows,

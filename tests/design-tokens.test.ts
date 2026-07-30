@@ -80,11 +80,22 @@ describe("§19.10 one token set", () => {
     expect([...referenced].filter((token) => !defined.has(token))).toEqual([]);
   });
 
-  it("gives the deliberately dark surfaces a value in both themes", () => {
+  /**
+   * There is one theme now. Two half-tuned themes cost more than they bought:
+   * every literal colour was a dark-mode defect waiting to be found, and half
+   * the stylesheet was override rules. This asserts the decision holds — a
+   * `data-theme` rule reintroduces the whole class of bug it replaced.
+   */
+  it("has exactly one theme", () => {
+    const sources = ["app/globals.css", ...moduleFiles].map(read);
+    const themed = sources.filter((css) => /data-theme/.test(css.replace(/\/\*[\s\S]*?\*\//g, "")));
+    expect(themed).toEqual([]);
+  });
+
+  it("defines the surfaces that stay dark on a light page", () => {
     const globals = read("app/globals.css");
-    const dark = globals.slice(globals.indexOf('html[data-theme="dark"]'));
-    for (const token of ["--surface-inverse", "--danger-hover", "--syntax-string"]) {
-      expect(dark, `${token} has no dark value`).toContain(`${token}:`);
+    for (const token of ["--surface-inverse", "--ink-inverse", "--danger-hover", "--syntax-string"]) {
+      expect(globals, `${token} is not defined`).toContain(`${token}:`);
     }
   });
 });

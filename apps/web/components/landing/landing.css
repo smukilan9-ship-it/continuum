@@ -140,10 +140,7 @@
   position: absolute;
   inset: -20% -30% auto -10%;
   height: 150%;
-  background:
-    radial-gradient(60% 55% at 78% 18%, rgba(99, 91, 255, .16), transparent 68%),
-    radial-gradient(45% 45% at 96% 4%, rgba(0, 212, 255, .14), transparent 70%),
-    linear-gradient(168deg, #ffffff 0%, var(--canvas) 58%, #eef2fb 100%);
+  background: var(--gradient-wash);
   transform: skewY(-4deg);
   transform-origin: top right;
   pointer-events: none;
