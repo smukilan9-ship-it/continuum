@@ -1103,3 +1103,15 @@
    staircase rather than a table. The research screen's own rows are
    `.research-source-row` and were never styled by it. */
 .scholarly-card-main:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
+
+/* The detail card scrolls, but its content was 345px inside a 332px card, so
+   author lists and long titles were sliced off at the right edge rather than
+   wrapped. Long unbroken tokens — DOIs, URLs, hyphenated surnames — are what
+   push a text column past its container. */
+.scholarly-detail,
+.scholarly-detail * { min-width: 0; }
+.scholarly-detail { overflow-wrap: anywhere; }
+/* A chip in the corner must not be clipped into a fragment: "Just saved"
+   rendered as "Just". */
+.scholarly-detail .status-chip,
+.scholarly-detail .badge { white-space: nowrap; max-width: 100%; }

@@ -278,7 +278,15 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .search-button span { flex: 1; text-align: left; }
 .privacy-state { display: flex; align-items: center; gap: 7px; color: var(--ink-2); font-size: 12px; white-space: nowrap; }
 .privacy-state i { width: 7px; height: 7px; background: var(--success); border-radius: 50%; }
-.mobile-only, .mobile-bottom-nav, .sidebar-scrim { display: none; }
+/* Doubled deliberately, to raise specificity to (0,2,0).
+   `.icon-button` also sets `display`, at equal specificity and later in source
+   order, so a single-class `.mobile-only { display: none }` lost to it — and
+   the ✕ beside the wordmark and the ☰ in the top bar were visible on every
+   screen at every width, including 1920. A utility class that does not do what
+   its name says is worse than no utility class. */
+.mobile-only.mobile-only,
+.mobile-bottom-nav.mobile-bottom-nav,
+.sidebar-scrim.sidebar-scrim { display: none; }
 
 /* Page structure */
 .screen { min-width: 0; }
@@ -299,9 +307,9 @@ textarea { min-height: 90px; resize: vertical; }
 @media (max-width: 840px) {
   .sidebar { width: min(300px, 86vw); transform: translateX(-105%); transition: transform .2s ease; }
   .sidebar-open { transform: translateX(0); }
-  .sidebar-scrim { position: fixed; inset: 0; z-index: 35; display: block; background: rgba(7, 25, 45, .48); border: 0; }
+  .sidebar-scrim.sidebar-scrim { position: fixed; inset: 0; z-index: 35; display: block; background: rgba(7, 25, 45, .48); border: 0; }
   .main-area { margin-left: 0; }
-  .mobile-only { display: grid; }
+  .mobile-only.mobile-only { display: grid; }
   .sidebar-head .mobile-only { color: var(--ink); }
   /* §8.9: the top bar keeps the breadcrumb and the search icon; everything
      else collapses. The theme toggle is a 100px segmented control and the Ask
@@ -316,7 +324,7 @@ textarea { min-height: 90px; resize: vertical; }
   .topbar-right { flex: none; gap: 6px; }
   /* Appearance lives in Settings › Appearance and the account menu (§8.10). */
   .topbar-right   .content-wrap { padding: 28px 20px calc(92px + env(safe-area-inset-bottom)); }
-  .mobile-bottom-nav { height: calc(66px + env(safe-area-inset-bottom)); position: fixed; inset: auto 0 0; z-index: 30; padding-bottom: env(safe-area-inset-bottom); display: grid; grid-template-columns: repeat(5, 1fr); background: color-mix(in srgb, var(--surface) 96%, transparent); border-top: 1px solid var(--line); backdrop-filter: blur(12px); }
+  .mobile-bottom-nav.mobile-bottom-nav { height: calc(66px + env(safe-area-inset-bottom)); position: fixed; inset: auto 0 0; z-index: 30; padding-bottom: env(safe-area-inset-bottom); display: grid; grid-template-columns: repeat(5, 1fr); background: color-mix(in srgb, var(--surface) 96%, transparent); border-top: 1px solid var(--line); backdrop-filter: blur(12px); }
   /* `min-width: 0` on the grid items: without it each one is sized by its
      label and five of them refuse to fit 320px. */
   .mobile-bottom-nav a, .mobile-bottom-nav button { min-width: 0; min-height: 44px; display: grid; place-items: center; align-content: center; gap: 3px; color: var(--ink-2); background: transparent; border: 0; font-size: 10px; }

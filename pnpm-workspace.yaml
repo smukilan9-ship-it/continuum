@@ -22,3 +22,21 @@ minimumReleaseAgeExclude:
 onlyBuiltDependencies:
   - esbuild
   - sharp
+
+# Installed on macOS, deployed to linux-x64. Without this, pnpm resolves only
+# the host platform's optional dependencies and `sharp` reaches Vercel without
+# its libvips binary — which failed at module scope and took `GET /api/sources`
+# down with it, so Library reported "We couldn't load your sources".
+#
+# This lives here and not in package.json: pnpm 11 stopped reading the `pnpm`
+# field there, and silently ignored it.
+supportedArchitectures:
+  os:
+    - current
+    - linux
+  cpu:
+    - current
+    - x64
+  libc:
+    - current
+    - glibc

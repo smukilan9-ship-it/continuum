@@ -41,21 +41,5 @@
     "vercel": "56.3.1",
     "vitest": "^3.2.4",
     "zod": "^4.4.3"
-  },
-  "pnpm": {
-    "supportedArchitectures": {
-      "os": [
-        "current",
-        "linux"
-      ],
-      "cpu": [
-        "current",
-        "x64"
-      ],
-      "libc": [
-        "current",
-        "glibc"
-      ]
-    }
   }
 }

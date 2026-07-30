@@ -271,3 +271,48 @@ describe("no animation can hide content", () => {
     }
   });
 });
+
+/**
+ * A utility class must beat the component classes it is applied alongside.
+ *
+ * `.mobile-only { display: none }` sat at specificity (0,1,0). So did
+ * `.icon-button { display: … }`, twice, later in source order — so the utility
+ * lost every time it was used on an icon button, which is the only place it is
+ * used. The ✕ beside the wordmark and the ☰ in the top bar were visible on
+ * every screen at every width, including 1920, for as long as the class has
+ * existed. Nothing failed: the markup was right, the media query was right, and
+ * the cascade quietly discarded the rule.
+ *
+ * The fix doubles the selector to (0,2,0). This asserts it stays doubled, and
+ * that no second `.icon-button` rule reappears to set `display` — the duplicate
+ * that caused this also silently retired the -28/-32/-36 size modifiers by
+ * forcing every icon button to 44px.
+ */
+describe("mobile-only actually hides", () => {
+  const globals = read("app/globals.css");
+  const kit = read("components/ui/kit.css");
+
+  it("declares the hide rule at a specificity a component class cannot match", () => {
+    expect(globals).toMatch(/\.mobile-only\.mobile-only[^{]*\{[^}]*display:\s*none/);
+  });
+
+  it("re-shows it at the same specificity inside the media query", () => {
+    const mobile = globals.slice(globals.indexOf("@media (max-width: 840px)"));
+    expect(mobile).toMatch(/\.mobile-only\.mobile-only\s*\{\s*display:\s*grid/);
+  });
+
+  it("has exactly one .icon-button rule setting display", () => {
+    const setters = [...kit.matchAll(/^\.icon-button\s*\{([^}]*)\}/gms)]
+      .filter((match) => /display\s*:/.test(match[1]!));
+    expect(setters.length, "a duplicate .icon-button rule overrides the size modifiers").toBe(1);
+  });
+
+  it("keeps the icon-button size modifiers effective", () => {
+    // They come after the base rule and share its specificity, so they win —
+    // unless a later bare `.icon-button` rule re-sets width, which is the bug.
+    const base = kit.indexOf(".icon-button {");
+    const modifier = kit.indexOf(".icon-button-28");
+    expect(modifier).toBeGreaterThan(base);
+    expect(kit.lastIndexOf("width: 44px; height: 44px; display: grid")).toBe(-1);
+  });
+});

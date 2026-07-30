@@ -1,764 +1,516 @@
-# Continuum — 120-Second Launch Film · Master Implementation Plan (v3)
+# Continuum — 120-Second Launch Film · Master Plan (v4)
 
-**Status: PLAN ONLY. Nothing in this document is implemented yet except the items
-explicitly marked DONE in §2.**
+**Status: PROPOSED, awaiting approval. Nothing in §5–§11 is built yet.**
 
-- Supersedes `Continuum_120_Second_Launch_Film_Plan.docx` (v1) and
-  `apps/video/PRODUCTION.md` (v2 creative corrections — its findings are folded in).
-- **v3.3 (2026-07-29): finished.** Narration generated with Gemini TTS (Charon,
-  11 lines incl. a spoken "Information is abundant / Learning is fragmented" at
-  0:09.7 bookending the close); VFX pass on Hook and Close (parallax depth,
-  defocus, motion blur, light sweep, bloom, vignette, mask-reveal type);
-  original score and SFX bed generated in Node — no licensing required; full mix
-  at −14.4 LUFS / −1.0 dBTP. See SCRIPT.md for the locked script.
-- **v3.1 (2026-07-29): timeline rebalanced for judge confidence, not feature
-  count.** Differentiator proof beats expanded — Claude MCP 4.5s→10s (+2s sync),
-  Assistant 6s→9s, Obsidian sync ~1.5s→a dedicated 8s segment, OpenAlex→Zotero→PDF
-  one continuous 16s journey. Paid for by compressing utility shots (Today −3s,
-  Learn browsing −3s, Plan −3s, Code −3s, Memory −2s, Connections −3s, Close −2s).
-  Runtime (120.000s), the hook→problem→solution arc, and the entire Hook segment
-  spec (T2) are unchanged.
-- Implementer: **Opus** (a fresh Claude Code session). This document is written to be
-  executed without access to the conversation that produced it.
-- Hard scope rule for the implementer: **Phase A only.** Build everything that does
-  not require the web app to run. Do not start the Next.js dev server, do not touch
-  `apps/web`, do not record captures, do not open OBS or Resolve. Those are Phases
-  B/C and involve the user.
-- Working directory for all Phase A work: `apps/video/`.
+v4 rewrites v3.3 against the product as it actually shipped on 2026-07-31. v3.3
+was written against a warm-paper/lime brand, a DM Sans typeface, an EE-student
+persona, and a feature set that has since changed underneath it. Every one of
+those is now wrong. The film's *structure* survives; its palette, typeface, logo,
+persona, script and half its proof beats do not.
+
+Superseded: v3.3 (2026-07-29), `PRODUCTION.md` (v2), the v1 docx.
 
 ---
 
-## 0. What this film must do (judging model)
+## 0. What changed, and why this is a rewrite
 
-Judges watch ~120 seconds, mostly once, sometimes muted. The film is the primary
-basis for scoring the app. Therefore:
+Basis: a full read of the codebase, plus a live walkthrough of
+`https://continuumstudy.vercel.app` on 2026-07-31.
 
-1. **The idea must land in the first 15 seconds** — hook → problem, before any UI.
-2. **Confidence beats count.** Every shipped capability still appears (§3.3), but
-   screen time buys *proof*, not parade: the four differentiators — Claude MCP,
-   the Assistant, Obsidian sync, the OpenAlex→Zotero pipeline — each get a
-   visible cause→effect beat a judge cannot dismiss as a mockup. Utility screens
-   get exactly as long as legibility demands, no more.
-3. **It must work on mute** — labels + on-screen lines carry the full argument;
-   VO is reinforcement. This is a QA gate (§9), not a suggestion.
-4. **One line must survive in memory** — `One Workspace. Infinite Learning.`
-5. **One "whoa" moment** — Claude Desktop answering from Continuum's memory over
-   MCP without being briefed (1:37–1:49, twelve full seconds including the
-   synchronized return). Everything builds to it.
-
-The arc the user asked to keep — **hook → problem → solution** — is the spine.
-The solution section is structured as proof (eight beats, four of them ★
-differentiator proofs), then payoff (the moat), then close.
-
----
-
-## 1. Stack
-
-Per the v1 production doc, with verified status on this machine:
-
-| Tool | Role | Status |
-|---|---|---|
-| **Claude Code** | Creative director + automation: builds all Remotion segments, generates the cutlist, timeline XML, scratch VO, Resolve build script; later drives capture choreography | this plan |
-| **Remotion 4.0.500** | Everything synthetic: hook, bridge, close, label overlays, safety typography | ✅ installed in `apps/video`, render verified (ProRes HQ pipeline works end-to-end) |
-| **OBS Studio** | One continuous 1080p30 capture of the real app + Claude Desktop (Phase B) | ✅ `/Applications/OBS.app` |
-| **DaVinci Resolve (free)** | Conform, pacing, music, grade, Fairlight mix, deliver (Phase C) | ✅ `/Applications/DaVinci Resolve.app` |
-| ffmpeg | Probes, scratch-VO assembly, duration assertions | ✅ `/opt/homebrew/bin/ffmpeg` |
-| macOS `say` | Scratch VO for edit timing only — replaced by the user's recorded narration | ✅ |
-| FCPXML 1.10 / EDL | Machine-generated conform from `cutlist.json` into Resolve | to build (T9) |
-
-Packages already in `apps/video/package.json`: `@remotion/cli, transitions, shapes,
-paths, noise, google-fonts, media-utils`. React 19.1.8 matches `apps/web`.
-
-**Resolve free-version caveat the implementer must respect:** external scripting
-(`fuscript`, network API) is Studio-only. The automation path that works on free is
-(a) FCPXML import — primary, and (b) a Python script run inside Resolve's built-in
-Console (Workspace → Console → Py3) — secondary. Both are specified in §6. Never
-assume external control of Resolve.
-
----
-
-## 2. Verified ground truth (do not re-litigate)
-
-Checked against the working tree on `feat/product-ready-premium-rebuild`:
-
-- **Mark** (`apps/web/components/brand-mark.tsx`): lime `#d9ff2f` rounded square
-  (r=16 on a 64 viewBox), four dark `#171812` ascending bars at x=12/25/38/51,
-  lime connector path `M16.5 42.5C23 42.5 24.5 35 30 35C35 35 36.5 31 42.5 27.5`
-  (5px, round caps), node r=4.5 at (30.5, 35). **There is no wave.** The v1 doc's
-  "continuous wave" is stale.
-- **Wordmark**: lowercase `continuum`, right of the mark.
-- **Typeface**: **DM Sans** (`apps/web/app/layout.tsx:2`, `--font-sans`). ⚠️ The
-  existing `src/brand.ts` wrongly says Inter — fixing it is T1. Never use Inter.
-- **Palette** (`landing.css .landing-shell`): paper `#f7f6f0`, surface `#ffffff`,
-  soft `#efede3`, deep `#e3eadf`, ink `#101511`, muted `#616a63`, subtle `#7c847e`,
-  forest `#173d2e`, forest-strong `#0f2d22`, emerald `#467a61`, emerald-soft
-  `#dcebe2`, accent `#d9ff2f`, border `#dcded8`. Default identity is **light/paper**.
-  Dark exists but is not the brand default.
-- **Real product copy** (verbatim, never paraphrase on screen):
-  - `One Workspace. Infinite Learning.` (hero kicker, footer, metadata title)
-  - `Information is abundant.` / `Learning is fragmented.` (problem H2)
-  - `Build knowledge that compounds.` (final CTA)
-  - `Continuum fights for student outcomes, not screen time.`
-  - The v1 doc's long mashup tagline does not exist in the product. Retired.
-- **Navigation truth** (`continuum-app.tsx`, `workspace-routes.ts`): Today ·
-  Work {Assistant, Plan(`/goals`), Learn, Code, Research} · Sources {Library,
-  Memory} · {Review(`/activity`), Connections(`/integrations`), Account & Security}.
-- **No "Knowledge Graph" screen exists.** The real surface is the **Concept Map**
-  inside Learn (branches: Foundations / Practice / Apply & create / Review & proof).
-- **Library is one screen**; `/openalex` and `/zotero` are tab-preselecting aliases
-  (`workspace-routes.ts:42`).
-- **Connections cards that ship**: Claude (MCP), OpenAlex, Zotero, Obsidian
-  (+ Continuum Sync plugin), NotebookLM, Ollama, YouTube Data API.
-- **Demo topic in seed/domain defaults**: electric potential / electrostatics
-  (`recommendBestResource` defaults). The hook's fictional student matches this so
-  captured UI data and the synthetic hook tell one story.
-- **DONE already** (verified by render): `src/brand.ts` (needs T1 font fix),
-  `src/BrandMark.tsx` (1:1 port with `progress` 0→1 build: tile → bars staggered →
-  connector draw → node), `src/LogoReveal.tsx` (180f, becomes raw material for T4
-  `Close`), ProRes HQ master config in `remotion.config.ts`, `remotion-studio`
-  launch entry (port 3100), `.gitignore` covers `apps/video/out/` and the headless
-  shell.
-- GitHub URL for the end slate: `github.com/smukilan9-ship-it/continuum`.
-
----
-
-## 3. The film (locked creative)
-
-### 3.0 Design principles
-
-1. **Paper, not black.** The film lives on `#f7f6f0`. Darkness/cold appears only as
-   the *problem* (the hook cools toward gray-blue as chaos builds).
-2. **Real UI only.** Remotion never fakes a product screen. Synthetic segments are
-   abstractions (windows, typography, the mark) — never imitation app frames.
-3. **The visual thesis**: in the hook, *the user is the sync layer* (the same
-   context paragraph pasted into tool after tool). Continuum's pitch is that it
-   becomes the memory layer instead. The MCP payoff proves it.
-4. **Rhyme the ends**: the hook collapses all chaos into a single lime dot; the
-   close re-opens that dot, which splits into the four bars of the mark. Chaos,
-   compressed, becomes the brand.
-5. Motion language: springs with `damping: 200` (site-like restraint), no bounce,
-   no motion blur plugins, 12f standard fade, cuts on action.
-6. **The continuity contract** — one story object threads the film: the EE-201
-   electrostatics exam on Friday. The weakness caught in Learn (boundary
-   conditions, 0:31) is the weakness the Assistant cites (1:28), is the focus
-   Claude names over MCP (1:43), is the session sitting on Today at the end
-   (1:47). The paper kept in Library (0:48) is the source the Code fix cites
-   (1:17). Judges believe integrations work when the *same facts* survive every
-   boundary crossing — Phase B captures must honor this contract above all else.
-
-### 3.1 Master timeline — 3600 frames @ 30fps, 1920×1080
-
-| TC | Frames | Seg | Content | Source |
-|---|---|---|---|---|
-| 0:00.0–0:14.0 | 0–420 | S0 | Hook — "you are the sync layer" | Remotion `Hook` |
-| 0:14.0–0:21.0 | 420–630 | S1 | Reveal — dot irises open on Today; thesis | OBS `cap_today` + Remotion `Bridge` overlay |
-| 0:21.0–0:34.0 | 630–1020 | S2a | Learn — resource → map → weakness caught | OBS `cap_learn` |
-| 0:34.0–0:39.0 | 1020–1170 | S2b | Plan | OBS `cap_plan` |
-| 0:39.0–0:55.0 | 1170–1650 | S2c | Library — one paper: OpenAlex → Zotero → PDF ★ | OBS `cap_library` |
-| 0:55.0–0:59.0 | 1650–1770 | S2d | Research — claims tied to sources | OBS `cap_research` |
-| 0:59.0–1:07.0 | 1770–2010 | S2e | Obsidian sync — the note crosses apps ★ | OBS `cap_obsidian` |
-| 1:07.0–1:13.0 | 2010–2190 | S2f | Memory | OBS `cap_memory` |
-| 1:13.0–1:20.0 | 2190–2400 | S2g | Code | OBS `cap_code` |
-| 1:20.0–1:25.0 | 2400–2550 | S2h | Connections (+auth micro-beat) | OBS `cap_connections` |
-| 1:25.0–1:34.0 | 2550–2820 | S3a | Assistant builds the session ★ | OBS `cap_assistant` |
-| 1:34.0–1:37.0 | 2820–2910 | S3b | Review — approve the proposal | OBS `cap_review` |
-| 1:37.0–1:47.0 | 2910–3210 | S3c | Claude Desktop + MCP — the whoa ★ | OBS `cap_claude` |
-| 1:47.0–1:49.0 | 3210–3270 | S3d | Back to Continuum — synchronized | OBS `cap_sync` |
-| 1:49.0–2:00.0 | 3270–3600 | S4 | Close — dot→bars→mark→lockup→kicker | Remotion `Close` |
-
-★ = differentiator proof beats: 16 + 8 + 9 + 12 = **45 seconds** of the film
-(v3 gave them ~31s, much of it shared with other content). Compression came from
-Today −3s, Learn −3s, Plan −3s, Code −3s, Memory −2s, Connections −3s, Close −2s;
-the Hook is untouched. Every §3.3 row still appears. Total: exactly 120.000s.
-
-### 3.2 Segment specs
-
-#### S0 · `Hook` — Remotion, 420 frames
-
-Fictional student consistent with seed data: 2nd-year EE, electrostatics exam
-Friday, weak on boundary conditions.
-
-**v3.2 (2026-07-29): the windows are named real apps, not archetypes.**
-Safari, ChatGPT, Claude, Gemini, Preview, Notion, Anki, Terminal, Calendar —
-each with its app icon and name in the title bar. Recognition is what makes the
-fragmentation argument land: a judge should see *their own* desktop, not an
-abstraction of one. The "never a Continuum lookalike" rule (§3.0-2, §8) is
-strengthened by this, not weakened.
-
-Two consequences:
-
-- **Claude is deliberately one of the pasted-into windows.** In the hook it is a
-  blank slate being hand-fed context at f120; at 1:37 the same app answers from
-  Continuum's memory over MCP without being told anything. The hook is what
-  makes that payoff mean something — same app, now it already knows.
-- **Layout rule: no window may cover the title bar of one that arrived
-  earlier.** The title bars now carry the identity, so burying them costs the
-  segment its point. Window positions were re-laid out against this constraint
-  and duplicates raised 9 → 14 to refill the gaps the spacing opened.
-
-Marks are simple geometric stand-ins in each product's brand colour — drawn for
-identification, not traced from logos.
-
-Window design language: white `#ffffff` cards on paper, 12px radius, 1px `#dcded8`
-border, soft shadow `0 18px 50px rgba(16,21,17,.10)`, 34px title bars with three
-traffic dots, 13–15px DM Sans content. Reference for tone (do not copy code):
-the landing's own `FragmentationMerge` in `landing-motion.tsx` — the site already
-makes this argument; the film opens with the same metaphor at cinematic scale.
-
-Beat map (frames):
-
-| f | Event |
-|---|---|
-| 0–18 | Pure paper. One chat window springs in, centered, calm. Title `AI Chat`. Typewriter (~12 chars/s): `Can you explain electric potential? Exam on Friday.` |
-| 18–66 | Response begins streaming (gray skeleton lines — never readable fake AI text). Camera starts an imperceptible push: scale 1.00→1.06 across f0–288. |
-| 66–240 | The multiplication. Windows arrive on springs, each slightly rotated (−3°…+3°, seeded `random()`): f66 PDF `griffiths_ch2_electrostatics.pdf — Page 3 / 41`; f96 Notes `exam_notes_FINAL_v3` with 4 bullet skeletons; f120 **Chat #2** — a context paragraph pastes in with a **lime highlight sweep**: `Context (again): 2nd-year EE. Exam Friday. Weak areas: boundary conditions, image charges. Working from Griffiths ch.2 + lecture 4 notes. Please don't make me repeat this.`; f150 Browser with **9 tabs** (favicons+labels: YouTube `Electric Potential in 21 min`, StackExchange, Chegg, Quizlet, arXiv, Google Scholar, Reddit, Gmail, Docs); f174 Flashcards `42 / 200 mastered`; f195 Terminal `python practice.py` → red `Traceback (most recent call last)`; f213 **Chat #3** — the SAME lime context block pastes again (this is the thesis — the highlight pulses once); f228 Calendar event `EE-201 EXAM — Fri 9:00 AM`. |
-| 240–288 | Acceleration: 8–10 scaled duplicate windows cascade in behind (seeded positions, lower opacity). Color temperature cools: paper lerps `#f7f6f0→#e7e9ec`, shadows deepen, `@remotion/noise` grain ramps 0→0.06. Tiny camera shake (±3px, seeded) ramps in. Audio design note for Resolve: notification pings layering into noise. |
-| 288–378 | Freeze. Background windows blur (8px) + desaturate 30%. Typography in ink, DM Sans 600, ~110px, tracking −3, two staggered lines (f288, f312), each 12f fade/16px rise: `Information is abundant.` / `Learning is fragmented.` Hold. |
-| 378–414 | Collapse: every window tumbles inward to center with `Easing.in(Easing.quint)`, scale→0, slight rotation; typography exits −20px/12f. All mass lands in a **12px lime dot**. |
-| 414–420 | Paper + dot alone. Dot breathes (scale 1→1.15). Handoff. |
-
-Determinism: all randomness via `random('seed-string')` — `Math.random` is
-forbidden (breaks render reproducibility across threads).
-
-#### S1 · Reveal — OBS under Remotion `Bridge` overlay, f420–630
-
-`Bridge` (45 frames, rendered with **alpha**, ProRes 4444): the lime dot expands
-into a rounded-square iris wipe (the mark's silhouette) that reveals the frame
-beneath; a 6f lime edge glow trails the wipe, then the overlay is fully
-transparent by f465. In Resolve this sits on V2 over the head of `cap_today`.
-
-`cap_today` (Phase B): Today screen, cursor calm — 7s, one idea only. Beats:
-next-action card with its reasoning visible (hold 3s — the point is *the app
-already decided*), then at 0:19–0:21 click **Find the best resource**, motivating
-the cut into S2a. No scrolling, no tour. Covers checklist items "Dashboard/Today"
-and "Resume learning".
-
-#### S2 · The proof block — OBS, f630–2550
-
-Choreography detail for each capture lives in §5 (Phase B). Content contract —
-the ★ beats are the film's spine; if capture day runs long, trim anything else
-first:
-
-- **S2a Learn (0:21–0:34, 13s).** Ranked Best-Resource with the visible *reason*
-  it won (0:21–0:26) → **Concept Map**: branch chips (Foundations / Practice /
-  Apply & create / Review & proof) + mastery states, the roadmap glimpsed in the
-  transition (0:26–0:30) → a practice question answered **wrong** on camera, the
-  weakness caught, the mastery state visibly changing (0:30–0:34). The
-  wrong-answer beat is untouchable — it seeds the continuity contract — but
-  browsing time is not (v3's blanket "never trim Learn" is retired).
-- **S2b Plan (0:34–0:39, 5s).** One glance, one punch-in: goal → deadline → tasks
-  against calendar constraints → a completion receipt. Utility shot; legibility
-  only, no tour.
-- **S2c Library — one paper's journey (0:39–0:55, 16s). ★** The confidence device
-  is continuity of a single object, never a montage: OpenAlex search with real
-  results, real venues (0:39–0:44) → work detail: abstract, citation count, then a
-  one-hop **citation-graph traverse** (0:44–0:47.5) → **Keep** → Zotero tab, where
-  the same paper now sits beside the user's own library (0:47.5–0:51) → PDF drop →
-  ingest progress → indexed and searchable (0:51–0:55). The paper kept here is the
-  source the Code fix cites at 1:17.
-- **S2d Research (0:55–0:59, 4s).** A claim with its source attached + one open
-  question; single punch-in. The label carries it.
-- **S2e Obsidian sync (0:59–1:07, 8s). ★ New dedicated segment** — v3 gave this
-  ~1.5s inside a card pan, but it is one of the strongest real integrations
-  (`apps/obsidian-plugin` ships in this repo). Beats: Continuum's Obsidian card /
-  sync state, trigger visible (0:59–1:00.5) → app switch to the **real Obsidian
-  app** (1:00.5–1:01.5) → the synced note opens: session/claim title, frontmatter,
-  wikilinks, slow scroll (1:01.5–1:05) → Obsidian's **local graph view**, with
-  Continuum's notes sitting inside the user's own graph (1:05–1:07). Direction
-  contract: whichever way the shipped sync flows, an artifact created earlier in
-  the film must visibly cross the app boundary in one unbroken shot.
-- **S2f Memory (1:07–1:13, 6s).** Type a query (1:07–1:09); the receipt generated
-  during S2a surfaces by relevance (1:09–1:13); punch-in on its provenance. Label
-  carries the differentiator: *retrieved by relevance, not replay*.
-- **S2g Code (1:13–1:20, 7s).** Montage beat: run → real traceback (1:13–1:15) →
-  ask → source-aware fix that **cites the PDF ingested at 0:53** (1:15–1:18.5) →
-  re-run green (1:18.5–1:20). (Callback to the hook's terminal.)
-- **S2h Connections (1:20–1:25, 5s).** Grid pan: NotebookLM, Ollama, YouTube,
-  OpenAlex, Zotero, Obsidian (1:20–1:22.5) → Claude/MCP card close-up on **scoped
-  permissions** (`Read memory · Search sources · Propose changes`, "Writes require
-  explicit approval") (1:22.5–1:24) → 1s Account & Security flash — the v1
-  "Authentication (brief)" item, framed as security, not a login form (1:24–1:25).
-  This card close-up is the setup the finale pays off.
-
-#### S3 · Payoff — OBS, f2550–3270
-
-Four beats, one continuous argument: **propose → approve → prove → sync**. The
-music strips to near-silence at 1:34 and stays stripped through 1:47 (§3.6) — the
-proof plays almost dry.
-
-- **S3a Assistant (1:25–1:34, 9s). ★** Typed on camera — typing is authenticity:
-  `Build me a study session for Friday's electrostatics exam.` (1:25–1:27.5) →
-  the reply streams, citing the mastery % and the exact weak concept the judge
-  watched get caught at 0:31 — boundary conditions (1:27.5–1:30.5) → the proposal
-  card assembles: session blocks with sources attached (1:30.5–1:33) → submitted
-  for review (1:33–1:34). The assistant must visibly **propose**, never silently
-  mutate — that restraint is what the next beat showcases.
-- **S3b Review (1:34–1:37, 3s).** The proposal sits in Review; one click:
-  **Approve**. The approval click is the loudest thing in the mix here. This beat
-  is what makes the finale trustworthy rather than spooky.
-- **S3c Claude Desktop + MCP (1:37–1:47, 10s). ★ The whoa — more than doubled
-  from v3's 4.5s.** This beat rhymes with the hook: at f120 the judge watched
-  Claude get hand-fed a context paragraph, and it is the same app here.
-  Real ⌘-tab app switch, Continuum connector visible in
-  Claude's UI (1:37–1:38) → typed live: `What should I focus on tonight?`
-  (1:38–1:40) → **tool-call chips fire sequentially, each held long enough to
-  read**: `load_learning_state ✓`, `recommend_resource ✓` (1:40–1:42.5) → the
-  answer streams, naming the EE-201 exam on Friday, boundary conditions, and the
-  just-approved session (1:42.5–1:46) → hold with a slow push-in on the sentence
-  citing boundary conditions (1:46–1:47). Zero context pasted — and the judge
-  *knows* it, because they watched every one of those facts get created in the
-  previous 90 seconds.
-- **S3d Sync (1:47–1:49, 2s).** Back in Continuum: Today shows the approved
-  session in the schedule. The loop closes (= v1 "Final synchronized dashboard").
-
-#### S4 · `Close` — Remotion, 330 frames (f3270–3600 of film)
-
-| f (comp-local) | Event |
-|---|---|
-| 0–18 | Paper. The lime dot from the hook descends to center, breathes once. |
-| 18–66 | **The rhyme**: the dot splits and extrudes into the four dark bars of the mark (standalone rects at BrandMark geometry, scaled), rising staggered exactly like `BrandMark`'s build. |
-| 48–102 | Lime tile scales in beneath (0.96→1.00, 12f fade); standalone bars opacity-swap into the real `BrandMark` (drive `progress` 0.28→1.0 over f48–102); connector draws; node lands f≈96. Music resolves here. |
-| 102–168 | Lockup: mark eases to its header position (left), `continuum` wordmark slides in from behind it (reuse `LogoReveal` timing, DM Sans 600, ink). |
-| 174–216 | Kicker fades under: `One Workspace. Infinite Learning.` (muted `#616a63`, 40px). |
-| 225–330 | Sub-line `Build knowledge that compounds.` (ink, 28px) + `github.com/smukilan9-ship-it/continuum` (subtle, 22px, monospace ok). Hold to end — this is the freeze judges pause on. |
-
-Implementation note: `BrandMark.tsx` already exposes `progress`; the dot→bars
-pre-phase is drawn by `Close` itself at matching coordinates, then opacity-swapped
-into `BrandMark` — do not add modes to `BrandMark`.
-
-### 3.3 Feature coverage matrix (the "judges see everything" contract)
-
-Every item from the v1 doc's checklist, plus surfaces v1 missed. QA gate: check
-each row against the final export.
-
-| # | Capability (v1 wording) | Where | TC | Carried by |
-|---|---|---|---|---|
-| 1 | Dashboard / Today | S1 | 0:14–0:21 | footage + L01 |
-| 2 | Resume learning | S1 | 0:14–0:21 | next-action card |
-| 3 | Best Resource | S2a | 0:21–0:26 | footage + L02 |
-| 4 | Learn roadmap | S2a | 0:26–0:30 | footage (glimpsed in transition) |
-| 5 | Knowledge graph *(ships as Concept Map)* | S2a | 0:26–0:30 | footage + L03 |
-| 6 | Concept mastery | S2a | 0:26–0:30 | mastery chips |
-| 7 | Practice modes | S2a | 0:30–0:34 | footage + L04 |
-| 8 | (added) Plan / goals / receipts | S2b | 0:34–0:39 | footage + L05 |
-| 9 | OpenAlex search | S2c | 0:39–0:44 | footage + L06 ★ |
-| 10 | Paper summaries *(ships as work detail + abstract)* | S2c | 0:44–0:48 | footage |
-| 11 | Citation graph | S2c | 0:44–0:48 | footage + L07 ★ |
-| 12 | Source Library | S2c | 0:39–0:55 | the whole journey |
-| 13 | Zotero integration | S2c | 0:47–0:51 | footage + L08 ★ |
-| 14 | PDF ingestion | S2c | 0:51–0:55 | footage + L09 ★ |
-| 15 | Research workflow | S2d | 0:55–0:59 | footage + L10 |
-| 16 | Obsidian sync | S2e | 0:59–1:07 | footage + L11 ★ dedicated proof |
-| 17 | (added) Memory retrieval | S2f | 1:07–1:13 | footage + L12 |
-| 18 | Code workspace | S2g | 1:13–1:20 | footage + L13 |
-| 19 | AI debugging | S2g | 1:15–1:20 | footage |
-| 20 | (added) NotebookLM · Ollama · YouTube | S2h | 1:20–1:23 | footage + L14 |
-| 21 | Authentication (brief) | S2h | 1:24–1:25 | Account & Security flash |
-| 22 | AI Assistant | S3a | 1:25–1:34 | footage + L15 ★ |
-| 23 | Personalized study session | S3a | 1:27–1:34 | the proposal |
-| 24 | (added) Review / approvals | S3b | 1:34–1:37 | footage + L16 |
-| 25 | Claude MCP | S2h + S3c | 1:22–1:24 card · 1:37–1:47 proof ★ | L14 + L17 |
-| 26 | Final synchronized dashboard | S3d | 1:47–1:49 | footage |
-
-Dropped, deliberately: nothing. (v2 dropped auth; v3 restores it as the Account &
-Security micro-beat because the user asked for *all* features.)
-
-### 3.4 Label system (17 overlays, Remotion, alpha)
-
-Geometry: bottom-left, 64px from left, 56px from bottom. A 3px lime rule, then
-DM Sans: title 30px/600/ink, sub 20px/400/muted, on a paper chip (`#f7f6f0` at 92%
-opacity, 10px radius, 14px padding) so labels survive any footage. In: rule wipes
-down 8f, text rises 12px/12f. Out is baked at each label's end: 10f fade. Because
-in/out are baked, durations are exact per row — `calculateMetadata` reads them
-from `labels-data.ts`.
-
-| id | TC (film) | dur (f) | Title | Sub |
-|---|---|---|---|---|
-| L01 | 0:14.5–0:20 | 165 | Today | your next action, decided |
-| L02 | 0:21–0:26 | 150 | Best Resource | ranked, with reasons |
-| L03 | 0:26–0:30 | 120 | Concept Map | mastery per branch |
-| L04 | 0:30–0:34 | 120 | Practice | weaknesses caught, path adapts |
-| L05 | 0:34–0:39 | 150 | Plan | outcomes, deadlines, proof |
-| L06 | 0:39–0:44 | 150 | Library | the live scholarly graph |
-| L07 | 0:44–0:47.5 | 105 | Citation Graph | follow the evidence |
-| L08 | 0:47.5–0:51 | 105 | Zotero | the same paper, your library |
-| L09 | 0:51–0:55 | 120 | PDF Ingest | readable → retrievable |
-| L10 | 0:55–0:59 | 120 | Research | claims tied to sources |
-| L11 | 0:59–1:07 | 240 | Obsidian Sync | your notes, where they live |
-| L12 | 1:07–1:13 | 180 | Memory | retrieved by relevance, not replay |
-| L13 | 1:13–1:20 | 210 | Code | run, break, fix — with sources |
-| L14 | 1:20–1:25 | 150 | Connections | scoped MCP · NotebookLM · Ollama · YouTube |
-| L15 | 1:25–1:34 | 270 | Assistant | already briefed |
-| L16 | 1:34–1:37 | 90 | Review | you approve every change |
-| L17 | 1:37–1:47 | 300 | Claude Desktop | same memory, everywhere |
-
-### 3.5 Voiceover (record-ready)
-
-~168 words / 120s; roughly a third of the film is intentionally unnarrated — the
-approval click and the Claude Desktop proof play nearly dry. The user records it
-(per the v1 doc); scratch TTS (T8) exists only to time the edit.
-
-| TC | Line | Words |
-|---|---|---|
-| 0:01–0:12 | "Every tool you use sees a sliver of your work. So you spend your best attention re-explaining context that already exists." | 21 |
-| 0:12–0:14 | *(silence — collapse)* | |
-| 0:14.5–0:20 | "One workspace, one memory. Continuum already knows where you are — and decides your next step." | 16 |
-| 0:21–0:33 | "It finds the best resource and shows you why. It maps what you know — and when you get something wrong, the path adapts." | 24 |
-| 0:34–0:39 | *(silence — let Plan breathe)* | |
-| 0:39–0:54 | "This is the live scholarly graph. Follow the citations, keep the paper — it lands beside your Zotero library, PDFs indexed and searchable." | 23 |
-| 0:55–0:59 | *(silence — the Research label carries it)* | |
-| 0:59–1:06 | "Your notes don't have to move in. Continuum meets them in Obsidian — plain markdown, synced." | 16 |
-| 1:07–1:12 | "Everything becomes memory, retrieved by relevance — not by scrolling back." | 11 |
-| 1:13–1:19 | *(silence through Code)* | |
-| 1:20–1:24 | "It connects to the tools you already use —" | 9 |
-| 1:25–1:33 | "— so the assistant is already briefed: your mastery, your weak spots, your deadline. It proposes. You approve." | 18 |
-| 1:34–1:37 | *(silence — the approval click is the sound)* | |
-| 1:37–1:46 | "And because Continuum speaks MCP, that memory follows you into Claude itself. Nothing explained twice." | 16 |
-| 1:49–1:58 | "Information is abundant. Learning is fragmented. Continuum is one workspace — where knowledge compounds." | 14 |
-
-Recording spec: quiet room, 48kHz/24-bit, mouth ~20cm off-axis, 3 full takes +
-per-line pickups, peaks ≤ −6dBFS, deliver dry (no EQ/compression — Fairlight does
-it). Slate each line with its TC.
-
-### 3.6 Music & sound design brief
-
-- One track, 120s edit, instrumental, minimal pulsing electronic with an organic
-  top layer (felt piano / mallets). 100–112 BPM. References for *feel*: Linear
-  release films, Arc "Welcome" film, Stripe Sessions openers. No EDM drops, no
-  corporate ukulele.
-- Hit map: 0:00 sparse pulse → building layers with the chaos; 0:14 first resolve
-  (dot lands), groove establishes at 0:21; 0:39 add a layer (the paper's journey);
-  0:59 warm lift (the Obsidian reveal); 1:07 sustain; 1:20 begin thinning; 1:34
-  **strip to near-silence + pulse and hold it through 1:47** — Review's approval
-  click and the entire Claude Desktop proof play almost dry (the most important
-  mix move in the film); 1:45 small build; 1:49 theme returns; resolves as the
-  node lands (~1:52.2); tail rings out to 2:00.
-- Sourcing (user decision, §11): a licensed library track (Artlist/Epidemic if a
-  subscription exists) or CC0/royalty-free (Pixabay Music / YouTube Audio
-  Library). License must permit the judged upload. Implementer never downloads
-  audio autonomously — `assets/audio/bgm.wav` is user-supplied; T9 inserts silence
-  of exact length if absent so the conform never blocks.
-- SFX: soft UI ticks under hook window arrivals (−26dB), one low whoosh into the
-  collapse, one soft bloom at the S1 iris. From any CC0 pack (user-supplied, same
-  rule). Diegetic app-audio is not recorded in Phase B.
-
----
-
-## 4. PHASE A — build now (no app required). Task list for Opus.
-
-Conventions: all paths relative to `apps/video/`. After each task: run the listed
-DoD checks. Definition of done for the phase: §4.13. Use `pnpm --filter
-@continuum/video <script>`. Never `Math.random`. All copy strings come from §3 —
-do not improvise on-screen text.
-
-### T1 · Fix brand tokens (font) — `src/brand.ts`
-- Replace the Inter stack with DM Sans loaded via `@remotion/google-fonts/DMSans`
-  (`loadFont()` — import it in a new `src/fonts.ts` used by every comp so glyphs
-  are identical headless vs Studio). `typography.sans` becomes
-  `'"DM Sans", system-ui, sans-serif'` with the loaded family first.
-- Add the missing tokens used by this plan: `surfaceSoft` chip alpha, hook cool
-  target `#e7e9ec`, shadow color `rgba(16,21,17,.10)`.
-- DoD: typecheck; render 1 still of existing `LogoReveal` and confirm DM Sans
-  (the lowercase `a` is double-story in DM Sans — visually verify).
-
-### T2 · `Hook` composition — `src/Hook.tsx` + `src/hook/`
-- Files: `hook/Window.tsx` (title bar, dots, body slots: text / skeleton / tabs /
-  terminal / calendar variants), `hook/windows-data.ts` (the §3.2 table as data:
-  arrival frame, type, title, position %, rotation, z, content strings),
-  `hook/ContextPaste.tsx` (the lime-highlight paste block — reused 2×),
-  `hook/Typography.tsx` (the two problem lines).
-- 420 frames. Implement the beat map exactly; camera push + shake as a single
-  wrapper transform; grain via `@remotion/noise` full-frame overlay (opacity
-  ramp 240→288); collapse with `Easing.in(Easing.quint)` per-window with 2f
-  seeded stagger.
-- DoD: typecheck; stills at f30, f150, f260, f300, f395, f418 audited against the
-  beat map; duration exactly 420; re-render f260 twice → identical bytes
-  (determinism).
-
-### T3 · `Bridge` overlay — `src/Bridge.tsx`
-- 45 frames, **transparent**. Lime dot at center → rounded-square iris expands past
-  frame edges (mask reveals transparency beneath), 6f lime edge glow, fully
-  transparent by f45. Composition `defaultProps` background must be nothing —
-  verify alpha.
-- DoD: render with `--codec prores --prores-profile 4444 --pixel-format yuva444p10le`;
-  `ffprobe` shows `yuva444p10le`; still at f20 over a magenta test card shows
-  transparency.
-
-### T4 · `Close` — `src/Close.tsx` (subsumes `LogoReveal`)
-- 330 frames per the §3.2 table. Reuse `BrandMark` (`progress` 0.28→1 over
-  f48–102) with the dot→bars pre-phase drawn locally at matching geometry;
-  opacity-swap ≤2f so the handoff is invisible. Keep `LogoReveal.tsx` registered
-  (it remains useful as a standalone sting) but `Close` is what ships.
-- DoD: typecheck; stills at f12, f45, f80, f140, f200, f320 audited; wordmark is
-  DM Sans; the four bars land at exactly BrandMark's coordinates before the swap
-  (overlay-diff the f60 still against a `BrandMark progress=0.55` still).
-
-### T5 · Label system — `src/Label.tsx`, `src/labels-data.ts`
-- Data file = §3.4 table (id, title, sub, durationInFrames). One composition
-  `Label` with `calculateMetadata` deriving duration from `labelId` prop.
-  Transparent background; geometry/type/anim per §3.4.
-- DoD: render L16 and L17 (shortest and longest) with 4444+alpha; ffprobe
-  alpha; stills at first/last 10f show baked in/out.
-
-### T6 · `ProblemLines` safety comp — `src/ProblemLines.tsx`
-- 150 frames, the two problem lines on paper, no windows (re-usable as a cutaway
-  if the hook needs a trim in the edit). Same type spec as the hook typography.
-- DoD: still at f75.
-
-### T7 · Register + render pipeline — `src/Root.tsx`, `scripts/render-all.mjs`
-- Register: Hook(420), Bridge(45), Close(330), ProblemLines(150), Label(dynamic),
-  LogoReveal(180, legacy).
-- `render-all.mjs`: renders `out/segments/hook.mov`, `bridge.mov`, `close.mov`,
-  `problem-lines.mov` (ProRes HQ; bridge + labels 4444+alpha) and
-  `out/overlays/L01…L17.mov` via `--props='{"labelId":"L01"}'`; then writes
-  `out/manifest.json` `{file, comp, frames, fps, seconds, md5}` and **asserts**
-  each duration against §3.1/§3.4 (hard exit on mismatch, ±0 frames).
-- Add package scripts: `render:all`, `render:labels`, `manifest:check`.
-- DoD: full run completes; manifest durations all exact; total synthetic runtime
-  = 14.0 + 1.5 + 11.0 + label sum.
-
-### T8 · Scratch VO — `scripts/make-scratch-vo.mjs`, `assets/vo/vo-script.txt`
-- `vo-script.txt`: §3.5 table verbatim (TC + line), the user's recording sheet.
-- Script: per line `say -v Samantha --data-format=LEF32@48000 -o
-  assets/vo/scratch/lineNN.wav "<text>"`, then ffmpeg-assemble
-  `out/audio/vo.wav` — each line placed at its §3.5 TC with silence
-  padding, total exactly 120.000s. Print per-line overrun warnings if any spoken
-  line exceeds its slot (they inform the edit, not fail it).
-- DoD: `ffprobe` duration 120.000 ±0.01s; spot-listen lines 1, 5, 11.
-
-### T9 · Cutlist + conform generators — `cutlist.json`, `scripts/make-fcpxml.mjs`
-- `cutlist.json` = the machine-readable §3.1 + §3.4 + §3.5 + audio, schema:
-  `{fps:30, width:1920, height:1080, events:[{id, track:"V1"|"V2"|"A1"|"A2",
-  src, recIn, recOut, srcIn?, note?}]}` — times in frames. V1: hook, 12 capture
-  placeholders (`capture/cap_<name>.mov`), close. V2: bridge + L1–L16. A1:
-  vo.wav (scratch TTS until real takes land). A2: `assets/audio/bgm.wav`.
-- `make-fcpxml.mjs`: no deps; emits `out/conform/continuum-120.fcpxml`
-  (fcpxml 1.10, format `FFVideoFormat1080p30`, frameDuration `1/30s`, one
-  `asset` per file — captures may be offline; Resolve relinks) and
-  `out/conform/continuum-120.edl` (V1-only CMX3600 fallback).
-- If `assets/audio/bgm.wav` missing: generate 120s silence there first (ffmpeg
-  `anullsrc`), tagged in manifest as placeholder.
-- DoD: XML validates (well-formed; `xmllint --noout`); event count = cutlist;
-  every V1 gap-free 0→3600; EDL parses (visual check of record TCs).
-
-### T10 · Resolve console script — `resolve/build_timeline.py` + `resolve/README.md`
-- Python 3, uses only the Resolve API objects available in the free Console:
-  create/open project `Continuum-120`, set 1920×1080/30 before any media, import
-  `out/segments`, `out/overlays`, `capture/`, audio into bins
-  (`01_remotion/02_capture/03_overlays/04_audio`), build timeline from
-  `cutlist.json` via `mediaPool.AppendToTimeline(clipInfo dicts: mediaPoolItem,
-  startFrame, endFrame, trackIndex, recordFrame)`, V2/A tracks included; add
-  render-queue presets: ProRes 422 HQ master + H.264 review.
-- README: exact run steps (Workspace → Console → Py3 → `exec(open(...).read())`),
-  the free-version caveat, and the fallback order: script → FCPXML import →
-  manual conform table (auto-generated `out/conform/cutlist.md`).
-- DoD: `python3 -m py_compile` passes; dry-run mode (`RESOLVE_DRY=1`) walks
-  cutlist and prints the exact clip plan without the API (so it's testable now).
-
-### T11 · Pipeline pilot (no app needed) — proves Phase C before capture day
-- Render a 5s slice of `Hook`, screen-record 5s of anything harmless (e.g the
-  Remotion Studio window via `screencapture -v` CLI, 1080p) as a stand-in
-  "capture", drop both through: fcpxml import → Resolve (user assists, §11) →
-  export H.264 → reimport → assert: durations exact, no gamma shift vs source
-  stills (compare `#f7f6f0` patch within ΔE<2), label alpha composites cleanly.
-- This is the only Phase A task that touches Resolve, and it exists to de-risk
-  everything; if the user is unavailable, deliver the bundle + instructions and
-  mark the task blocked-on-user.
-- DoD: `docs/pilot-report.md` with the two comparison stills and measured values.
-
-### T12 · Docs — `apps/video/README.md`
-- One page: the §3.1 table, how to render (`render:all`), where outputs land,
-  Phase B/C pointers into this plan, and the §9 QA gates as a checklist.
-- DoD: exists, accurate commands.
-
-### 4.13 Phase A definition of done
-1. `pnpm --filter @continuum/video typecheck` clean; no `Math.random` anywhere
-   (`grep -rn "Math.random" src/ scripts/` → empty).
-2. `render:all` green; `out/manifest.json` durations exact to the frame.
-3. Alpha verified (ffprobe `yuva444p10le`) for bridge + all labels.
-4. Scratch VO 120.000s; conform XML/EDL generated and well-formed.
-5. Still audits pass for Hook (6 frames), Close (6 frames), labels (2).
-6. Pilot report exists (or explicitly blocked-on-user).
-7. Nothing outside `apps/video/` modified; git status shows only `apps/video`
-   (+ this plan file).
-
----
-
-## 5. PHASE B — capture spec (requires the running app; user + Claude together)
-
-Not for Phase A execution. Recorded after Phase A ships, in one sitting.
-
-**Environment:** display set to 1920×1080 ("looks like", HiDPI); light theme
-forced; Do Not Disturb on; dock hidden; menu bar auto-hide; default cursor size;
-browser chromeless via `open -na "Google Chrome" --args --app=http://localhost:3000/today`
-at exactly 1920×1080; `pnpm seed:demo` run first (empty states read as
-unfinished); demo account pre-logged-in; notifications killed. Obsidian
-(✅ `/Applications/Obsidian.app`) prepared with a demo vault + the Continuum Sync
-plugin connected — rehearse the S2e boundary-crossing shot before rolling;
-Claude Desktop signed in with the Continuum MCP connector enabled.
-
-**OBS:** 1920×1080 canvas+output, 30fps **CFR**; Recording format `.mov`, encoder
-Apple ProRes 422 (disk ≈16GB per 15 min — fine), no audio tracks; macOS Screen
-Recording permission granted beforehand.
-
-**Method:** one continuous master take walking S1→S3d in §3.1 order (the film's
-argument is continuity; cutting between separate recordings reads as stitching),
-then per-segment pickups ×2, then a 3s static hold of every screen as safety
-B-roll. Perform every move ~20% slower than natural; Resolve may speed 100–125%
-per shot (never more — it reads as fake). Cursor travels ≥600ms; 500ms hold after
-every state change. Claude Code may drive the choreography via computer control
-(per the v1 stack) with the user supervising; the click-path per segment is the
-§3.2 content contract, and the detailed per-second choreography tables are to be
-written as `docs/capture-runbook.md` during Phase B prep (blocked on seeded data
-shapes — do not write it speculatively in Phase A).
-
-**Claude Desktop segment:** Continuum MCP connected in advance (`/integrations`
-card flow); conversation history cleared; the §3.2 S3c prompt typed live; window
-sized so the tool-call chips are legible at 1080p.
-
-**File contract (what Phase C expects):** `apps/video/capture/cap_today.mov`,
-`cap_learn.mov`, `cap_plan.mov`, `cap_library.mov`, `cap_research.mov`,
-`cap_obsidian.mov`, `cap_memory.mov`, `cap_code.mov`, `cap_connections.mov`,
-`cap_assistant.mov`, `cap_review.mov`, `cap_claude.mov`, `cap_sync.mov` — each
-≥ its §3.1 slot + 2s handles both ends. `cap_obsidian` and `cap_claude` include
-real app switches; the switch must be inside the take, not a cut.
-
----
-
-## 6. PHASE C — Resolve assembly (on this Mac, free version)
-
-**Conform, in fallback order:**
-1. **FCPXML** (primary): File → Import Timeline → `out/conform/continuum-120.fcpxml`;
-   relink captures; verify 3600-frame timeline, V2 overlays, A1/A2 present.
-2. **Console script**: Workspace → Console → Py3 →
-   `exec(open("<repo>/apps/video/resolve/build_timeline.py").read())`.
-3. **Manual**: follow `out/conform/cutlist.md` (record-TC table) — ~20 min.
-
-**Project settings:** 1920×1080, 30fps, Rec.709 (Scene), "Use Mac display color
-profiles" OFF; check one capture clip for the QuickTime gamma shift against a
-Phase A still before grading anything (the pilot, T11, already proved this).
-
-**Edit rules:** hard cuts on action; the only dissolves are baked into Remotion
-assets; per-shot retime 100–125% allowed on captures to hit the grid; punch-ins
-≤115% for legibility (UI text must never soften below ~24px effective); VO leads
-picture by 4–8 frames at every section change. Narration upgrades in place —
-drop takes into `assets/vo/final/` and re-run `pnpm vo`; every line keeps its
-timecode, so the timeline never needs re-cutting.
-
-**Grade (subtle — UI must stay honest):** Node 1 contrast S-curve, pivot 0.435,
-+3; Node 2 saturation 52→50; Node 3 film grain ~1.5% (finest preset); Node 4
-vignette −0.03 barely-there; hook segment only: +0.02 lift cool cast to accent
-its cold ramp. No sharpening, no LUTs on UI footage.
-
-**Fairlight:** VO −16 LUFS short-term, peaks ≤ −6dBFS, light compressor 2:1;
-music ducked −7dB under VO (auto-ducking sidechain, 100ms/400ms); SFX −26dB;
-master: loudness −14 LUFS integrated, true peak −1.0 dBTP (YouTube target).
-
-**Deliver:**
-- Master: QuickTime ProRes 422 HQ, 1920×1080/30, `Continuum-120_master.mov`.
-- Upload: H.264 MP4, High@4.2, CBR 24Mbps, keyframe 1s, Rec.709, AAC 320k,
-  `Continuum-120_upload.mp4`.
-- Poster frame: export the S4 lockup-with-kicker still (~f3540) as PNG; user
-  decides whether it replaces `apps/web/public/continuum-hackathon-thumbnail.png`.
-- QA pass per §9 before calling it done.
-
----
-
-## 7. `cutlist.json` — authoritative initial contents
-
-Times in frames @30. V1 must be gap-free 0→3600. (T9 generates JSON from exactly
-this table; §3.4 gives V2 label rows; §3.5 gives A1 rows.)
-
-| track | src | recIn | recOut |
+| # | v3.3 assumed | Actually shipped | Consequence |
 |---|---|---|---|
-| V1 | out/segments/hook.mov | 0 | 420 |
-| V1 | capture/cap_today.mov | 420 | 630 |
-| V1 | capture/cap_learn.mov | 630 | 1020 |
-| V1 | capture/cap_plan.mov | 1020 | 1170 |
-| V1 | capture/cap_library.mov | 1170 | 1650 |
-| V1 | capture/cap_research.mov | 1650 | 1770 |
-| V1 | capture/cap_obsidian.mov | 1770 | 2010 |
-| V1 | capture/cap_memory.mov | 2010 | 2190 |
-| V1 | capture/cap_code.mov | 2190 | 2400 |
-| V1 | capture/cap_connections.mov | 2400 | 2550 |
-| V1 | capture/cap_assistant.mov | 2550 | 2820 |
-| V1 | capture/cap_review.mov | 2820 | 2910 |
-| V1 | capture/cap_claude.mov | 2910 | 3210 |
-| V1 | capture/cap_sync.mov | 3210 | 3270 |
-| V1 | out/segments/close.mov | 3270 | 3600 |
-| V2 | out/segments/bridge.mov | 420 | 465 |
-| V2 | out/overlays/L01–L17.mov | per §3.4 | per §3.4 |
-| A1 | out/audio/vo.wav | 0 | 3600 |
-| A2 | assets/audio/bgm.wav | 0 | 3600 |
+| 1 | Warm paper `#f7f6f0`, lime `#d9ff2f` | Canvas `#f7faf8`, **jade `#0e8a6e`** + **amber `#e08704`**, ink `#0b1f1a` | Every synthetic frame regrades |
+| 2 | Logo: lime tile, dark bars | **Jade gradient tile, white bars, amber traced line + node** | `BrandMark.tsx` is wrong in every particular |
+| 3 | DM Sans | **Inter** (+ Source Serif 4 for reading surfaces, JetBrains Mono for code) | `fonts.ts` comment is factually false |
+| 4 | "Information is abundant. / Learning is fragmented." on the landing page | Landing says **"Every tool holds a piece. None of them holds the thread."** and **"Your work, and an AI that actually knows it."** | Script bookend changes (see decision below) |
+| 5 | 2nd-year EE, electric potential, Griffiths | **Mukilan, CBSE Class 12** — SAT 1520→1570 due 3 Oct, SQL/Python–MySQL, OASIS IHC research | Hook strings retheme |
+| 6 | Nav: Today/Learn/Code/Memory/Activity | **Home · Ask · Plan · Study · Build · Projects · Library · Context · Review · Settings** | Labels and capture paths change |
+| 7 | Integrations-heavy proof beats | Product now has an **explain-back grader, a spaced-repetition queue, a citation inspector, dual-model verification, per-task model routing** | Timeline rebalances toward learning + AI |
+
+**Two decisions taken by the user, 2026-07-31:**
+- **Hook retheme → SAT persona.** Layout, timing, apps and animation unchanged;
+  strings only. This is what makes the continuity contract (§4.2) work.
+- **Problem line → keep both.** The hook still displays *and speaks* "Information
+  is abundant. Learning is fragmented." The new thread line becomes the spoken
+  opening; the close lands on the product's current hero line.
 
 ---
 
-## 8. Risks & mitigations
+## 1. The judging model this film is built to win
+
+100 points, four equal 25s. v3 optimised for "showcase every feature", which maps
+to roughly one of the four. v4 maps each act to a criterion.
+
+| Criterion | Pts | Where the film earns it |
+|---|---|---|
+| **Educational Impact** | 25 | Act I: the spaced-repetition queue, the transfer delta, and the explain-back grader quoting the learner's own wrong words beside the passage that corrects them |
+| **Creative Use of AI/ML** | 25 | Act II: grounded retrieval, the inspector showing *the exact text sent to the model*, the honest "nothing matched" disclosure, dual-model verification |
+| **Technical Execution** | 25 | Act III + the code shot: the app on camera, scoped MCP with a "what it can never do" list, propose→approve, 3s of the grounding doc |
+| **The Pitch & Demo** | 25 | Hook, turn, close — and that the whole thing is 120.000s, narrated, scored and cut to frame |
+
+**The discipline this imposes:** no shot earns its place by being a feature. It
+earns it by moving one of those four numbers. Anything that does neither is cut.
+
+---
+
+## 2. Verified ground truth — what the film may and may not claim
+
+Audited against source. **Do not put a claim on screen or in narration that is
+not in this table.**
+
+### REAL and demoable — safe to feature
+
+| Capability | Evidence |
+|---|---|
+| **Grounded answers with passage-level citations** | 4 concurrent retrieval legs with per-leg deadlines; vector *raced against* lexical; chips persisted on the message, not just streamed |
+| **Citation inspector** | `"What this answer used"` → `"The exact text sent to the model:"` + verbatim passage + `Open` / `Don't use this again` |
+| **Honest disclosure** | `"Answered from general knowledge — nothing in your workspace matched."` — this line is *how the five grounding bugs were found* |
+| **Explain-back grader** | `"Your source says otherwise"` quotes the learner's own claims and prints the passage beneath; score recomputed server-side; a contradiction is a ceiling (0.5), not a deduction |
+| **Spaced repetition (SM-2, modified)** | `"Ordered by what keeps slipping, not by what is oldest"` · `"Forgotten 2 times — it comes back sooner each time"`; a lapse halves the interval rather than resetting it |
+| **Mastery ≠ reading** | Five dimensions; transfer moves *only* on an unseen check. On screen: `Transfer 34% → 51%` |
+| **Dual-model verification** | Two providers, each pinned; *any* evaluator may lower a grade, awarding one needs agreement. UI: `"Two independent model routes agreed with high confidence."` |
+| **Per-task model routing** | 15 task classes, 5 routes, mandatory human-readable reason, logged to `model_routes` |
+| **Deterministic scheduling** | `schedule_optimization` → `deterministic`, cost class `none`. The router knows when *not* to call a model |
+| **OpenAlex** | Live, no key. Verified in-session: 250M+ corpus, real citation counts, citation-graph traversal (References / Cited by / Related), Zotero DOI cross-match |
+| **Scoped MCP + OAuth 2.1/PKCE** | 15 tools (9 read, 5 additive-write, 1 propose), 13 scopes with plain-English consent, individually uncheckable |
+| **Propose → approve → commit** | Transactional; schedule changes need approve *and* commit. Review renders a real before→after diff |
+| **Obsidian two-way Markdown sync** | Real plugin, three-way conflict detection, per-type folder map |
+| **Zotero** | Connected on the demo account (`Mukilan_Senthilkumar`); metadata + abstracts indexed |
+| **Browser code execution** | Verified live: Python, 11ms, real output |
+| **Image → questions** | Gemini vision, normalised bounding boxes, cropped diagram beside the question, answer-key provenance |
+
+### NOT REAL — must be removed from the film
+
+The current label **L14 `"scoped MCP · NotebookLM · Ollama · YouTube"`** contains
+two claims the product cannot back and one it explicitly denies.
+
+- **NotebookLM is not an integration.** No Google API call, no OAuth, no upload —
+  it is a Markdown download. The product's own UI files it under *"Export
+  elsewhere — Not a connection."* Listing it beside scoped MCP is the single
+  biggest factual liability in the film.
+- **Ollama chat generation does not exist.** `generateLocalOllamaLesson()` has
+  zero callers and is hardcoded to one prompt. What exists is a connection
+  *tester*. (Server-side Ollama *embeddings* are real — a different claim.)
+- **YouTube search has no UI.** The route and key vault work; nothing calls them.
+- **Zotero PDFs are not chunked or indexed** — metadata and abstracts only. PDFs
+  *uploaded to Continuum* are extracted, chunked and embedded. No cut may imply
+  the Zotero PDF was ingested.
+
+→ **L13 becomes `"scoped MCP · Obsidian · OpenAlex · Zotero"`.** All four are
+backed by code and all four are visible on camera.
+
+---
+
+## 3. Blockers — fix before any capture
+
+Ordered by how much of the film each damages.
+
+### B1 · Stray mobile nav controls on every screen ⛔ blocks all 13 clips
+A **✕** sits beside the sidebar wordmark and a **☰** in the top bar, at every
+desktop width, on every screen. `globals.css:281` sets `.mobile-only { display:
+none }`; `kit.css:94` sets `.icon-button { display: inline-grid }` at equal
+specificity, and kit.css is imported *after* globals.css (`layout.tsx` lines 4
+and 7), so the later rule wins.
+
+Verified live at 1920px: both render `display: grid`, `visible: true`, 44px wide.
+They read as an unfinished build. **This is in every frame of every clip.**
+One-line specificity fix.
+
+### B2 · Deployed MCP server advertises deprecated tool names ⛔ blocks the MCP beat
+The live endpoint exposes the 16 `legacyTools` (`load_learning_state`,
+`search_memory`, `get_context_pack`, …), all flagged `deprecated: true,
+remoteAccessible: false` in the working tree. Independently confirmed: the MCP
+server connected to *this session* exposes exactly that legacy set. The current
+15-tool surface (`get_study_status`, `find_in_continuum`, `propose_change`, …) is
+what should appear on camera. **Redeploy before the Claude take.**
+
+### B3 · Concept map renders unstyled on `/g/[goalId]` ⛔ do not film
+`concept-map.tsx` imports no CSS; its classes live in `study/study.css`, which
+the goal route never loads. Renders as run-on stacked text. Same failure mode as
+the Research fix, not applied here. Fix the import, or never scroll to it — note
+it *works* if you client-navigate from `/learn` first, so it will pass rehearsal
+and fail the take.
+
+### B4 · Stale marketing screenshots
+`public/marketing/light/*.png` were captured 2026-07-30; the mark went purple →
+jade on 2026-07-31. Every product frame on the landing page shows the **old
+purple logo**. Re-run `node scripts/capture-marketing.mjs` before filming `/`.
+Also `study-check.png` is the Goal page with the broken concept map, used under
+the copy *"Study that only counts real evidence"* — it does not show that.
+
+### B5 · Verify two recently-broken screens
+`/library` (500 on `/api/sources`) and `/research` (unstyled) were both broken
+within the last commit cycle and both are flagship. Confirm they render as cards
+on the actual recording machine before rolling.
+
+### B6 · Build workspace holds garbled state
+The deployed editor currently contains malformed leftover code. Reset to a clean
+program carrying one deliberate error before the Build take.
+
+---
+
+## 4. The film — locked creative (v4)
+
+3600 frames · 30fps · 1920×1080 · exactly **120.000s**.
+
+### 4.1 Master timeline
+
+| TC | Frames | Seg | Picture | Criterion |
+|---|---|---|---|---|
+| 0:00–0:14 | 0–420 | S0 | **Hook** — the desktop floods (synthetic; retheme only) | Pitch |
+| 0:14–0:20 | 420–600 | S1 | Home — the turn | Pitch |
+| **0:20–0:45** | **600–1350** | **ACT I** | **"It teaches."** | **Educational Impact** |
+| 0:20–0:26 | 600–780 | A1a | Study — Due today, spaced repetition | |
+| 0:26–0:32 | 780–960 | A1b | Study session — check → `Transfer 34% → 51%` | |
+| 0:32–0:40 | 960–1200 | A1c ★ | **Explain it back → "Your source says otherwise"** | |
+| 0:40–0:45 | 1200–1350 | A1d | Practice grade → "Two independent model routes agreed" | |
+| **0:45–1:12** | **1350–2160** | **ACT II** | **"It knows your work."** | **Creative AI/ML** |
+| 0:45–0:53 | 1350–1590 | A2a | Ask — grounded answer, citation chips | |
+| 0:53–1:00 | 1590–1800 | A2b ★ | **Inspector — "The exact text sent to the model"** | |
+| 1:00–1:04 | 1800–1920 | A2c ★ | **"Answered from general knowledge — nothing matched"** | |
+| 1:04–1:12 | 1920–2160 | A2d | Library Discover — OpenAlex live → save VALIS | |
+| **1:12–1:44** | **2160–3120** | **ACT III** | **"It stays yours."** | **Technical Execution** |
+| 1:12–1:18 | 2160–2340 | A3a | Plan — Build my week (deterministic) | |
+| 1:18–1:24 | 2340–2520 | A3b | Build — run → error → Ask | |
+| 1:24–1:29 | 2520–2670 | A3c | Obsidian two-way sync | |
+| 1:29–1:34 | 2670–2820 | A3d ★ | **Connections — "What it can never do"** | |
+| 1:34–1:44 | 2820–3120 | A3e ★ | **Claude MCP proposes → Review → Approve** | |
+| 1:44–1:47 | 3120–3210 | S3 | **Source code — `docs/retrieval-chain.md`** (3s hard cap) | Technical |
+| 1:47–2:00 | 3210–3600 | S4 | **Close** — dot → mark → lockup | Pitch |
+
+★ = the five shots that carry the film. If anything is cut, cut around them.
+
+### 4.2 The continuity contract
+
+One thread must survive end to end, or the film is a feature list:
+
+> The **arc-length / sector-area swap under time pressure** is hand-fed to Claude
+> in the hook (0:04) → caught by the review queue (0:20) → corrected by the
+> explain-back grader (0:32) → cited by the Assistant (0:45) → named by Claude
+> over MCP, without being told, at 1:34.
+
+This is already true in the seed (`misc_demo_sat_geo`, active, confidence 0.72).
+The capture must not break it.
+
+### 4.3 The closing source-code shot (3s, recorded)
+
+The strongest three seconds of code available is **not** application source — it
+is `docs/retrieval-chain.md`, the document titled *"How an answer gets grounded"*
+recording the five ways grounding silently failed, beside `git log --oneline`
+over the five commits that fixed them.
+
+Why: it is the one artifact proving the AI work is engineering rather than a
+prompt, and it pays off line 10 ("when it doesn't know, it says so") — that
+disclosure is literally what made the bugs findable.
+
+Frame: editor at ~15px JetBrains Mono showing the heading and the ASCII path
+diagram, then a 1s hold on the terminal with the five commit titles. **Hard cap
+3.0s / 90 frames.** Recorded, not synthetic.
+
+---
+
+## 5. Brand port — synthetic segments regrade
+
+### 5.1 `src/brand.ts` — replace the palette wholesale
+
+Mirror `apps/web/app/globals.css` `:root` exactly. The film is graded next to
+real UI footage; drift is visible.
+
+```
+canvas        #f7faf8     surface        #ffffff     surfaceRaised #f2f7f5
+surfaceSunken #e9f0ed     line           #dfe8e4     lineStrong    #c3d2cd
+ink           #0b1f1a     ink2           #415a54     ink3          #64807a
+brand         #0e8a6e     brandStrong    #0a6b55     brandHover    #12a081
+brandDeep     #07332b     brandSoft      #e4f5ef     brandLine     #b6e3d4
+amber         #e08704     amberLift      #f5a623     amberStrong   #b86c02
+amberSoft     #fdf1dc     fieldMark      #7fe6c4     onAmber       #2b1a00
+inkInverse    #e8f4f0     inkInverse2    #a9c8bf     surfaceInverse #07332b
+
+gradientBrand  linear-gradient(122deg, #0e8a6e 0%, #12a081 46%, #4cc0a0 100%)
+gradientField  linear-gradient(155deg, #0a4a3c 0%, #07332b 52%, #052620 100%)
+gradientAmber  linear-gradient(122deg, #e08704 0%, #f5a623 100%)
+```
+
+**Role discipline, taken from the product:** jade carries *action*, amber carries
+*momentum*. A jade element is something you press; an amber element is something
+moving. Keeping them separate is what stops the film shouting in one colour.
+
+Delete `accent: #d9ff2f`, `paper`, `forest`, `emerald`, `markInk`, `paperCold`.
+
+### 5.2 `src/BrandMark.tsx` — port the real mark 1:1
+
+Replace with the shipped geometry (`apps/web/components/brand-mark.tsx`,
+byte-identical to `app/icon.svg`):
+
+- 64×64, `rx=16`, **diagonal jade gradient bottom-left → top-right**
+  (`x1=0 y1=64 → x2=64 y2=0`): `#046b57` 0% → `#05a37c` 52% → `#0abc90` 100%
+- **Four white bars**, `rx 4.5`, 9 wide, at varying opacity:
+  `(12,32,h23,.55)` `(25,20,h35,.75)` `(38,25,h30,.62)` `(51,12,h34,.90)`
+- **Amber `#ffb020` traced line**, 5px, round caps:
+  `M16.5 42.5C23 42.5 24.5 35 30 35C35 35 36.5 31 42.5 27.5`
+- **Amber node**, `r=4.5` at `(30.5, 35)` — the only warm pixel in the mark
+
+The reveal choreography survives: tile settles → bars rise in sequence →
+connector draws → node lands. Only the fills change.
+
+**`Close.tsx`'s measured constants must be re-measured** after the port —
+`SWAP_START 58`, `SWAP_END 59` (a 1-frame hard cut, never a crossfade),
+`LOCKUP_SHIFT_X 448.5`, `LOCKUP_SHIFT_Y 111.5`. The bar opacities change the
+rendered bbox.
+
+### 5.3 `src/fonts.ts` — DM Sans → Inter
+
+The existing comment claims DM Sans is the product typeface. It is not;
+`layout.tsx:11` loads **Inter** (400/500/600). Swap to
+`@remotion/google-fonts/Inter`.
+
+Add **Source Serif 4** for one purpose only: the quoted passage in the inspector
+beat, matching the product's own rule that serif is scoped to reading surfaces.
+Add **JetBrains Mono** for the code shot's overlay.
+
+`typography.displayTracking` moves from −2.5 to about −1.6 — Inter is tighter
+than DM Sans at display size and the old value will look broken.
+
+### 5.4 Hook restyling
+
+The five looks (`depth` / `grid` / `signal` / `glass` / `ink`) stay, and **Depth
+stays the chosen look**. But the cold-collapse target and paper values move onto
+the new canvas. The hook currently ends at `#f5f4ee` and hands to a bridge
+starting `#f7f6f0`; both become **`#f7faf8`**, and the handoff must be
+re-verified by sampling pixel (120,120) across the cut, as before.
+
+---
+
+## 6. Hook retheme — strings only
+
+`src/hook/windows-data.ts` and `src/hook/ui/*`. **No layout, timing, arrival
+frame, rotation, z-order or animation changes.** The layout rule holds: no window
+may cover the title bar of one that arrived earlier.
+
+| Field | New value |
+|---|---|
+| `OPENING_QUESTION` | `Can you explain arc length vs sector area? SAT on Oct 3.` |
+| `CONTEXT_PASTE` | `Context (again): Class 12, CBSE. SAT on Oct 3. Weak areas: arc length vs sector area, circles in the coordinate plane. Working from my error log + Bluebook mock 4. Please don't make me repeat this.` |
+| Preview title | `bluebook_mock4_review.pdf` · `Page 12 of 48` |
+| Notion subtitle | `sat_error_log_FINAL_v3` (and `_v2` on the duplicate) |
+| Anki subtitle | `SAT · Advanced Geometry` |
+| Terminal | `ValueError: sector area formula not defined`, over `practice.py` |
+| Safari tab 1 | `SAT Circles & Parabolas in 21 min` |
+| `REPEATED_TOPICS` | four SAT-geometry questions, identical in all three chat sidebars |
+| Calendar | already `October 2026` — no change |
+
+`CONTEXT_PASTE` remains pasted **identically** into Claude (f120) and Gemini
+(f213). That repetition is the hook's whole thesis: the human is the sync layer.
+
+---
+
+## 7. Script (v4) — 16 lines
+
+Charon reads ~120 wpm ≈ 2 words/second. Slots below are budgets; the TTS pass
+measures actual takes and `make-vo.mjs` hard-fails anything past 120s.
+
+House register, prepended at generation (unchanged — this is the tone approved on
+2026-07-29):
+
+> *In the voice of a premium technology brand film — calm, warm and assured, at
+> an easy natural pace. Confident and matter-of-fact. Light rather than heavy,
+> never sad, never dramatic, never salesy.*
+
+| # | In → Out | Slot | Segment | Line |
+|---|---|---|---|---|
+| 1 | 0:00.4 → 0:08.6 | 8.2s | S0 | Every tool holds a piece of your work. None of them holds the thread. So you become the thread. |
+| 2 | 0:09.4 → 0:13.4 | 4.0s | S0 type | Information is abundant. Learning is fragmented. |
+| 3 | 0:14.3 → 0:19.6 | 5.3s | S1 Home | One workspace. One memory. It opens on your next step — and tells you why. |
+| 4 | 0:20.2 → 0:25.8 | 5.6s | A1a | It knows what you're forgetting, and brings it back before you lose it. |
+| 5 | 0:26.2 → 0:31.6 | 5.4s | A1b | Reading isn't learning. Mastery only moves when you answer something you haven't seen. |
+| 6 | 0:32.2 → 0:39.6 | 7.4s | A1c ★ | So it asks you to explain it back — and when you're wrong, it shows you your own words beside the sentence that corrects them. |
+| 7 | 0:40.2 → 0:44.6 | 4.4s | A1d | Two models grade you independently. Neither can talk the other into a pass. |
+| 8 | 0:45.2 → 0:52.6 | 7.4s | A2a | Ask anything, and the answer is built from your own material — your sources, your decisions, your results. |
+| 9 | 0:53.2 → 0:59.6 | 6.4s | A2b ★ | Not a summary of them. The exact passage it used, one click away. |
+| 10 | 1:00.2 → 1:03.8 | 3.6s | A2c ★ | And when it doesn't know, it says so. |
+| 11 | 1:04.2 → 1:11.6 | 7.4s | A2d | Two hundred and fifty million papers, live — follow the citations, keep what matters, and it lands beside your Zotero library. |
+| 12 | 1:12.2 → 1:17.6 | 5.4s | A3a | Your week is solved, not guessed. No model touches your calendar. |
+| 13 | 1:18.2 → 1:23.6 | 5.4s | A3b | Run your code here. When it breaks, the fix already knows what you're building. |
+| 14 | 1:24.2 → 1:33.6 | 9.4s | A3c/d | Your notes stay in Obsidian. Your papers stay in Zotero. And you decide, permission by permission, what any assistant can ever touch. |
+| 15 | 1:34.2 → 1:43.4 | 9.2s | A3e ★ | Because Continuum speaks MCP, that memory follows you into Claude. It proposes. You approve. Nothing moves until you say so. |
+| 16 | 1:47.4 → 1:58.2 | 10.8s | S4 Close | Information is abundant. Learning is fragmented. Continuum is one workspace — and an AI that actually knows your work. |
+
+**Coverage ≈ 89%.** Two silences are deliberate and must survive any edit:
+- **1:43.4 → 1:47.4** — the approval click and the code shot land in the clear,
+  with the score already stripped to near-nothing. This is the film's single most
+  important mix move, now doing double duty.
+- **0:08.6 → 0:09.4** — the breath before the problem statement.
+
+**Bookend:** lines 2 and 16 are a deliberate pair. Line 2 lands the words on the
+exact frame the hook puts them on screen; line 16 repeats them and resolves into
+the product's current hero line. Do not de-duplicate.
+
+**Two things Gemini TTS takes literally** (both learned the hard way, both
+guarded in code and documented in `vo-lines.json`):
+1. **Never ask for a pause or a beat.** A direction mentioning a pause produced
+   six-second silences — one line once returned 32.4s for 14 words. Spacing is
+   the timeline's job; `gemini-tts.mjs` caps internal silence at 0.3s regardless.
+2. **Never use tempo words like "slowly".** They drop the read to ~74 wpm. Ask
+   for the *feeling*; specify the pace as natural.
+
+**Numerals:** line 11 is written out (`Two hundred and fifty million`) because
+the TTS reads `250M+` as "two hundred fifty em plus". Verify on the take.
+
+---
+
+## 8. Labels — 14 overlays (was 17)
+
+Bottom-left, **white chip at 92%, jade rule** (was paper/lime). These carry the
+mute pass — a judge scrubbing without audio should still get the argument.
+
+| id | TC | Title | Sub |
+|---|---|---|---|
+| L01 | 0:14.5–0:19.5 | Home | your next action, and the reason |
+| L02 | 0:20–0:26 | Review queue | ordered by what keeps slipping |
+| L03 | 0:26–0:32 | Mastery | transfer moves only on an unseen check |
+| L04 | 0:32–0:40 | Explain it back | graded against your own source |
+| L05 | 0:40–0:45 | Verification | two independent model routes |
+| L06 | 0:45–0:53 | Grounded answers | built from your material |
+| L07 | 0:53–1:00 | Evidence | the exact text sent to the model |
+| L08 | 1:00–1:04 | Honesty | it tells you when it doesn't know |
+| L09 | 1:04–1:12 | OpenAlex | 250M+ works · citation graph · Zotero |
+| L10 | 1:12–1:18 | Plan | solved deterministically, not generated |
+| L11 | 1:18–1:24 | Build | run, break, fix — in context |
+| L12 | 1:24–1:29 | Obsidian | two-way Markdown, conflicts surfaced |
+| L13 | 1:29–1:34 | Permissions | scoped MCP · Obsidian · OpenAlex · Zotero |
+| L14 | 1:34–1:44 | Claude Desktop | same memory · you approve every change |
+
+No label over the code shot or the close.
+
+---
+
+## 9. Capture spec — 14 clips (Phase B, with the user)
+
+**Environment:** display 1920×1080 HiDPI; Do Not Disturb; dock hidden; menu bar
+auto-hidden; chromeless browser at exactly 1920×1080; `pnpm seed:demo` run first;
+demo account signed in; **B1–B6 all fixed and verified.**
+
+**OBS:** 1920×1080 canvas + output, 30fps **CFR**, `.mov`, Apple ProRes 422, no
+audio track.
+
+**Method:** one continuous master take per act — the film's argument is
+continuity, and cutting between separate recordings reads as stitching — then
+per-segment pickups ×2, then a 3s static hold of every screen as safety B-roll.
+Every move ~20% slower than natural; cursor travel ≥600ms; 500ms hold after every
+state change. Resolve may speed 100–125% per shot, never more.
+
+| File | Slot | Choreography | Watch for |
+|---|---|---|---|
+| `cap_home.mov` | 180f | Land on `/home`; slow arc across the dark Next card (the jade spotlight tracks the pointer); hold on `Because it is due in 1 day.`; hover `▶ Start` (sheen sweeps, button lifts) | Don't scroll to `This week` — it's one sentence under a heading |
+| `cap_study_queue.mov` | 180f | `/learn`; let the four sections rise-in; hold on `3 concepts are due` / `Ordered by what keeps slipping, not by what is oldest` and the amber streak flame (2.4s loop); click the amber `Review` on the SAT row | Amber `Review` vs secondary is the lapse signal — frame both |
+| `cap_study_check.mov` | 180f | **Pre-warm the session** — lesson generation is a live model call and can sit for seconds. Start parked on the check phase; choice chip → `Check my answer →` → hold on `✓ Transfer updated` + `Transfer 34% → 51%` + the four dots stepping | If a wait is unavoidable the skeleton reads honestly, but budget for it |
+| `cap_explain.mov` | 240f ★ | `Explain it back`, source **hidden**; type a plausible-but-wrong explanation; `Check my explanation` → hold on `⚠ Your source says otherwise` (own words quoted) + the passage + `− Not in your answer` + `✓ You had this` | The single most important shot in the film. Shoot it three times |
+| `cap_practice.mov` | 150f | Practice runner; submit the parameter-order answer (seeded wrong); hold on `What was missing` and the shield note `Two independent model routes agreed with high confidence…` | Also visible: `Answer key: Extracted from source` |
+| `cap_ask.mov` | 240f | `/ask`; type `Why can't OASIS claim single-cell co-expression?`; status pill reads `Looking through your OASIS project…`; answer streams; chips land | The seed contains the exact answering passage — this will ground |
+| `cap_inspector.mov` | 210f ★ | Click the chip `Cross-marker association is not co-expression · decision`; inspector slides in; **hold 2s** on `The exact text sent to the model:` and the blockquote; reveal `Don't use this again` | The chip's `Open` goes to the source, not the passage — don't imply otherwise |
+| `cap_honesty.mov` | 120f ★ | New thread; ask a pure general-knowledge question; hold on the grey line `Answered from general knowledge — nothing in your workspace matched.` | Cheap to shoot, disproportionately valuable |
+| `cap_discover.mov` | 240f | `/library` → `Discover`; query **`whole slide image registration immunohistochemistry`** → results land (`25 of 4,147`); click **`Virtual alignment of pathology image series…`** (Nature Communications, 2023, 93 citations); right panel fills; `Citation graph` → `Cited by`; `Save ▾` | **Verified in-session.** That query surfaces the real VALIS paper already in the workspace, so the arc closes on itself. Do *not* use `cross-marker spatial association` — it returns echocardiography and gut microbiome |
+| `cap_plan.mov` | 180f | `/plan`; `✨ Build my week` → `45 min` → `✨ Generate` (`Drafting your week…`) → grid fills with dashed blocks + the dashed draft bar; drag one block, let it snap; `💾 Save week` | The greyed `School` bands are the fixed commitments — they make the point |
+| `cap_build.mov` | 180f | `/build` with a clean program carrying one deliberate error; `⌘↵` → console border goes jade → red error block → `Go to line 4` → `✦ Ask` | Never film the idle console. Fix B6 first |
+| `cap_obsidian_perms.mov` | 300f | Obsidian: edit a note in the watched folder → switch to Continuum → it's there. Then `/settings/connections`, slow-scroll the Claude card so `What it can read` → `What it can propose` → **`What it can never do`** pass through frame in sequence | The app switch must be *inside* the take, not a cut. Don't click anything on the settings card |
+| `cap_claude_review.mov` | 300f ★ | Claude Desktop, MCP connected, history cleared. Ask about the SAT weakness **without supplying context**; tool-call chips appear; Claude names the arc-length/sector-area swap; it calls `propose_change`; switch to Continuum `/review`; hold on the before→after diff (struck red → green); click **`✓ Approve`** | **B2 must be fixed** or the deprecated tool names appear. Size the window so chips are legible at 1080p |
+| `cap_code.mov` | 90f | Editor on `docs/retrieval-chain.md` (heading + ASCII path diagram), then terminal `git log --oneline` over the five grounding commits | Hard cap 3.0s |
+
+**Handles:** every clip ≥ its slot + 2s at both ends.
+
+---
+
+## 10. Score, effects, mix
+
+**Score stays Motion** (100 BPM, Am7–Fmaj7–Cmaj7–G6, sixteenth-note arpeggio over
+a moving bass) — chosen 2026-07-29, and it survives the rewrite. The `ARC`
+section-gain table in `make-music.mjs` re-times to the new act boundaries:
+
+| TC | Move |
+|---|---|
+| 0:00 | drone only |
+| 0:08 | pulse enters, building with the chaos |
+| 0:12.6 | peak density |
+| 0:14 | first resolve — pulse drops, mallets enter |
+| 0:20 | groove established (Act I) |
+| 0:45 | layer added (Act II) |
+| 1:12 | warm lift (Act III) |
+| 1:29 | begin thinning |
+| **1:38–1:47** | **strip to near-silence — the approval click and the code shot land in the clear** |
+| 1:48 | small build |
+| 1:52 | theme returns and resolves as the node lands |
+| 1:54–2:00 | tail out |
+
+**Effects** peak −22 dBFS. The approval click at ~1:41 remains the loudest effect
+in the film. One barely-there tick on every V1 cut.
+
+**Mix:** music sidechained −8 under narration (100ms / 400ms), limiter before
+loudnorm. Targets **−14 LUFS integrated, −1.0 dBTP, LRA 8–11**.
+
+Conform from the three stems (A1 vo · A2 bgm · A3 sfx), never from `mix.wav` —
+Resolve keeps them on separate tracks so each stays adjustable against picture.
+
+---
+
+## 11. Build order
+
+**Phase A — no app required. This is what gets built on approval.**
+
+| # | Task | DoD |
+|---|---|---|
+| A1 | `brand.ts` palette port | typecheck; pilot ΔE < 1.0 against `globals.css` values |
+| A2 | `BrandMark.tsx` 1:1 port | pixel-diff the still against `app/icon.svg` at 320px |
+| A3 | `fonts.ts` → Inter (+ serif, mono) | render a still; Inter's single-story `a` visible |
+| A4 | `Close.tsx` re-measure lockup constants | programmatic bbox of the jade tile; assert both shifts |
+| A5 | Hook string retheme | all nine title bars legible at f260; no layout delta vs current render |
+| A6 | Hook cold-collapse → `#f7faf8` | sample pixel (120,120) across the hook→bridge cut; exact match |
+| A7 | `timeline.mjs` — new V1, gap-free 0→3600 | `assertV1GapFree()` passes |
+| A8 | `labels.json` — 14 labels, jade rule | `assertLabelsSane()` passes |
+| A9 | `vo-lines.json` — 16 lines + directions | no pause or tempo words; per-line `maxSilence` |
+| A10 | Gemini TTS pass, 10-key rotation | 16/16 `readyForDelivery`; nothing past 120s |
+| A11 | `make-music.mjs` ARC re-time | peak/RMS within 1 dB of current |
+| A12 | `make-sfx.mjs` cue re-time | approval click lands on the new frame |
+| A13 | `make-mix.mjs` | −14.0 LUFS, −1.0 dBTP measured |
+| A14 | Re-render Hook / Bridge / Close / 14 labels | `render-all.mjs` ±1 frame on every asset |
+| A15 | `make-animatic.mjs` | 3600 frames, 120.000s |
+| A16 | `SCRIPT.md` rewrite | matches `vo-lines.json` and `labels.json` exactly |
+
+**Phase A′ — app fixes (small, but they gate capture):** B1 (one-line CSS), B3
+(one import), B6 (reset the editor), redeploy for B2, re-capture marketing for B4.
+
+**Phase B — capture** (user + me, on request; §9).
+**Phase C — Resolve conform, grade, mix, deliver** (§12 of v3 still applies:
+FCPXML primary, Console script secondary, manual TC table as fallback).
+
+---
+
+## 12. Verification
+
+**Machine-checked, every build:**
+- `assertV1GapFree()` — V1 tiles [0, 3600) with no gap or overlap
+- `assertLabelsSane()` — no label overlaps or runs past the end
+- `render-all.mjs` — every asset within ±1 frame of the master timeline
+- no `Math.random` anywhere (it breaks reproducibility across render threads)
+- `ffprobe` on the animatic: exactly 3600 frames, 120.000s
+- `ebur128` on the mix: −14 ±0.5 LUFS, −1.0 dBTP
+- pilot colour gates: ΔE < 1.0 for canvas, jade, amber, chip blend
+- **new:** every on-screen claim string cross-checked against §2's REAL table
+
+**Needs a human:**
+1. A listening pass on tone. I can measure duration, silence and loudness; I
+   cannot judge whether it sounds right.
+2. The Resolve gamma check (~15 min, checklist in `docs/pilot-report.md`).
+3. Watching the animatic once, end to end, before capture is scheduled.
+
+---
+
+## 13. Risks
 
 | Risk | Mitigation |
 |---|---|
-| Font drift (system Inter vs product DM Sans) | T1: bundle via `@remotion/google-fonts/DMSans`; visual double-story-`a` check |
-| Free Resolve can't be driven externally | Three-tier conform (§6); console script never assumed to be the only path |
-| Alpha overlays flatten | ProRes 4444 + `yuva444p10le`, ffprobe-asserted in T3/T5 DoD |
-| QuickTime gamma shift makes paper look gray | T11 pilot measures the `#f7f6f0` patch through the whole pipeline before capture day |
-| OBS VFR breaks conform math | CFR forced in OBS settings (§5) |
-| Captures run long/short vs grid | 2s handles both ends + 100–125% retime allowance |
-| Music licensing on a judged public upload | User-supplied licensed/CC0 track only; silence placeholder keeps pipeline unblocked |
-| Seed data looks fake/empty on camera | `pnpm seed:demo` + §5 environment checklist; static B-roll safety holds |
-| Hook reads as fake product UI | Hook windows are *named third-party apps* (Safari, ChatGPT, Claude, Gemini, Preview, Notion, Anki, Terminal, Calendar) — impossible to mistake for Continuum |
-| Third-party marks in the hook | Simple geometric stand-ins in brand colours, drawn not traced; names do the identifying. Nominative use in a before/after hook, the standard convention for launch films |
-| Obsidian sync direction differs from the shot spec | §3.2 S2e direction contract: show the artifact crossing the app boundary whichever way the shipped sync flows; rehearse before rolling (§5) |
-| MCP proof reads as staged | Tool-call chips held legibly on screen, history visibly empty, and the continuity contract (§3.0-6): every fact Claude cites was created on camera earlier in the film |
-| 3.4s/feature illegibility (v1's core flaw) | Six-surface structure, 16 labels, mute-pass QA gate |
-
----
-
-## 9. Definition of done — the film itself
-
-1. Exactly 120.000s (3600 frames) at 1920×1080/30.
-2. **Mute pass**: a viewer with sound off can name the problem, ≥8 capabilities,
-   and the product name. (Labels + typography carry it.)
-3. **Coverage pass**: all 26 rows of §3.3 visibly present in the final export.
-4. **Brand pass**: DM Sans everywhere synthetic; palette-true paper; the real
-   mark geometry; only verbatim product copy on screen.
-5. Audio: −14 LUFS / −1 dBTP; VO is the user's recorded voice, not scratch.
-6. No placeholder media (silence BGM, scratch VO, capture slugs) in the final
-   timeline.
-7. Uploaded file plays start-to-finish on YouTube at 1080p without visible
-   banding on the paper background (add 0.5% grain if banding appears).
-
----
-
-## 10. Implementation order & effort (Phase A, for Opus)
-
-| Order | Task | Est. |
-|---|---|---|
-| 1 | T1 fonts/brand | 0.5h |
-| 2 | T2 Hook (the big one) | 4–6h with still audits |
-| 3 | T4 Close | 2–3h |
-| 4 | T5 Labels | 1.5h |
-| 5 | T3 Bridge | 1h |
-| 6 | T6 ProblemLines | 0.5h |
-| 7 | T7 render-all + manifest | 1h |
-| 8 | T8 scratch VO | 1h |
-| 9 | T9 cutlist + fcpxml/edl | 2h |
-| 10 | T10 Resolve script | 1.5h |
-| 11 | T11 pilot (user-assisted) | 1h |
-| 12 | T12 docs | 0.5h |
-
-Suggested checkpoint after T2: render the hook, show stills to the user before
-polishing further — it's the segment with the most taste risk.
-
----
-
-## 11. User decisions & actions (not the implementer's)
-
-1. ~~**Music**~~ — done. `assets/audio/bgm.wav` is generated by
-   `scripts/make-music.mjs`: original, no licence required. Same for the SFX bed.
-2. ~~**VO**~~ — done. All 11 lines generated with Gemini TTS. Optionally record
-   lines 10 and 11 yourself; the assembler mixes sources freely.
-3. **End slate line**: confirm the GitHub URL (and whether a hackathon name/date
-   line should appear under it).
-4. **Pilot session** (T11): ~15 min driving Resolve with Claude.
-5. **Capture day** (Phase B): ~1–2h with seeded data; Claude choreographs.
-6. Approve replacing the public thumbnail with the new poster frame, if desired.
+| Live model calls stall on camera (lesson generation, Ask, grading) | Pre-warm every session; shoot pickups; the skeleton states are honest and usable if a wait is unavoidable |
+| MCP beat shows deprecated tool names | B2 — redeploy and verify the 15-tool surface before the Claude take |
+| A claim on screen outruns the code | §2 is the allowlist; every label and every line traced back to it |
+| Act III runs long (5 beats, 32s) | A3c and A3d share one narration line and one continuous take. If it still overruns, Obsidian loses 2s before Permissions does |
+| The film reads as a feature list | Every act opens on a person's problem, not a screen. The continuity contract (§4.2) is the spine |
+| The 3s code shot reads as filler | It is the only shot with no UI in it — the cut alone marks it as different. Mono type, dark ground, no label |
