@@ -18,6 +18,7 @@
  *   - the mastery rules are untouched — reading records exposure and never
  *     raises transfer, and only a correct unseen check does (AC-LN5).
  */
+import { ExplainCheck } from "./explain-check";
 import { ArrowLeft, ArrowRight, BookOpen, Check, CheckCircle2, HelpCircle, RotateCcw, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -354,6 +355,20 @@ export function StudySession({
                 <p>{result.checkpointExplanation}</p>
               </>
             )}
+            {/* The deepest check, and only after the shallow one passed.
+                Picking the right option proves recognition; saying it back with
+                the source hidden is the first evidence of understanding, and it
+                is what sets the review interval. */}
+            {result.correct && lesson?.explanation ? (
+              <ExplainCheck
+                conceptId={conceptId}
+                conceptTitle={conceptTitle}
+                sourceText={lesson.explanation}
+                sourceLabel={lesson.title}
+                sourceChunkId={lesson.sourceChunkIds?.[0]}
+              />
+            ) : null}
+
             <div className="study-advance">
               {result.correct ? (
                 <Button variant="primary" onClick={() => { setPhase("done"); void persist({ phase: "done" }); }}>What&rsquo;s next<ArrowRight size={15} aria-hidden="true" /></Button>

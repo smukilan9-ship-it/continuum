@@ -79,14 +79,14 @@ export function settleScore(grade: ExplainGrade): ExplainGrade {
  * What the learner sees. Deliberately not a percentage on its own — a bare
  * number invites "77% is fine" when the 23% is a contradiction of the source.
  */
-export function verdictCopy(grade: ExplainGrade): { title: string; tone: "green" | "orange" | "red" } {
+export function verdictCopy(grade: ExplainGrade): { title: string; tone: "success" | "warning" | "danger" } {
   if (grade.verdict === "misconceived") {
-    return { title: grade.wrong.length === 1 ? "One thing here disagrees with your source" : `${grade.wrong.length} things here disagree with your source`, tone: "red" };
+    return { title: grade.wrong.length === 1 ? "One thing here disagrees with your source" : `${grade.wrong.length} things here disagree with your source`, tone: "danger" };
   }
   if (grade.verdict === "partial") {
-    return { title: grade.missing.length === 1 ? "Close — one idea is missing" : `Close — ${grade.missing.length} ideas are missing`, tone: "orange" };
+    return { title: grade.missing.length === 1 ? "Close — one idea is missing" : `Close — ${grade.missing.length} ideas are missing`, tone: "warning" };
   }
-  return { title: "You explained this without the source", tone: "green" };
+  return { title: "You explained this without the source", tone: "success" };
 }
 
 /** The prompt shown above the box. Never "define X" — that invites recitation. */

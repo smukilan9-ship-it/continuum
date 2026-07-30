@@ -59,7 +59,7 @@ describe("what the learner reads", () => {
     const copy = verdictCopy(settleScore({ ...base, covered: ["a"], missing: [], wrong: ["cells are the same cell"] }));
     expect(copy.title).toMatch(/disagrees with your source/);
     expect(copy.title).not.toMatch(/\d+%/);
-    expect(copy.tone).toBe("red");
+    expect(copy.tone).toBe("danger");
   });
 
   it("counts what is missing rather than scoring it", () => {
