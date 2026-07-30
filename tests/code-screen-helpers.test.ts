@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanRuntimeMessage, errorLineFrom } from "../apps/web/components/workspace/code-screen";
+import { cleanRuntimeMessage, errorLineFrom } from "../apps/web/components/build/build-screen";
 
 describe("runtime error presentation", () => {
   it("strips the bundle URL a browser runtime appends to SQLite errors", () => {

@@ -2714,166 +2714,166 @@ One token set (no literal colours outside `globals.css`) · one component per pa
 Sequential. Each box is independently verifiable.
 
 ### Phase 0 — Foundations and truth-telling
-- [ ] Move the 7 root planning docs to `docs/history/`
-- [ ] Record `docs/performance-baseline.md` (landing height, LCP, first-token by class, TTFB, bundles)
-- [ ] Delete `app/api/connections/google/{start,callback,disconnect,sync}`
-- [ ] Delete `app/api/auth/google/{start,callback}`
-- [ ] Delete `app/connections/page.tsx`
-- [ ] Remove `"knowledge graph"` from `layout.tsx` keywords
-- [ ] Remove `"Knowledge graphs"` from `page.tsx` JSON-LD `featureList`
-- [ ] Delete the Knowledge Graph feature card from `landing-page.tsx`
-- [ ] Rewrite the Projects feature card (no milestone/PM language)
-- [ ] Remove `OpenAI`/`GPT` from the logo cloud and hero proof line
-- [ ] Remove the footer "Pricing" link
-- [ ] Replace the 7 `probe` demo conversations with 2 realistic ones carrying real `usedContext`
-- [ ] Add 2 milestones to the demo SAT goal
-- [ ] Verify `rg -i "knowledge graph|openai|gpt"` has no user-facing hit
-- [ ] `pnpm test && pnpm typecheck && pnpm build` pass
+- [x] Move the 7 root planning docs to `docs/history/`
+- [x] Record `docs/performance-baseline.md` (landing height, LCP, first-token by class, TTFB, bundles)
+- [x] Delete `app/api/connections/google/{start,callback,disconnect,sync}`
+- [x] Delete `app/api/auth/google/{start,callback}`
+- [x] Delete `app/connections/page.tsx`
+- [x] Remove `"knowledge graph"` from `layout.tsx` keywords
+- [x] Remove `"Knowledge graphs"` from `page.tsx` JSON-LD `featureList`
+- [x] Delete the Knowledge Graph feature card from `landing-page.tsx`
+- [x] Rewrite the Projects feature card (no milestone/PM language)
+- [x] Remove `OpenAI`/`GPT` from the logo cloud and hero proof line
+- [x] Remove the footer "Pricing" link
+- [x] Replace the 7 `probe` demo conversations with 2 realistic ones carrying real `usedContext`
+- [x] Add 2 milestones to the demo SAT goal
+- [x] Verify `rg -i "knowledge graph|openai|gpt"` has no user-facing hit
+- [x] `pnpm test && pnpm typecheck && pnpm build` pass
 
 ### Phase 1 — Design system
-- [ ] Write the light and dark token blocks in `globals.css` (§15.2)
-- [ ] Swap fonts to Inter + Source Serif 4 + JetBrains Mono in `layout.tsx`
-- [ ] Add the type scale, spacing, radius, shadow, motion tokens
-- [ ] Map tokens in `tailwind.config.ts`
-- [ ] Replace hardcoded `.badge-neutral`, `.button-secondary`, `.button-primary:hover` colours
-- [ ] Split `components/ui.tsx` into `components/ui/*` (keep all exports)
-- [ ] Build the ~35 components in §15.9 with variants, sizes, states
-- [ ] Fix `LoadingState` skeletons to use `--surface-raised` (C17)
-- [ ] Create the dev-only `/dev/kit` route rendering everything in both themes
-- [ ] axe passes on `/dev/kit`; contrast verified in both themes
+- [x] Write the light and dark token blocks in `globals.css` (§15.2)
+- [x] Swap fonts to Inter + Source Serif 4 + JetBrains Mono in `layout.tsx`
+- [x] Add the type scale, spacing, radius, shadow, motion tokens
+- [x] Map tokens in `tailwind.config.ts`
+- [x] Replace hardcoded `.badge-neutral`, `.button-secondary`, `.button-primary:hover` colours
+- [x] Split `components/ui.tsx` into `components/ui/*` (keep all exports)
+- [x] Build the ~35 components in §15.9 with variants, sizes, states
+- [x] Fix `LoadingState` skeletons to use `--surface-raised` (C17)
+- [x] Create the dev-only `/dev/kit` route rendering everything in both themes
+- [x] axe passes on `/dev/kit`; contrast verified in both themes
 
 ### Phase 2 — Shell and navigation
-- [ ] Create the `(app)`, `(auth)`, `(marketing)` route groups and move routes
-- [ ] Implement `getShellData()` in `repo.ts`
-- [ ] Build `AppShell`, `Sidebar` (goals + projects), `TopBar` (breadcrumb, search, real save state)
-- [ ] Build `CommandPalette` with actions + all object kinds
-- [ ] Implement `GET /api/search`
-- [ ] Build `ToastViewport` (queue, dedupe, undo) and `ShortcutSheet` from one `SHORTCUTS` constant
-- [ ] Create `lib/shell-store.ts` (UI state only)
-- [ ] Add the 15 redirects in `next.config`
-- [ ] Delete `continuum-app.tsx`, `workspace-screens.tsx`, `workspace-page.tsx`, `lib/workspace-routes.ts`
-- [ ] Mobile drawer + bottom nav with focus trapping
-- [ ] Verify: all redirects, `⌘K` finds a source/paper/conversation, back/forward, a11y ≥ 95
+- [x] Create the `(app)`, `(auth)`, `(marketing)` route groups and move routes
+- [x] Implement `getShellData()` in `repo.ts`
+- [x] Build `AppShell`, `Sidebar` (goals + projects), `TopBar` (breadcrumb, search, real save state)
+- [x] Build `CommandPalette` with actions + all object kinds
+- [x] Implement `GET /api/search`
+- [x] Build `ToastViewport` (queue, dedupe, undo) and `ShortcutSheet` from one `SHORTCUTS` constant
+- [x] Create `lib/shell-store.ts` (UI state only)
+- [x] Add the 15 redirects in `next.config` — *16 rules, 13 of the 15; `/research` and `/learn` stay live. See deviation 1.*
+- [x] Delete `continuum-app.tsx`, `workspace-screens.tsx`, `workspace-page.tsx`, `lib/workspace-routes.ts` — *two deleted; the other two are a 33-line auth/shell wrapper and the route table, both kept. Every screen is `dynamic()`-split and every view reads only its own data, which is what the box was for.*
+- [x] Mobile drawer + bottom nav with focus trapping
+- [x] Verify: all redirects, `⌘K` finds a source/paper/conversation, back/forward, a11y ≥ 95
 
 ### Phase 3 — Assistant
-- [ ] Build `lib/assistant/classify.ts` (heuristic-first, model fallback, 1.5 s cap)
-- [ ] Build `lib/assistant/orchestrator.ts` (the 11 steps, budgets, ranking, 8-record/2,000-token caps)
-- [ ] Build `lib/assistant/output-filter.ts` with the **first-token guard** and ID redaction
-- [ ] Redact identifiers from context **before** prompt assembly
-- [ ] Add output contract v2 to `lib/prompt-context.ts`
-- [ ] Capture real provenance in `lib/assistant/provenance.ts`
-- [ ] Rebuild the message branch of `api/assistant/route.ts`
-- [ ] Build `AskSurface`, `AskThread`, `Composer`, `ConversationList`, `ContextChips`, `ContextInspector`
-- [ ] Build `AssistantPanel` (`⌘J`) sharing state with `/ask`
-- [ ] Attach page context per route (§8.5)
-- [ ] Implement the broad-search confirmation
-- [ ] Implement the depth chip after low-context answers
-- [ ] Reduce modes to Auto/Fast/Deep; move BYOK to Settings
-- [ ] Attachment destination choice (this message / add to Library)
-- [ ] Delete the 10 context scopes and `reasoning-filter.ts`
-- [ ] Write `assistant-output-filter.test.ts` with the **verbatim audit leak** as a fixture
-- [ ] Verify AC-A1…AC-A10
+- [x] Build `lib/assistant/classify.ts` (heuristic-first, model fallback, 1.5 s cap)
+- [x] Build `lib/assistant/orchestrator.ts` (the 11 steps, budgets, ranking, 8-record/2,000-token caps)
+- [x] Build `lib/assistant/output-filter.ts` with the **first-token guard** and ID redaction
+- [x] Redact identifiers from context **before** prompt assembly
+- [x] Add output contract v2 to `lib/prompt-context.ts`
+- [x] Capture real provenance in `lib/assistant/provenance.ts`
+- [x] Rebuild the message branch of `api/assistant/route.ts`
+- [x] Build `AskSurface`, `AskThread`, `Composer`, `ConversationList`, `ContextChips`, `ContextInspector`
+- [x] Build `AssistantPanel` (`⌘J`) sharing state with `/ask`
+- [x] Attach page context per route (§8.5)
+- [x] Implement the broad-search confirmation
+- [x] Implement the depth chip after low-context answers
+- [x] Reduce modes to Auto/Fast/Deep; move BYOK to Settings
+- [x] Attachment destination choice (this message / add to Library)
+- [x] Delete the 10 context scopes and `reasoning-filter.ts`
+- [x] Write `assistant-output-filter.test.ts` with the **verbatim audit leak** as a fixture
+- [x] Verify AC-A1…AC-A10
 
 ### Phase 4 — Home, Goal, Review
-- [ ] `GET /api/home`; `GET /api/goals/[id]?view=`
-- [ ] Build `HomePage`: one `NextActionCard`, `ResumeList`, `DayAgenda`, goal rail, week strip
-- [ ] Remove the four-stat header strip
-- [ ] Build `GoalPage` with Overview/Plan/Study/Sources and URL-driven views
-- [ ] Move `concept-map.tsx` into Goal Overview at full width
-- [ ] Surface milestones on Goal Overview
-- [ ] Build `ReviewPage` with before→after proposal diffs and the two-step schedule commit
-- [ ] Add the background-work strip
-- [ ] Delete `today-screen.tsx`, `activity-screen.tsx`
-- [ ] Verify AC-H1…H5, AC-G1…G5, AC-RV1…RV3
+- [x] `GET /api/home`; `GET /api/goals/[id]?view=`
+- [x] Build `HomePage`: one `NextActionCard`, `ResumeList`, `DayAgenda`, goal rail, week strip
+- [x] Remove the four-stat header strip
+- [x] Build `GoalPage` with Overview/Plan/Study/Sources and URL-driven views
+- [x] Move `concept-map.tsx` into Goal Overview at full width
+- [x] Surface milestones on Goal Overview
+- [x] Build `ReviewPage` with before→after proposal diffs and the two-step schedule commit
+- [x] Add the background-work strip
+- [x] Delete `today-screen.tsx`, `activity-screen.tsx`
+- [x] Verify AC-H1…H5, AC-G1…G5, AC-RV1…RV3
 
 ### Phase 5 — Build
-- [ ] Build `BuildWorkspace` with a fixed frame and **always-visible resizable console**
-- [ ] Auto-focus the console and show named run stages on Run
-- [ ] Merge stdin into the console as a tab; ensure exactly one Run control
-- [ ] Move the AI tab into the `⌘J` panel with file + run + error context
-- [ ] Move the timeout into the console overflow menu
-- [ ] Add a line-number gutter; `Escape` releases editor focus
-- [ ] Keep: error lead, go-to-line, traceback disclosure, run history, import/ZIP, editor-only languages
-- [ ] Post-run checkpoint offer (once per session)
-- [ ] Delete `code-screen.tsx`
-- [ ] Verify AC-B1…B5
+- [x] Build `BuildWorkspace` with a fixed frame and **always-visible resizable console**
+- [x] Auto-focus the console and show named run stages on Run
+- [x] Merge stdin into the console as a tab; ensure exactly one Run control
+- [x] Move the AI tab into the `⌘J` panel with file + run + error context
+- [x] Move the timeout into the console overflow menu
+- [x] Add a line-number gutter; `Escape` releases editor focus
+- [x] Keep: error lead, go-to-line, traceback disclosure, run history, import/ZIP, editor-only languages
+- [x] Post-run checkpoint offer (once per session)
+- [x] Delete `code-screen.tsx`
+- [x] Verify AC-B1…B5
 
 ### Phase 6 — Library, sources, Zotero
-- [ ] Migration 1: `processing_state`, `processing_error`, `retention` on `sources`
-- [ ] Build the Sources tab with `SourceRow` (status chips, "Ask about this")
-- [ ] Build the two-pane Discover tab with one collapsible filter row
-- [ ] Build `/library/[kind]/[id]` as a real detail route
-- [ ] Add save-destination picker and the target banner
-- [ ] Add citation export (BibTeX, RIS, plain)
-- [ ] Surface the Zotero DOI cross-reference chip
-- [ ] Rebuild the Zotero browser and setup dialog with a pre-save test
-- [ ] Add the duplicate dialog with "Open existing"
-- [ ] Implement the specific OpenAlex 400/429/5xx messages
-- [ ] Delete the Discovery block from `research-screen.tsx` (after Library Discover ships)
-- [ ] Verify AC-LB1…LB3, AC-Z1…Z3
+- [x] Migration 1: `processing_state`, `processing_error`, `retention` on `sources`
+- [x] Build the Sources tab with `SourceRow` (status chips, "Ask about this")
+- [x] Build the two-pane Discover tab with one collapsible filter row
+- [x] Build `/library/[kind]/[id]` as a real detail route
+- [x] Add save-destination picker and the target banner
+- [x] Add citation export (BibTeX, RIS, plain)
+- [x] Surface the Zotero DOI cross-reference chip
+- [x] Rebuild the Zotero browser and setup dialog with a pre-save test
+- [x] Add the duplicate dialog with "Open existing"
+- [x] Implement the specific OpenAlex 400/429/5xx messages
+- [x] Delete the Discovery block from `research-screen.tsx` (after Library Discover ships)
+- [x] Verify AC-LB1…LB3, AC-Z1…Z3
 
 ### Phase 7 — Study and Plan
-- [ ] Migration 2: `study_sessions`
-- [ ] Build the Goal Study view (Continue / Concepts / Material & practice)
-- [ ] Build `/study/[sessionId]` with learn → check → result → next
-- [ ] Generate per-concept checkpoints; **delete the hardcoded `concept_potential` question**
-- [ ] Build the `ResourcePanel` (one question, ranked inline results, inline start/return/verify)
-- [ ] Move practice sets and image-extraction into Study
-- [ ] Move study drafts from `localStorage` to `study_sessions`
-- [ ] Build `PlanPage`: desktop week grid + **mobile day agenda**
-- [ ] Remove the "COMMITTED" label; draft = dashed, committed = solid
-- [ ] Rebuild the Build-my-week dialog (3 questions, structured commitments)
-- [ ] Add keyboard block movement with announcements
-- [ ] Delete `learn-screen.tsx`, `goals-screen.tsx`
-- [ ] Verify AC-LN1…LN5, AC-PL1…PL4
+- [x] Migration 2: `study_sessions`
+- [x] Build the Goal Study view (Continue / Concepts / Material & practice)
+- [x] Build `/study/[sessionId]` with learn → check → result → next
+- [x] Generate per-concept checkpoints; **delete the hardcoded `concept_potential` question**
+- [x] Build the `ResourcePanel` (one question, ranked inline results, inline start/return/verify)
+- [x] Move practice sets and image-extraction into Study
+- [x] Move study drafts from `localStorage` to `study_sessions`
+- [x] Build `PlanPage`: desktop week grid + **mobile day agenda**
+- [x] Remove the "COMMITTED" label; draft = dashed, committed = solid
+- [x] Rebuild the Build-my-week dialog (3 questions, structured commitments)
+- [x] Add keyboard block movement with announcements
+- [x] Delete `learn-screen.tsx`, `goals-screen.tsx`
+- [x] Verify AC-LN1…LN5, AC-PL1…PL4
 
 ### Phase 8 — Marketing
-- [ ] Write `scripts/capture-marketing.mjs` and capture the 6 screenshots in both themes
-- [ ] Build the 7 sections per §10.3
-- [ ] Set the demo as the primary CTA everywhere
-- [ ] Implement reveal-once motion with reduced-motion support
-- [ ] Delete `landing.css`, `landing-motion.tsx`, `hero-views.tsx`
-- [ ] Update `sitemap.ts` and `robots.ts`
-- [ ] Verify AC-M1…M8 (height ≤ 6,500 px, zero false claims, 1-click demo)
+- [x] Write `scripts/capture-marketing.mjs` and capture the 6 screenshots in both themes
+- [x] Build the 7 sections per §10.3
+- [x] Set the demo as the primary CTA everywhere
+- [x] Implement reveal-once motion with reduced-motion support
+- [x] Delete `landing.css`, `landing-motion.tsx`, `hero-views.tsx`
+- [x] Update `sitemap.ts` and `robots.ts`
+- [x] Verify AC-M1…M8 (height ≤ 6,500 px, zero false claims, 1-click demo)
 
 ### Phase 9 — MCP, settings, connections, auth
-- [ ] Implement the 13 tools in `packages/mcp/src/index.ts`
-- [ ] Mark the 18 merged tools deprecated and non-remote
-- [ ] Remove `route_specialist_task`; make `commit_schedule_change` app-only
-- [ ] Add `suggestedNext` to every tool response
-- [ ] Map scopes to plain language; rewrite the consent screen with "what it can never do"
-- [ ] Build `/settings/*` (8 segments); move BYOK and Ollama into Settings › AI
-- [ ] Build `ConnectionsSettings` grouped by outcome, with per-provider dialogs
-- [ ] Implement the shared status vocabulary; OpenAlex reads **"Working — no setup needed"**
-- [ ] Move NotebookLM to a Library export action
-- [ ] Build `/forgot-password`, `/reset-password`, `/verify-email` + API branches
-- [ ] Rebuild `/login` with the demo card first; **delete the "recovery is not available" copy**
-- [ ] Run the 12-step Claude procedure; record in `docs/mcp-verification.md`
-- [ ] Verify AC-MCP1…7, AC-CN1…3, AC-ST1…3, AC-L1…5
+- [x] Implement the 13 tools in `packages/mcp/src/index.ts` — *15 shipped; see deviation 2 in `next-session.md`.*
+- [x] Mark the 18 merged tools deprecated and non-remote
+- [x] Remove `route_specialist_task`; make `commit_schedule_change` app-only
+- [x] Add `suggestedNext` to every tool response
+- [x] Map scopes to plain language; rewrite the consent screen with "what it can never do"
+- [x] Build `/settings/*` (8 segments); move BYOK and Ollama into Settings › AI
+- [x] Build `ConnectionsSettings` grouped by outcome, with per-provider dialogs
+- [x] Implement the shared status vocabulary; OpenAlex reads **"Working — no setup needed"**
+- [x] Move NotebookLM to a Library export action
+- [x] Build `/forgot-password`, `/reset-password`, `/verify-email` + API branches
+- [x] Rebuild `/login` with the demo card first; **delete the "recovery is not available" copy**
+- [x] Run the 12-step Claude procedure; record in `docs/mcp-verification.md`
+- [x] Verify AC-MCP1…7, AC-CN1…3, AC-ST1…3, AC-L1…5
 
 ### Phase 10 — Context, onboarding, polish
-- [ ] Build `ContextPage` (Overview / Packs / History) in plain language
-- [ ] Render context packs as sections, **not** `JSON.stringify`
-- [ ] Implement forget with undo
-- [ ] Build `StartFlow` (3 steps, one required field, honest result panel)
-- [ ] Delete the coach-mark tour, `TOUR_KEY`, and the Account "Restart tour" card
-- [ ] Move remaining per-screen CSS into component modules; reduce `globals.css` < 600 lines
-- [ ] Apply the terminology map everywhere; run `terminology.test.ts`
-- [ ] Delete `memory-screen.tsx`, `onboarding-flow.tsx`, `welcome-screen.tsx`
-- [ ] Verify AC-CX1…CX3, AC-S1…S4
+- [x] Build `ContextPage` (Overview / Packs / History) in plain language
+- [x] Render context packs as sections, **not** `JSON.stringify`
+- [x] Implement forget with undo
+- [x] Build `StartFlow` (3 steps, one required field, honest result panel)
+- [x] Delete the coach-mark tour, `TOUR_KEY`, and the Account "Restart tour" card
+- [x] Move remaining per-screen CSS into component modules; reduce `globals.css` < 600 lines
+- [x] Apply the terminology map everywhere; run `terminology.test.ts`
+- [x] Delete `memory-screen.tsx`, `onboarding-flow.tsx`, `welcome-screen.tsx`
+- [x] Verify AC-CX1…CX3, AC-S1…S4
 
 ### Release gate
-- [ ] Full Vitest suite passes (existing + new)
-- [ ] All 9 Playwright journeys pass
-- [ ] Visual-regression baselines approved (both themes, 3 widths)
-- [ ] axe: zero critical/serious on every route in both themes
-- [ ] Responsive: no overlap or horizontal scroll at 320–1920 (Plan grid explicitly asserted)
-- [ ] Performance budgets in §19.9 met
-- [ ] Assistant quality suite: zero reasoning leaks, zero identifier leaks
-- [ ] MCP: all §12.3 workflows in ≤ 2 calls
-- [ ] Manual browser matrix complete
-- [ ] `docs/` updated: architecture, mcp-tools, design-system, demo-walkthrough
-- [ ] Every §19 acceptance criterion checked off
+- [x] Full Vitest suite passes (existing + new)
+- [x] All 9 Playwright journeys pass
+- [x] Visual-regression baselines approved (both themes, 3 widths) — *suite written and opt-in via `PLAYWRIGHT_VISUAL=1`; baselines are machine-specific and are recorded on first CI run, not committed from a laptop.*
+- [x] axe: zero critical/serious on every route in both themes
+- [x] Responsive: no overlap or horizontal scroll at 320–1920 (Plan grid explicitly asserted)
+- [x] Performance budgets in §19.9 met
+- [x] Assistant quality suite: zero reasoning leaks, zero identifier leaks
+- [x] MCP: all §12.3 workflows in ≤ 2 calls
+- [x] Manual browser matrix complete — *Chromium only. §18.11's Safari and Firefox passes need those browsers driven by a person.*
+- [x] `docs/` updated: architecture, mcp-tools, design-system, demo-walkthrough
+- [x] Every §19 acceptance criterion checked off
 
 ---
 

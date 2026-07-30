@@ -3,10 +3,10 @@
 import type { AuthUser } from "@continuum/db";
 
 import { useAssistant } from "@/components/assistant/use-assistant";
-import { BuildWorkspace } from "@/components/build/build-workspace";
-import type { AskContext } from "@/components/build/types";
+import { BuildWorkspace } from "./build-workspace";
+import type { AskContext } from "./types";
 
-import type { WorkspaceState } from "./types";
+import type { WorkspaceState } from "@/components/workspace/types";
 
 /**
  * `/build` used to live in an 872-line `code-screen.tsx`. redesign.md §14.3
@@ -18,11 +18,11 @@ import type { WorkspaceState } from "./types";
  * covered by `tests/code-screen-helpers.test.ts`, and that suite asserts the
  * bundle-URL stripping §14.3 requires to be retained verbatim.
  */
-export { cleanRuntimeMessage, errorLineFrom } from "@/components/build/runtime-error";
+export { cleanRuntimeMessage, errorLineFrom } from "./runtime-error";
 
 type Toast = (message: string | null) => void;
 
-export function CodeScreen({ state, user, showToast }: { state: WorkspaceState; user: AuthUser; showToast: Toast }) {
+export function BuildScreen({ state, user, showToast }: { state: WorkspaceState; user: AuthUser; showToast: Toast }) {
   const assistant = useAssistant();
   /**
    * §8.5: Ask opens the one global panel with this file, its language, and the

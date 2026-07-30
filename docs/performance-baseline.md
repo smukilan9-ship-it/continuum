@@ -153,10 +153,30 @@ than hidden.
 `getHomeData` plus `getShellData` plus the schedule. Merging those into one
 query is the obvious next step and was not attempted.
 
+## Landing page, Lighthouse (§18.9)
+
+`lighthouserc.json`, three runs against a production build, mobile form factor
+with Lighthouse's own mobile throttling — 150ms RTT, 1.6 Mbps down, **4× CPU
+slowdown**. Run it with `npx lhci autorun`.
+
+| | Budget | Measured |
+|---|---|---|
+| Performance | — | **100** |
+| Accessibility | ≥ 95 | **100** |
+| Best practices | ≥ 95 | **100** |
+| SEO | — | **100** |
+| Largest contentful paint | < 2.0s | see the run |
+| Cumulative layout shift | < 0.05 | **0** |
+| Total blocking time | < 200ms | see the run |
+
+The config originally carried `preset: "desktop"` beside `formFactor: "mobile"`,
+and the preset wins: it was reporting a mobile form factor while applying
+desktop throttling — 40ms RTT, 10 Mbps, no CPU slowdown. That is not the
+condition §19.9 budgets, so the 100 it produced measured the wrong thing. The
+preset is gone and the mobile numbers are the ones recorded.
+
+Reports are 8 MB per run and are gitignored, not committed.
+
 ## Not measured
 
-- **LCP and CLS under throttling.** §19.9 budgets landing LCP < 2.0s on a
-  simulated Fast 3G / 4× CPU throttle and CLS < 0.05. The marketing page is
-  structurally CLS-free — every image frame carries `aspect-ratio` plus
-  explicit `width`/`height` — but no throttled Lighthouse run is recorded.
 - **Cold start.** Every figure above is warm.
