@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Button, LoadingButton } from "./primitives";
+import { useReturnFocus } from "./use-return-focus";
 import { cn } from "./utils";
 
 export type DialogSize = "sm" | "md" | "lg";
@@ -35,6 +36,7 @@ export function Modal({
   // `window.confirm`: native dialogs are unstyled, block the main thread, cannot
   // be tested, and are suppressed outright in some embedded contexts.
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const returnFocus = useReturnFocus(open);
 
   function requestClose() {
     if (!dirty) { onOpenChange(false); return; }
@@ -49,6 +51,7 @@ export function Modal({
           className={cn("modal-content", `modal-${size}`)}
           onEscapeKeyDown={(event) => { if (dirty) { event.preventDefault(); requestClose(); } }}
           onPointerDownOutside={(event) => { if (dirty) event.preventDefault(); }}
+          onCloseAutoFocus={returnFocus.onCloseAutoFocus}
         >
           <header className="modal-heading">
             <div>
@@ -66,7 +69,7 @@ export function Modal({
               </div>
             </div>
           ) : null}
-          <div className="modal-body">{children}</div>
+          {children ? <div className="modal-body">{children}</div> : null}
           {footer ? <footer className="modal-footer">{footer}</footer> : null}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
@@ -107,7 +110,10 @@ export function ConfirmationDialog({
         </>
       }
     >
-      <p className="confirmation-copy">{description}</p>
+      {/* `description` is already rendered — and announced — by the modal
+          header. Repeating it in the body printed the same sentence twice in a
+          dialog whose whole job is one clear question. */}
+      {null}
     </Modal>
   );
 }
@@ -223,11 +229,16 @@ export function SidePanel({
   headerActions?: ReactNode;
   width?: number;
 }) {
+  const returnFocus = useReturnFocus(open);
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="panel-backdrop" />
-        <DialogPrimitive.Content className="side-panel" style={width ? { ["--panel-w" as string]: `${width}px` } : undefined}>
+        <DialogPrimitive.Content
+          className="side-panel"
+          style={width ? { ["--panel-w" as string]: `${width}px` } : undefined}
+          onCloseAutoFocus={returnFocus.onCloseAutoFocus}
+        >
           <header className="side-panel-heading">
             <DialogPrimitive.Title>{title}</DialogPrimitive.Title>
             <div className="side-panel-actions">
@@ -245,11 +256,12 @@ export function SidePanel({
 
 /** Left navigation drawer for mobile (§8.9). */
 export function Drawer({ open, onOpenChange, title, children }: { open: boolean; onOpenChange: (open: boolean) => void; title: string; children: ReactNode }) {
+  const returnFocus = useReturnFocus(open);
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="panel-backdrop" />
-        <DialogPrimitive.Content className="drawer" aria-label={title}>
+        <DialogPrimitive.Content className="drawer" aria-label={title} onCloseAutoFocus={returnFocus.onCloseAutoFocus}>
           <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
           {children}
         </DialogPrimitive.Content>

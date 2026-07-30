@@ -71,14 +71,21 @@ export function AskSurface({ state, showToast, onRefresh }: {
           <div>
             {/* §19.1 wants exactly one `<h1>` per route, and on Ask the page's
                 subject is the conversation — so the title carries it whether or
-                not a thread is open. The empty-state heading below is an `<h2>`
-                for the same reason. */}
+                not a thread is open. Before this the title was a bare button and
+                `/ask` had no h1 at all once a conversation existed; axe reported
+                `page-has-heading-one` on every visit that was not the empty
+                state. The empty-state heading below is an `<h2>` for the same
+                reason. */}
             <h1 className="assistant-title-heading">
               {active ? (
-                <button className="assistant-title" onClick={() => setRenaming(active)} aria-label={`Rename ${active.title}`}>
+                <button
+                  className="assistant-title"
+                  onClick={() => setRenaming(active)}
+                  aria-label={`Rename ${active.title}`}
+                >
                   {active.title}
                 </button>
-              ) : "New conversation"}
+              ) : <span className="assistant-title">New conversation</span>}
             </h1>
             {active?.obsidianSync ? (
               <Badge tone={active.obsidianSync.status === "synced" ? "green" : active.obsidianSync.status === "conflict" ? "orange" : "neutral"}>

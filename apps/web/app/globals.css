@@ -25,7 +25,13 @@
 
   --ink:               #1b1c16;
   --ink-2:             #4a4d42;
-  --ink-3:             #74776b;
+  /* Tertiary ink carries eyebrows, footnotes and meta lines at 11-13px, so it
+     is body text for WCAG 1.4.3 and needs 4.5:1 against every surface it can
+     sit on — not just `--surface`. The previous #74776b cleared white (4.57)
+     but failed the canvas (4.30), `--surface-raised` (4.04) and
+     `--surface-sunken` (3.90); axe flagged it as serious on `/` in both themes.
+     This value clears 4.57:1 at the worst of the four. */
+  --ink-3:             #696c60;
 
   --canvas:            #faf8f1;
   --surface:           #ffffff;
@@ -85,7 +91,10 @@ html[data-theme="dark"] {
 
   --ink:               #eceade;
   --ink-2:             #a9ab9d;
-  --ink-3:             #7e8175;
+  /* Same fix in the dark theme. #7e8175 measured 4.04:1 on `--surface-raised`
+     (the marketing footer) and 3.87:1 on `--accent-quiet` (a selected row, the
+     next-action card). This clears 4.58:1 at the worst of the five surfaces. */
+  --ink-3:             #94978b;
 
   --canvas:            #101109;
   --surface:           #17180f;

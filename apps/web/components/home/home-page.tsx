@@ -65,11 +65,15 @@ function deadlineLabel(days: number | undefined) {
  * a scheduled block — and is omitted entirely rather than invented when none of
  * those hold.
  */
-function reasonFor(task: Row, goal: Row | undefined, block: Row | undefined, timeZone: string) {
+function reasonFor(task: Row, goal: Row | undefined, block: Row | undefined, timeZone: string, now: number) {
   const clauses: string[] = [];
   const weakest = text(task, "weakestDimension");
   if (weakest) clauses.push(`${weakest} is your weakest area`);
-  const days = daysUntil(text(task, "deadline", text(goal, "targetDate", "")), Date.now());
+  // `now` is the server's clock, the same one the context line above the reason
+  // is formatted against. Reading `Date.now()` here made one card disagree with
+  // itself — "2 days left" beside "it is due now" — whenever the device clock
+  // drifted from the server's.
+  const days = daysUntil(text(task, "deadline", text(goal, "targetDate", "")), now);
   if (days !== undefined && days <= 7) clauses.push(days <= 0 ? "it is due now" : `it is due in ${days} day${days === 1 ? "" : "s"}`);
   if (block) clauses.push(`it is scheduled at ${clockTime(blockStart(block), timeZone)}`);
   if (!clauses.length) return undefined;
@@ -158,7 +162,7 @@ export function HomePage({
   }
 
   const everythingDone = !nextTask && dayBlocks.length > 0 && doneCount === dayBlocks.length;
-  const reason = nextTask ? reasonFor(nextTask, nextGoal, taskBlock, timeZone) : undefined;
+  const reason = nextTask ? reasonFor(nextTask, nextGoal, taskBlock, timeZone, now) : undefined;
 
   return (
     <div className="home">

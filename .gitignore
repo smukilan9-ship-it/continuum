@@ -29,3 +29,8 @@ __pycache__/
 
 # Agent worktrees are transient checkouts, never content.
 .claude/worktrees/
+
+# Lighthouse run output. The numbers that matter are recorded in
+# docs/performance-baseline.md; the HTML reports are 8 MB per run.
+.lighthouseci/
+artifacts/lighthouse/

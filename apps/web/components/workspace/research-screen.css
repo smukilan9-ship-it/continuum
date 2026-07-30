@@ -12,6 +12,6 @@
 }
 .research-discovery-handoff > svg { flex: none; color: var(--ink-3); }
 .research-discovery-handoff > div { flex: 1 1 320px; min-width: 0; display: grid; gap: var(--s-1); }
-.research-discovery-handoff h4 { margin: 0; color: var(--ink); font-size: var(--t-h3); font-weight: 600; }
+.research-discovery-handoff h3 { margin: 0; color: var(--ink); font-size: var(--t-h3); font-weight: 600; }
 .research-discovery-handoff p { margin: 0; max-width: 62ch; color: var(--ink-2); font-size: var(--t-small); line-height: 1.55; }
 .research-discovery-handoff > a { flex: none; }
