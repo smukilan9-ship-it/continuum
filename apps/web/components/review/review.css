@@ -59,3 +59,85 @@
   .event-days li { grid-template-columns: minmax(0, 1fr) auto; }
   .event-days li .status-chip { grid-column: 1 / -1; justify-self: start; }
 }
+
+
+/* ==========================================================================
+   Migrated out of globals.css by the §15.9 paydown. These rules were written
+   against the legacy token aliases; they compose the same values, now from
+   the file that owns the surface.
+   ========================================================================== */
+
+.activity-trust-strip { margin: 18px 0 28px; display: grid; grid-template-columns: repeat(3, 1fr); border-block: 1px solid var(--line); }
+.activity-trust-strip > div { min-height: 76px; padding: 13px 20px; display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 10px; border-right: 1px solid var(--line); }
+.activity-trust-strip > div:first-child { padding-left: 0; }
+.activity-trust-strip > div:last-child { border-right: 0; }
+.activity-trust-strip span { width: 34px; height: 34px; display: grid; place-items: center; color: var(--accent); background: var(--accent-quiet); border-radius: 8px; }
+.activity-trust-strip strong { color: var(--ink); font-size: 24px; }
+.activity-trust-strip small { color: var(--ink-2); font-size: 11px; }
+.review-empty-state { min-height: 110px; padding: 22px 28px; display: flex; align-items: center; justify-content: center; gap: 14px; color: var(--accent); background: rgb(255 255 255 / 45%); border: 1px dashed var(--line-strong); border-radius: 9px; }
+.review-empty-state h3 { margin: 0 0 4px; color: var(--ink); font-size: 15px; }
+.review-empty-state p { max-width: 630px; margin: 0; color: var(--ink-2); font-size: 11px; line-height: 1.5; }
+.activity-ledger-layout { margin-top: 30px; display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 34px; align-items: start; }
+.activity-ledger-layout .activity-section { margin: 0; }
+.activity-ai-ledger > div:last-child { border-top: 1px solid var(--line); }
+.activity-ai-ledger article { padding: 15px 0; border-bottom: 1px solid var(--line); }
+.activity-ai-ledger article > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.activity-ai-ledger time, .activity-event-ledger time { color: var(--ink-2); font-size: 11px; }
+.activity-ai-ledger h3 { margin: 8px 0 4px; color: var(--ink); font-size: 13px; line-height: 1.45; }
+.activity-ai-ledger p { margin: 0; color: var(--ink-2); font-size: 11px; }
+.activity-event-ledger > div:last-child { position: relative; padding: 2px 0 0 18px; }
+.activity-event-ledger > div:last-child::before { content: ""; position: absolute; inset: 6px auto 5px 4px; width: 1px; background: var(--line-strong); }
+.activity-event-ledger article { position: relative; padding: 0 0 18px 12px; }
+.activity-event-ledger article > i { position: absolute; top: 5px; left: -17px; width: 7px; height: 7px; background: white; border: 2px solid #78aac8; border-radius: 50%; }
+.activity-event-ledger h3 { margin: 6px 0 3px; color: var(--ink); font-size: 13px; line-height: 1.42; }
+.proposal-card { padding: 20px; }
+.proposal-header { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.proposal-header > div { display: flex; gap: 7px; }
+.proposal-header > span { color: var(--ink-2); font-size: 12px; }
+.proposal-card h3 { margin: 15px 0 10px; color: var(--ink); }
+.proposal-card > p { color: var(--ink-2); }
+.proposal-card dl { margin: 12px 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.proposal-card dl div { min-width: 0; padding: 10px 12px; display: grid; gap: 3px; background: var(--surface-raised); border-radius: 8px; }
+.proposal-card dt { color: var(--ink-2); font-size: 11px; text-transform: capitalize; }
+.proposal-card dd { margin: 0; overflow-wrap: anywhere; font-size: 13px; }
+.review-schedule-preview { margin: 13px 0; border-block: 1px solid var(--line); }
+.review-schedule-preview header { padding: 9px 0; display: flex; justify-content: space-between; gap: 12px; color: var(--ink-2); font-size: 11px; }
+.review-schedule-preview header strong { color: var(--ink); }
+.review-schedule-preview > div { min-height: 40px; display: grid; grid-template-columns: 135px minmax(0, 1fr) 70px; align-items: center; gap: 12px; border-top: 1px solid var(--line); font-size: 12px; }
+.review-schedule-preview > div > span, .review-schedule-preview > div > small { color: var(--ink-2); }
+.review-schedule-preview > div > small { text-align: right; }
+.proposal-actions { display: flex; justify-content: flex-end; gap: 8px; }@media (max-width: 600px) {
+  .proposal-card dl { grid-template-columns: 1fr; }
+  .proposal-header { align-items: flex-start; flex-direction: column; }
+  .review-schedule-preview > div { padding: 8px 0; grid-template-columns: 1fr auto; }
+  .review-schedule-preview > div > strong { grid-column: 1 / -1; grid-row: 1; }
+  .proposal-actions { flex-direction: column-reverse; }
+  .proposal-actions .button { width: 100%; }
+}
+
+.proposal-blocks { margin-top: 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.proposal-blocks > div { min-height: 58px; padding: 9px 11px; display: grid; grid-template-columns: 60px minmax(0, 1fr); gap: 10px; background: var(--surface-raised); border-radius: 7px; }
+.proposal-blocks > div > span, .proposal-blocks > div > div { display: grid; align-content: center; gap: 2px; }
+.proposal-blocks strong { color: var(--ink); font-size: 10px; }
+.proposal-blocks small { color: var(--ink-2); font-size: 8px; }
+.proposal-warning { margin-top: 10px; padding: 10px; display: flex; align-items: center; gap: 7px; color: var(--warning); background: var(--warning-surface); border-radius: 7px; font-size: 10px; }@media (max-width: 1120px) {
+  .activity-ledger-layout { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .activity-trust-strip { grid-template-columns: 1fr; }
+  .activity-trust-strip > div, .activity-trust-strip > div:first-child { min-height: 62px; padding: 10px 0; border-right: 0; border-bottom: 1px solid var(--line); }
+  .activity-trust-strip > div:last-child { border-bottom: 0; }
+  .review-empty-state { padding: 20px; align-items: flex-start; justify-content: flex-start; }
+  .proposal-blocks { grid-template-columns: 1fr; }
+}
+
+
+/* §6.8 Review — superseded proposals collapse instead of repeating. */
+.proposal-superseded { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.proposal-superseded > button { color: var(--ink-2); background: transparent; border: 0; font-size: var(--t-small); text-decoration: underline; cursor: pointer; }
+.proposal-superseded ul { flex-basis: 100%; margin: 0; padding-inline-start: var(--s-4); color: var(--ink-2); font-size: var(--t-micro); }
+
+/* Repeat count for grouped routing rationales in Review. */
+.activity-ai-ledger .route-count { padding: 2px 7px; color: var(--ink-2); background: var(--surface-raised); border-radius: 99px; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.proposal-list { display: grid; gap: 14px; }
+.proposal-card { content-visibility: auto; contain-intrinsic-size: auto 180px; }

@@ -98,3 +98,78 @@
   .home-head h1 { font-size: 24px; }
   .home-rail { grid-template-columns: minmax(0, 1fr); }
 }
+
+
+/* ==========================================================================
+   Migrated out of globals.css by the §15.9 paydown. These rules were written
+   against the legacy token aliases; they compose the same values, now from
+   the file that owns the surface.
+   ========================================================================== */
+
+
+/* Today */
+.today-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .85fr); gap: 16px; }
+.today-grid > .card { padding: 22px; }
+.next-action-card { display: flex; flex-direction: column; align-items: flex-start; background: var(--ink); border-color: var(--ink); color: var(--on-accent); }
+.next-action-card h2 { max-width: 700px; margin: 26px 0 10px; font-size: clamp(27px, 3vw, 38px); line-height: 1.12; letter-spacing: -.03em; }
+.next-action-card > p { max-width: 650px; margin: 0; color: #c5d8e9; line-height: 1.6; }
+.next-action-card .button { color: var(--ink); background: var(--surface); border-color: var(--on-accent); }
+.action-evidence { margin: 16px 0 22px; display: flex; align-items: center; gap: 8px; color: #b9d2e6; font-size: 13px; }
+.summary-card { min-height: 0; }
+.workspace-metrics { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.workspace-metrics div { min-height: 84px; padding: 15px 16px; display: grid; align-content: center; gap: 3px; background: var(--surface-raised); border-radius: 11px; }
+.workspace-metrics strong { color: var(--ink); font-size: 27px; letter-spacing: -.02em; }
+.workspace-metrics span { color: var(--ink-2); font-size: 12px; }
+.summary-card .workspace-metrics { margin-top: 20px; grid-template-columns: 1fr; gap: 0; border-top: 1px solid var(--line); }
+.summary-card .workspace-metrics div { min-height: 48px; padding: 8px 2px; display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 8px; background: transparent; border-bottom: 1px solid var(--line); border-radius: 0; }
+.summary-card .workspace-metrics strong { font-size: 19px; }
+.summary-card .workspace-metrics span { font-size: 11px; }
+/* Same reasoning as .next-action-card — these sit in a column beside it and a
+   fixed minimum left the right rail stranded with empty space below its content. */
+.schedule-card, .resume-card { min-height: 0; }
+.schedule-card > p, .resume-card > p { color: var(--ink-2); line-height: 1.6; }
+.schedule-card > .button, .resume-card > .button { margin-top: 20px; }
+.next-block { margin-top: 20px; padding: 16px; display: grid; gap: 7px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 9px; }
+.next-block span { display: flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 13px; }
+.next-block small { color: var(--accent); }
+.resume-card ul { padding-left: 19px; color: var(--ink-2); line-height: 1.7; }@media (max-width: 600px) {
+  .next-action-card { min-height: 0; }
+}
+
+
+/* Content-sized: stretching left a ~380px hole under a short day plan,
+   which reads worse than two columns of honest, different heights. */
+.today-grid { grid-template-columns: minmax(0, 1.55fr) minmax(260px, .62fr); gap: 22px; align-items: start; }
+/* Height follows content. A fixed 390px minimum with the CTA pinned to the
+   bottom left a ~100px hole in the middle of the card whenever the action
+   description was short, which is the common case. */
+.next-action-card { min-height: 0; color: #f6f3e9; background: #181912; border: 0; border-radius: 24px; }
+.next-action-card h2 { margin-top: 26px; font-size: clamp(33px, 4vw, 50px); }
+.next-action-card .button { margin-top: 28px; }
+.next-action-card > p, .action-evidence { color: #c6c7ba; }
+.next-action-card .button { color: var(--on-accent); background: var(--accent-mark); border-color: var(--accent-mark); }
+.summary-card { min-height: 0; background: color-mix(in srgb, var(--surface) 72%, transparent); border: 0; }
+.summary-card .workspace-metrics { border-top-color: var(--line); }
+.summary-card .workspace-metrics strong { color: var(--ink); }
+.schedule-card, .resume-card { background: color-mix(in srgb, var(--surface) 88%, transparent); }
+html[data-theme="dark"] .next-action-card { color: #f6f3e9; background: #0b0c09; }@media (max-width: 760px) {
+  .today-grid { grid-template-columns: 1fr; }
+  .next-action-card { min-height: 0; }
+}
+
+.today-technical summary { color: var(--ink-2); font-size: var(--t-micro); cursor: pointer; }
+.today-technical p { margin: var(--s-2) 0 0; color: var(--ink-2); font-family: var(--font-mono), monospace; font-size: var(--t-micro); word-break: break-all; }
+
+/* §8.2 The next action is the one thing to read on Today, but at 38px it was
+   display type inside a card. `title` is the largest size a workspace screen
+   uses. */
+.next-action-card h2 { margin: var(--s-4) 0 var(--s-2); font-size: var(--type-title); line-height: 1.25; letter-spacing: -.01em; }
+.next-action-card { min-height: 0; }
+.next-action-card > p { font-size: var(--t-body); }
+
+/* The next-action card is dark in both themes, so text inside it cannot use the
+   page's muted token — that combination measured 2.71:1. */
+.next-action-card .today-technical summary { color: #c9cdbe; }
+.next-action-card .today-technical p { color: #d8dccd; }
+.today-grid > .card { padding: 28px; }
+html[data-theme="dark"] .next-action-card .button { color: var(--on-accent); }

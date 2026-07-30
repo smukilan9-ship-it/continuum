@@ -2,6 +2,7 @@
 
 import { Check, LoaderCircle, ShieldCheck } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
+import "@/components/auth/auth.css";
 
 type Permission = {
   scope: string;

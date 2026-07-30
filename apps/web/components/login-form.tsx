@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { BrandMark } from "@/components/brand-mark";
 import { PASSWORD_HELP, PASSWORD_MIN_LENGTH, USERNAME_HELP, USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from "@/lib/password-policy";
+import "@/components/auth/auth.css";
 
 type Mode = "login" | "register";
 

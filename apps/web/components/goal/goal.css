@@ -128,3 +128,39 @@
   .goal-screen .section-tabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
   .goal-screen .section-tabs::-webkit-scrollbar { display: none; }
 }
+
+
+/* ==========================================================================
+   Migrated out of globals.css by the §15.9 paydown. These rules were written
+   against the legacy token aliases; they compose the same values, now from
+   the file that owns the surface.
+   ========================================================================== */
+
+.goal-card { padding: 24px; }
+.goal-card-head { display: grid; grid-template-columns: 1fr auto; gap: 30px; }
+.goal-card-head h2 { margin: 10px 0 7px; color: var(--ink); font-size: 23px; }
+.goal-card-head p { max-width: 800px; margin: 0; color: var(--ink-2); line-height: 1.55; }
+.goal-progress { display: grid; align-content: start; text-align: right; }
+.goal-progress strong { color: var(--accent); font-size: 30px; }
+.goal-progress span { color: var(--ink-2); font-size: 12px; }
+.goal-meta { margin: 20px 0 12px; display: flex; flex-wrap: wrap; gap: 18px; color: var(--ink-2); font-size: 13px; }
+.goal-meta span { display: flex; align-items: center; gap: 6px; }
+.goal-progress-track { height: 6px; overflow: hidden; background: var(--surface-sunken); border-radius: 999px; }
+.goal-progress-track span { height: 100%; display: block; background: var(--accent); }
+.goal-link-field { margin-top: 2px; }@media (max-width: 600px) {
+  .goal-card-head { grid-template-columns: 1fr; gap: 10px; }
+  .goal-progress { text-align: left; }
+}
+
+
+/* ── Today: goal standing ───────────────────────────────────────────────── */
+.goal-progress-list { margin: 14px 0 18px; padding: 0; display: grid; gap: 16px; list-style: none; }
+.goal-progress-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.goal-progress-head strong { min-width: 0; color: var(--ink); font-size: 13px; font-weight: 700; line-height: 1.35; }
+.goal-progress-head b { color: var(--accent); font-size: 12px; font-variant-numeric: tabular-nums; }
+.goal-progress-bar { height: 6px; margin: 7px 0 5px; overflow: hidden; background: var(--surface-raised); border-radius: 99px; }
+.goal-progress-bar i { height: 100%; display: block; background: var(--accent); border-radius: 99px; }
+.goal-progress-list small { color: var(--ink-2); font-size: 11px; }
+.goal-progress-list small.is-soon { color: var(--danger, #a4443a); font-weight: 700; }
+.goal-list { display: grid; gap: 14px; }
+.goal-card { content-visibility: auto; contain-intrinsic-size: auto 180px; }

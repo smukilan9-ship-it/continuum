@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft, LockKeyhole, ShieldCheck } from "lucide-react";
+import "@/components/auth/auth.css";
 
 export default function PrivacyPage() {
   return (

@@ -6,6 +6,7 @@ import type { Route } from "next";
 import { useEffect, useState, type FormEvent } from "react";
 import { BrandMark } from "@/components/brand-mark";
 import { PASSWORD_HELP, PASSWORD_MIN_LENGTH } from "@/lib/password-policy";
+import "@/components/auth/auth.css";
 
 function Shell({ title, lead, children }: { title: string; lead?: string; children: React.ReactNode }) {
   return (

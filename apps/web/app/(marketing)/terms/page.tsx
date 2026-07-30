@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft, FileCheck2, ShieldCheck } from "lucide-react";
+import "@/components/auth/auth.css";
 
 export const metadata = {
   title: "Terms",

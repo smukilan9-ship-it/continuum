@@ -456,3 +456,297 @@
 @media (prefers-reduced-motion: reduce) {
   .plan-block { transition: none; }
 }
+
+
+/* ==========================================================================
+   Migrated out of globals.css by the §15.9 paydown. These rules were written
+   against the legacy token aliases; they compose the same values, now from
+   the file that owns the surface.
+   ========================================================================== */
+
+.plan-preview { margin-top: 18px; display: grid; gap: 9px; }
+.plan-preview > div { display: flex; justify-content: space-between; }
+.plan-preview button { color: var(--danger); background: none; border: 0; cursor: pointer; }
+.plan-preview span, .plan-preview small { color: var(--ink-2); font-size: 13px; }
+.task-list { margin-top: 18px; border-top: 1px solid var(--line); }
+.task-row { min-height: 61px; padding: 10px 2px; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
+.task-row > div { display: grid; gap: 3px; }
+.task-row > div span { color: var(--ink-2); font-size: 12px; }
+.task-check { color: var(--ink-2); }
+.task-check.done { color: var(--success); }
+.task-complete { padding: 6px 9px; color: var(--accent); background: transparent; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 700; }
+
+/* Planning connection */
+.calendar-connection-strip { margin-bottom: 17px; padding: 13px 15px; display: flex; align-items: center; gap: 11px; color: var(--ink); background: var(--accent-quiet); border: 1px solid #cfe4f5; border-radius: 9px; }
+.calendar-connection-strip > div { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.calendar-connection-strip span { color: var(--ink-2); font-size: 12px; }
+.calendar-connection-strip a { color: var(--accent-hover); font-size: 12px; font-weight: 750; }@media (max-width: 600px) {
+  .calendar-connection-strip { align-items: flex-start; flex-wrap: wrap; }
+  .task-row { grid-template-columns: 23px minmax(0,1fr) auto; }
+  .task-row .task-complete { grid-column: 2 / -1; justify-self: start; }
+}
+
+
+/* Weekly plan workbench */
+.plan-screen { max-width: 1500px; }
+.plan-toolbar { min-height: 56px; margin-bottom: 12px; padding: 7px; display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.plan-view-tabs { display: flex; align-items: center; gap: 3px; }
+.plan-view-tabs button { min-height: 40px; padding: 8px 12px; display: inline-flex; align-items: center; gap: 7px; color: var(--ink-2); background: transparent; border: 0; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 720; }
+.plan-view-tabs button.active { color: var(--ink); background: var(--accent-quiet); }
+.plan-toolbar-meta { display: flex; align-items: center; gap: 15px; }
+.plan-toolbar-meta > span { color: var(--ink-2); font-size: 10px; }
+.plan-toolbar-meta strong { color: var(--ink); font-size: 13px; }
+.plan-calendar-strip { min-height: 56px; margin-bottom: 14px; padding: 9px 13px; display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: 9px; }
+.plan-calendar-strip > div { display: flex; align-items: center; gap: 9px; }
+.plan-calendar-strip > div > svg { color: var(--accent); }
+.plan-calendar-strip > div > div { display: grid; gap: 2px; }
+.plan-calendar-strip strong { color: var(--ink); font-size: 11px; }
+.plan-calendar-strip span { font-size: 10px; }
+.plan-calendar-strip > a { color: var(--accent); font-size: 10px; font-weight: 750; }
+.planning-independence-note { min-height: 66px; margin-bottom: 14px; padding: 12px 14px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; color: var(--accent-hover); background: var(--accent-quiet); border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line)); border-radius: 11px; }
+.planning-independence-note > div { display: grid; gap: 3px; }
+.planning-independence-note strong { color: var(--ink); font-size: 12px; }
+.planning-independence-note span { color: var(--ink-2); font-size: 10px; line-height: 1.5; }
+.schedule-draft-editor { margin-bottom: 15px; padding: 20px; border-color: color-mix(in srgb, var(--accent) 25%, var(--line)); box-shadow: 0 18px 48px rgb(22 47 72 / 8%); }
+.schedule-draft-editor > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.schedule-draft-editor h2 { margin: 7px 0 3px; color: var(--ink); font-size: 21px; letter-spacing: -.025em; }
+.schedule-draft-editor header p { margin: 0; color: var(--ink-2); font-size: 11px; }
+.draft-editor-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; flex-wrap: wrap; }
+.draft-editor-actions .button { min-height: 38px; padding-inline: 13px; font-size: 10px; }
+.draft-health { min-height: 46px; margin: 16px 0 10px; padding: 8px 12px; display: flex; align-items: center; gap: 22px; color: var(--ink-2); background: var(--surface-raised); border: 1px solid var(--line); border-radius: 9px; font-size: 9px; }
+.draft-health strong { color: var(--ink); font-size: 12px; }
+.draft-week-board { display: grid; grid-template-columns: repeat(7, minmax(135px, 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
+.draft-day { min-width: 0; border-right: 1px solid var(--line); }
+.draft-day:last-child { border-right: 0; }
+.draft-day > header { min-height: 58px; padding: 9px 8px; display: flex; align-items: center; justify-content: space-between; background: var(--surface-raised); border-bottom: 1px solid var(--line); }
+.draft-day > header > div { display: grid; }
+.draft-day > header span { color: var(--ink-2); font-size: 8px; font-weight: 780; letter-spacing: .07em; text-transform: uppercase; }
+.draft-day > header strong { color: var(--ink); font-size: 18px; }
+.draft-day > header button { width: 28px; height: 28px; display: grid; place-items: center; color: var(--accent); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; cursor: pointer; }
+.draft-day > header button:disabled { color: var(--ink-2); opacity: .45; cursor: default; }
+.draft-day > div { min-height: 330px; padding: 7px; display: grid; align-content: start; gap: 7px; background: color-mix(in srgb, var(--surface) 88%, var(--canvas)); }
+.draft-block, .draft-commitment { position: relative; min-height: 92px; padding: 10px 8px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 6px; border: 1px solid #b8d8ed; border-radius: 8px; }
+.draft-block { color: var(--accent-hover); background: var(--accent-quiet); cursor: grab; touch-action: none; }
+.draft-block:active { cursor: grabbing; }
+.draft-block.fixed { color: var(--ink-2); background: var(--surface-raised); border-style: dashed; border-color: var(--line-strong); }
+.draft-block.overlap { background: var(--warning-surface); border-color: var(--warning); box-shadow: 0 0 0 2px color-mix(in srgb, var(--warning) 18%, transparent); }
+.draft-block > svg { margin-top: 2px; opacity: .6; }
+.draft-block > div, .draft-commitment > div { min-width: 0; display: grid; align-content: start; gap: 3px; }
+.draft-block small, .draft-commitment small { font-size: 8px; font-weight: 760; }
+.draft-block strong, .draft-commitment strong { overflow-wrap: anywhere; color: inherit; font-size: 10px; line-height: 1.35; }
+.draft-block span, .draft-commitment span { color: inherit; opacity: .72; font-size: 7px; font-weight: 680; letter-spacing: .03em; text-transform: uppercase; }
+.draft-commitment { color: var(--ink-2); background: var(--surface-raised); border-color: var(--line); }
+.draft-commitment > svg { margin-top: 2px; }
+.draft-edit { width: 25px; height: 25px; display: grid; place-items: center; color: inherit; background: color-mix(in srgb, var(--surface) 65%, transparent); border: 0; border-radius: 6px; cursor: pointer; }
+.draft-resize { position: absolute; right: 8px; bottom: 5px; left: 8px; height: 10px; padding: 0; background: transparent; border: 0; cursor: ns-resize; }
+.draft-resize span { width: 24px; height: 3px; margin: auto; display: block; background: currentColor; border-radius: 9px; opacity: .35; }
+.draft-day-empty { min-height: 72px; padding: 10px; display: grid; place-items: center; color: var(--ink-2); text-align: center; border: 1px dashed var(--line-strong); border-radius: 8px; font-size: 8px; }
+.schedule-draft-editor > footer { margin-top: 14px; padding-top: 13px; display: flex; align-items: flex-end; gap: 15px; border-top: 1px solid var(--line); }
+.schedule-draft-editor > footer > div { margin-right: auto; display: grid; gap: 3px; color: var(--ink-2); font-size: 8px; line-height: 1.45; }
+.schedule-draft-editor .ghost-action { min-height: 36px; padding: 6px 10px; color: var(--ink-2); background: transparent; border: 0; border-radius: 7px; cursor: pointer; font-weight: 700; }
+.schedule-draft-editor .ghost-action:hover { color: var(--warning); background: var(--warning-surface); }
+.schedule-intake-form { display: grid; gap: 18px; }
+.schedule-intake-form fieldset { min-width: 0; margin: 0; padding: 0 0 18px; border: 0; border-bottom: 1px solid var(--line); }
+.schedule-intake-form fieldset:last-child { padding-bottom: 0; border-bottom: 0; }
+.schedule-intake-form legend { margin-bottom: 10px; color: var(--ink); font-size: 12px; font-weight: 780; }
+.schedule-intake-form label, .block-editor-form label { display: grid; gap: 6px; color: var(--ink-2); font-size: 10px; font-weight: 700; line-height: 1.45; }
+.schedule-intake-form input, .schedule-intake-form textarea, .schedule-intake-form select, .block-editor-form input, .block-editor-form select { width: 100%; min-height: 42px; padding: 9px 11px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; font: inherit; font-weight: 550; }
+.schedule-intake-form textarea { min-height: 82px; resize: vertical; }
+.schedule-intake-form small { color: var(--ink-2); font-weight: 500; }
+.no-day-options { display: flex; flex-wrap: wrap; gap: 7px; }
+.no-day-options label { min-height: 38px; padding: 7px 10px; display: flex; align-items: center; gap: 6px; color: var(--ink-2); background: var(--surface-raised); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
+.no-day-options input { width: 15px; min-height: 15px; margin: 0; accent-color: var(--accent); }
+.block-editor-form { display: grid; gap: 13px; }
+.block-time-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.block-editor-form .fixed-choice { padding: 11px; display: flex; align-items: flex-start; gap: 9px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 9px; cursor: pointer; }
+.block-editor-form .fixed-choice input { width: 16px; min-height: 16px; margin-top: 1px; accent-color: var(--accent); }
+.block-editor-form .fixed-choice span { display: grid; gap: 2px; }
+.block-editor-form .fixed-choice small { color: var(--ink-2); font-weight: 500; }
+.block-editor-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; flex-wrap: wrap; }
+.block-editor-actions .danger { margin-right: auto; color: #a63a2a; }
+.editing-schedule > .week-board { display: none; }
+.week-board { min-height: 480px; display: grid; grid-template-columns: repeat(7, minmax(120px, 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
+.week-day { min-width: 0; border-right: 1px solid var(--line); }
+.week-day:last-child { border-right: 0; }
+.week-day > header { min-height: 65px; padding: 11px; display: grid; align-content: center; justify-items: center; border-bottom: 1px solid var(--line); }
+.week-day > header span { color: var(--ink-2); font-size: 9px; font-weight: 780; text-transform: uppercase; letter-spacing: .06em; }
+.week-day > header strong { color: var(--ink); font-size: 20px; }
+.week-day.today > header { background: var(--accent-quiet); }
+.week-day.today > header strong { width: 32px; height: 32px; display: grid; place-items: center; color: var(--on-accent); background: var(--accent-mark); border-radius: 50%; }
+.week-day-blocks { min-height: 410px; padding: 8px; display: grid; align-content: start; gap: 7px; background: color-mix(in srgb, var(--surface) 86%, var(--canvas)); }
+.week-block { min-height: 84px; padding: 9px; display: grid; align-content: start; gap: 4px; border: 1px solid; border-radius: 8px; }
+.week-block small { font-size: 9px; font-weight: 750; }
+.week-block strong { font-size: 10px; line-height: 1.35; }
+.week-block span { font-size: 8px; text-transform: uppercase; letter-spacing: .05em; }
+.week-block.study { color: var(--accent-hover); background: var(--accent-quiet); border-color: #c3e3f7; }
+.week-block.commitment { color: var(--ink-2); background: var(--surface-raised); border-color: var(--line); }
+.week-empty { min-height: 74px; display: grid; place-items: center; color: #97a7b6; border: 1px dashed var(--line); border-radius: 8px; font-size: 9px; }
+.schedule-proposal-card { margin-bottom: 14px; padding: 18px; border-color: #ddc7a8; box-shadow: none; }
+.schedule-proposal-card > header, .plan-backlog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.plan-kicker { display: flex; align-items: center; gap: 6px; color: var(--accent); font-size: 9px; font-weight: 820; letter-spacing: .08em; }
+.schedule-proposal-card h2, .plan-backlog h2 { margin: 6px 0 0; color: var(--ink); font-size: 19px; }
+.schedule-proposal-card > footer { margin-top: 14px; padding-top: 13px; display: flex; align-items: center; gap: 9px; border-top: 1px solid var(--line); }
+.schedule-proposal-card > footer > div { margin-right: auto; display: grid; gap: 2px; color: var(--ink-2); font-size: 8px; }
+.plan-goals-layout { display: grid; grid-template-columns: minmax(250px, .65fr) minmax(0, 1.35fr); gap: 12px; align-items: start; }
+.plan-goal-index { display: grid; gap: 7px; }
+.plan-goal-index > button { min-height: 74px; padding: 11px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; color: var(--ink-2); text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; cursor: pointer; }
+.plan-goal-index > button.active { color: var(--accent); background: var(--accent-quiet); border-color: #aad3ee; }
+.plan-goal-index > button > span { width: 34px; height: 34px; display: grid; place-items: center; background: var(--surface-raised); border-radius: 8px; }
+.plan-goal-index > button div { min-width: 0; display: grid; gap: 4px; }
+.plan-goal-index > button strong { overflow: hidden; color: var(--ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.plan-goal-index > button small { font-size: 9px; }
+.plan-goal-detail { padding: 20px; box-shadow: none; }
+.plan-goal-detail > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; }
+.plan-goal-detail h2 { margin: 10px 0 5px; color: var(--ink); font-size: 24px; }
+.plan-goal-detail header p { margin: 0; color: var(--ink-2); font-size: 12px; line-height: 1.55; }
+.plan-goal-detail > header > div:last-child { display: grid; place-items: end; align-content: start; }
+.plan-goal-detail > header > div:last-child strong { color: var(--ink); font-size: 27px; }
+.plan-goal-detail > header > div:last-child span { color: var(--ink-2); font-size: 8px; }
+.plan-goal-meta { min-height: 48px; margin-top: 14px; display: flex; align-items: center; justify-content: space-between; color: var(--ink-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 10px; }
+.plan-goal-meta span, .plan-goal-meta button { display: flex; align-items: center; gap: 5px; }
+.plan-goal-meta button { color: var(--accent); background: transparent; border: 0; cursor: pointer; font-weight: 750; }
+.plan-task-list article { min-height: 63px; padding: 10px 0; display: grid; grid-template-columns: 27px minmax(0, 1fr) auto; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
+.plan-task-list article > div { min-width: 0; display: grid; gap: 3px; }
+.plan-task-list strong { color: var(--ink); font-size: 11px; }
+.plan-task-list span { color: var(--ink-2); font-size: 9px; }
+.plan-backlog { padding: 20px; box-shadow: none; }
+.plan-backlog > div { margin-top: 13px; }
+.plan-backlog article { min-height: 59px; padding: 8px 2px; display: grid; grid-template-columns: 27px minmax(0, 1fr) 80px 80px auto; align-items: center; gap: 10px; border-top: 1px solid var(--line); }
+.plan-backlog article > div { min-width: 0; display: grid; gap: 2px; }
+.plan-backlog article strong { color: var(--ink); font-size: 11px; }
+.plan-backlog article div span, .plan-backlog article > span { display: flex; align-items: center; gap: 4px; color: var(--ink-2); font-size: 9px; }@media (max-width: 1120px) {
+  /* Widen the tracks, not the items. A `min-width` larger than its grid track
+     makes each day overflow and paint over its neighbour instead of pushing it,
+     so the columns overlapped and clipped titles mid-word. Sizing the track and
+     letting the day fill it keeps the board scrollable and legible. */
+  .draft-week-board { overflow-x: auto; grid-template-columns: repeat(7, minmax(150px, 1fr)); }
+  .draft-day { min-width: 0; }
+  .week-board { overflow-x: auto; grid-template-columns: repeat(7, minmax(128px, 1fr)); }
+  .week-day { min-width: 0; }
+}
+@media (max-width: 760px) {
+  .plan-toolbar { align-items: stretch; flex-direction: column; }
+  .plan-view-tabs { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .plan-view-tabs button { justify-content: center; min-height: 44px; }
+  .plan-toolbar-meta { flex-wrap: wrap; }
+  .plan-toolbar-meta .button { width: 100%; min-height: 44px; }
+  .planning-independence-note { grid-template-columns: auto minmax(0, 1fr); }
+  .planning-independence-note .button { grid-column: 1 / -1; width: 100%; }
+  .schedule-draft-editor { padding: 16px; }
+  .schedule-draft-editor > header, .schedule-draft-editor > footer { align-items: stretch; flex-direction: column; }
+  .draft-editor-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .draft-editor-actions .button:last-child { grid-column: 1 / -1; }
+  .draft-health { align-items: flex-start; flex-direction: column; gap: 5px; }
+  /* One day per swipe. The track carries the width so the days sit side by side
+     in a scroll-snapping row instead of stacking on top of each other. */
+  .draft-week-board { scroll-snap-type: x mandatory; grid-template-columns: repeat(7, min(80vw, 290px)); }
+  .draft-day { min-width: 0; scroll-snap-align: start; }
+  .draft-day > div { min-height: 260px; }
+  .block-editor-actions { align-items: stretch; flex-direction: column; }
+  .block-editor-actions .button { width: 100%; }
+  .week-board { scroll-snap-type: x mandatory; grid-template-columns: repeat(7, min(78vw, 280px)); }
+  .week-day { min-width: 0; scroll-snap-align: start; }
+  .week-day-blocks { min-height: 320px; }
+  .plan-goals-layout { grid-template-columns: 1fr; }
+  .plan-goal-index { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; }
+  .plan-goal-index > button { min-width: 245px; scroll-snap-align: start; }
+  .schedule-proposal-card > footer { align-items: stretch; flex-direction: column; }
+  .schedule-proposal-card > footer > div { width: 100%; margin: 0; }
+  .schedule-proposal-card > footer button { width: 100%; min-height: 44px; }
+  .plan-backlog article { grid-template-columns: 27px minmax(0, 1fr) auto; }
+  .plan-backlog article > span { grid-column: 2; }
+  .plan-backlog article > .badge { grid-column: 3; grid-row: 1; }
+}
+
+
+/* ── Today: the day's actual shape ────────────────────────────────────────
+   The screen renders every block scheduled for the current calendar day, so
+   these rules carry real list weight rather than a single summary row. */
+.day-summary { margin: 0 0 4px; display: flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 13px; }
+.day-summary svg { flex: none; color: var(--accent); }
+
+.day-timeline { margin: 14px 0 0; padding: 0; display: grid; gap: 2px; list-style: none; }
+
+.day-block {
+  min-height: 54px;
+  padding: 9px 12px;
+  display: grid;
+  grid-template-columns: 44px 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-radius: 11px;
+}
+
+.day-block + .day-block { position: relative; }
+/* Hairline rail between consecutive blocks, aligned to the status dot. */
+.day-block + .day-block::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 61px;
+  width: 1px;
+  height: 5px;
+  background: var(--line-strong);
+}
+
+.day-time { color: var(--ink-2); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.day-mark {
+  width: 11px;
+  height: 11px;
+  display: grid;
+  place-items: center;
+  color: var(--on-accent);
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.day-body { min-width: 0; display: grid; gap: 2px; }
+.day-body strong { color: var(--ink); font-size: 14px; font-weight: 700; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.day-body small { color: var(--ink-2); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.day-state { padding: 3px 9px; border-radius: 99px; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+.day-state-done { color: var(--ink-2); background: var(--surface-raised); }
+.day-state-now { color: var(--on-accent); background: var(--accent-mark); }
+.day-state-upcoming { color: var(--ink-2); background: var(--surface-raised); }
+.day-state-missed { color: var(--danger, #a4443a); background: color-mix(in srgb, var(--danger, #a4443a) 12%, transparent); }
+
+.day-block.is-now { background: color-mix(in srgb, var(--accent-mark) 13%, transparent); }
+.day-block.is-now .day-mark { background: var(--accent-mark); border-color: var(--accent-mark); }
+.day-block.is-done .day-mark { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.day-block.is-done .day-body strong { color: var(--ink-2); text-decoration: line-through; text-decoration-color: var(--line-strong); }
+.day-block.is-missed .day-mark { border-color: var(--danger, #a4443a); }
+
+/* ============================================================================
+   Redesign layer — see finalplan.md
+   Loaded last so it can refine the established visual language without
+   rewriting it. Grouped by the plan section that motivates each rule.
+   ========================================================================= */
+
+/* §6.6 Plan — week navigation and readable block titles (F-08, F-15) */
+.week-nav { display: inline-flex; align-items: center; gap: 4px; padding: 2px; border: 1px solid var(--line); border-radius: 10px; }
+.week-nav > button { min-width: 28px; height: 28px; display: grid; place-items: center; color: var(--ink-2); background: transparent; border: 0; border-radius: 8px; cursor: pointer; transition: background 150ms ease-out, color 150ms ease-out; }
+.week-nav > button:hover { color: var(--ink); background: var(--surface-raised); }
+.week-nav > button:focus-visible { outline: 2px solid var(--focus, var(--accent-hover)); outline-offset: 1px; }
+.week-nav > span { min-width: 84px; padding-inline: 4px; text-align: center; color: var(--ink-2); font-size: 12px; font-weight: 600; }
+.week-nav-today { width: auto !important; padding-inline: 8px; font-size: 12px; font-weight: 600; }
+/* Generated titles run long ("Run the dense-null candidate on the two completed
+   LL477 H-DAB bundles") and wrapped to five or six lines in a narrow column. */
+.week-block strong,
+.draft-block strong { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* §8.2 Type scale — six sizes, minimum body 13px, nothing below 12px. The old
+   scale ran down to 8px on week blocks and connection chips. */
+.week-block small { font-size: var(--t-micro); }
+.week-block strong { font-size: var(--t-small); line-height: 1.35; }
+.week-block span { font-size: var(--t-micro); }
+.week-day > header span { font-size: var(--t-micro); }
+.plan-toolbar-meta > span { font-size: var(--t-micro); }
+.plan-toolbar-meta strong { font-size: var(--t-small); }
+.draft-block small,
+.draft-commitment small { font-size: var(--t-micro); }
+.draft-block strong,
+.draft-commitment strong { font-size: var(--t-small); }
+.draft-block span,
+.draft-commitment span { font-size: var(--t-micro); }
+.week-empty { color: var(--ink-2); font-size: var(--t-micro); }
