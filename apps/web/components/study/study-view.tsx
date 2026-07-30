@@ -24,7 +24,6 @@ import { Button, EmptyState, LoadingButton, StatusChip } from "@/components/ui";
 import { PageHeader } from "@/components/workspace/page-header";
 import { PracticeRunner } from "@/components/workspace/question-bank-panel";
 import { text, type WorkspaceState } from "@/components/workspace/types";
-import { Stagger } from "@/components/ui/motion";
 import { ReviewQueue } from "./review-queue";
 import { ConceptList } from "./concept-list";
 import { rankConcepts, type ConceptSignal } from "./mastery";
@@ -122,7 +121,7 @@ export function StudyView({
   }
 
   return (
-    <Stagger className="screen study-screen" selector=":scope > *">
+    <div className="screen study-screen">
       <PageHeader
         title="Study"
         description="What to work on next, what you know, and the material behind it. Progress changes only after a check that can support it."
@@ -215,6 +214,6 @@ export function StudyView({
         showToast={showToast}
         onRefresh={onRefresh}
       />
-    </Stagger>
+    </div>
   );
 }

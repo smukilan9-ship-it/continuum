@@ -44,7 +44,7 @@ export function Stagger({
   distance?: number;
   className?: string;
 }) {
-  return <div className={className ? `stagger ${className}` : "stagger"}>{children}</div>;
+  return <div className={className}>{children}</div>;
 }
 
 /**
