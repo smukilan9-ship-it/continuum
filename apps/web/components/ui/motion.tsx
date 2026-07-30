@@ -39,23 +39,36 @@ export function Stagger({
   useEffect(() => {
     const node = host.current;
     if (!node || reduced()) return;
-    let ctx: { revert: () => void } | undefined;
     let cancelled = false;
+    let tween: { kill: () => void } | undefined;
+
+    /**
+     * Motion must never be able to hide content. `gsap.context().revert()`
+     * restores the state it recorded, and if a re-render tears the effect down
+     * mid-flight that state is the tween's own start — opacity 0 — which left
+     * a whole screen faded out with no way back. So the elements are collected
+     * once, animated with an explicit `fromTo`, and the inline styles are
+     * cleared by hand on every exit path: complete, cancel, and unmount.
+     */
+    const targets = Array.from(node.querySelectorAll<HTMLElement>(selector));
+    if (!targets.length) return;
+    const clear = () => {
+      for (const target of targets) {
+        target.style.removeProperty("opacity");
+        target.style.removeProperty("transform");
+      }
+    };
+
     void import("gsap").then(({ gsap }) => {
-      if (cancelled || !host.current) return;
-      ctx = gsap.context(() => {
-        gsap.from(selector, {
-          opacity: 0,
-          y: distance,
-          duration: 0.5,
-          delay,
-          ease: "power2.out",
-          stagger: 0.055,
-          clearProps: "opacity,transform",
-        });
-      }, node);
+      if (cancelled) { clear(); return; }
+      tween = gsap.fromTo(
+        targets,
+        { opacity: 0, y: distance },
+        { opacity: 1, y: 0, duration: 0.5, delay, ease: "power2.out", stagger: 0.055, onComplete: clear },
+      );
     });
-    return () => { cancelled = true; ctx?.revert(); };
+
+    return () => { cancelled = true; tween?.kill(); clear(); };
   }, [selector, delay, distance]);
 
   return <div ref={host} className={className}>{children}</div>;
