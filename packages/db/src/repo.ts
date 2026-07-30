@@ -72,10 +72,15 @@ function demoSeedEnabled(env: NodeJS.ProcessEnv = process.env) {
   return env.NODE_ENV !== "production";
 }
 
+/**
+ * The Blob URL never leaves the server; `hasStoredOriginal` is what the client
+ * needs, and all it needs, to know whether a Download can succeed (§13.2).
+ * Without it the Library could only guess, which is why that menu item shipped
+ * permanently disabled.
+ */
 function publicSourceMetadata(source: typeof sources.$inferSelect) {
   const { storagePath, ...metadata } = source;
-  void storagePath;
-  return metadata;
+  return { ...metadata, hasStoredOriginal: Boolean(storagePath) };
 }
 
 function publicQuestionBankSummary(bank: typeof questionBanks.$inferSelect) {
@@ -1462,9 +1467,41 @@ export class NeonRepository {
     return source;
   }
 
-  async listSourceChunks(userId = DEMO_USER_ID): Promise<StoredSourceChunk[]> {
+  /**
+   * Re-files an existing source into a project, or unfiles it (`null`).
+   *
+   * Both sides are ownership-checked in the statement itself: the source must
+   * belong to the caller, and so must the destination project, so a guessed
+   * project id can neither read nor acquire someone else's upload.
+   */
+  async assignSourceToProject(sourceId: string, userId: string, projectId: string | null) {
     await this.ensureDemoSeed();
-    const rows = await this.db.select({ chunk: sourceChunks, source: sources }).from(sourceChunks).innerJoin(sources, eq(sourceChunks.sourceId, sources.id)).where(and(eq(sources.userId, userId), eq(sources.deleted, false), eq(sourceChunks.deleted, false))).orderBy(asc(sourceChunks.sourceId), asc(sourceChunks.passage));
+    if (projectId) {
+      const [ownedProject] = await this.db.select({ id: projects.id }).from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId), eq(projects.deleted, false))).limit(1);
+      if (!ownedProject) return { status: "project_not_found" as const };
+    }
+    const [updated] = await this.db.update(sources).set({ projectId, updatedAt: new Date() })
+      .where(and(eq(sources.id, sourceId), eq(sources.userId, userId), eq(sources.deleted, false)))
+      .returning({ id: sources.id, title: sources.title, projectId: sources.projectId });
+    return updated ? { status: "ok" as const, source: updated } : { status: "source_not_found" as const };
+  }
+
+  /**
+   * The stored original for a download, including the `storage_path` that
+   * `publicSourceMetadata` strips from every listing — it is a Blob URL and
+   * must never reach the browser. Only the route that streams the bytes back
+   * calls this.
+   */
+  async getSourceOriginal(sourceId: string, userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    const [source] = await this.db.select({ id: sources.id, title: sources.title, mimeType: sources.mimeType, storagePath: sources.storagePath })
+      .from(sources).where(and(eq(sources.id, sourceId), eq(sources.userId, userId), eq(sources.deleted, false))).limit(1);
+    return source;
+  }
+
+  async listSourceChunks(userId = DEMO_USER_ID, sourceId?: string): Promise<StoredSourceChunk[]> {
+    await this.ensureDemoSeed();
+    const rows = await this.db.select({ chunk: sourceChunks, source: sources }).from(sourceChunks).innerJoin(sources, eq(sourceChunks.sourceId, sources.id)).where(and(eq(sources.userId, userId), eq(sources.deleted, false), eq(sourceChunks.deleted, false), ...(sourceId ? [eq(sources.id, sourceId)] : []))).orderBy(asc(sourceChunks.sourceId), asc(sourceChunks.passage));
     return rows.map(({ chunk, source }) => ({
       id: chunk.id,
       sourceId: source.id,
@@ -1711,6 +1748,56 @@ export class NeonRepository {
       }
     }
     return [...scored.values()].sort((left, right) => (right.score ?? 0) - (left.score ?? 0) || right.occurredAt.localeCompare(left.occurredAt)).slice(0, limit);
+  }
+
+  /**
+   * §9.9 AC-CX3 — "Forget": drop one remembered record out of every future
+   * retrieval, permanently.
+   *
+   * Not a hard delete, deliberately. `memory_records` and `memory_chunks` are
+   * the materialised head of an append-only event ledger — the thing that makes
+   * a citation checkable — and §16.8 forbids destructive changes. Forgetting
+   * therefore sets both `superseded` and `deleted`, the two flags every read in
+   * this file already filters on (`searchMemory`, `searchWorkspace`,
+   * `getStateSnapshot`, `getWorkspaceSnapshot`), which is what makes the
+   * exclusion total rather than best-effort.
+   *
+   * A row on `/context` is either a durable record ("How you like to work") or
+   * a retrieved passage (a search result), and the user does not distinguish
+   * them, so either id is accepted. Whichever is named, its counterpart on the
+   * other table goes with it — matched through the memory event that produced
+   * both, because `saveMemoryChunk` does not populate `record_id`. Forgetting
+   * only one side would clear the list and leave retrieval untouched.
+   */
+  async forgetMemoryRecord(recordId: string, userId = DEMO_USER_ID) {
+    await this.ensureDemoSeed();
+    const [record] = await this.db.select().from(memoryRecords).where(and(eq(memoryRecords.id, recordId), eq(memoryRecords.userId, userId), eq(memoryRecords.deleted, false))).limit(1);
+    const [chunk] = record ? [] : await this.db.select().from(memoryChunks).where(and(eq(memoryChunks.id, recordId), eq(memoryChunks.userId, userId), eq(memoryChunks.deleted, false))).limit(1);
+    if (!record && !chunk) return undefined;
+
+    const eventIds = [...new Set((record ? [record.sourceEventId] : chunk?.sourceEventIds ?? []).filter(Boolean))];
+    const forgotten = { superseded: true, deleted: true, updatedAt: new Date() };
+
+    const chunkMatches = [
+      ...(chunk ? [eq(memoryChunks.id, chunk.id)] : []),
+      ...(record ? [eq(memoryChunks.recordId, record.id)] : []),
+      ...eventIds.map((id) => sql`${id} = any(${memoryChunks.sourceEventIds})`),
+    ];
+    const recordMatches = [
+      ...(record ? [eq(memoryRecords.id, record.id)] : []),
+      ...(eventIds.length ? [inArray(memoryRecords.sourceEventId, eventIds)] : []),
+    ];
+
+    const [chunkRows, recordRows] = await Promise.all([
+      chunkMatches.length
+        ? this.db.update(memoryChunks).set(forgotten).where(and(eq(memoryChunks.userId, userId), eq(memoryChunks.deleted, false), or(...chunkMatches))).returning({ id: memoryChunks.id })
+        : Promise.resolve([]),
+      recordMatches.length
+        ? this.db.update(memoryRecords).set(forgotten).where(and(eq(memoryRecords.userId, userId), eq(memoryRecords.deleted, false), or(...recordMatches))).returning({ id: memoryRecords.id })
+        : Promise.resolve([]),
+    ]);
+
+    return { id: recordId, kind: record ? "record" as const : "passage" as const, records: recordRows.length, passages: chunkRows.length };
   }
 
   async upsertEntitySummary(input: { id: string; userId: string; entityType: string; entityId: string; summary: string; tokenEstimate: number; sourceEventIds: string[]; eventWatermark: string }) {

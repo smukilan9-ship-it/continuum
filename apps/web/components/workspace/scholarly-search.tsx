@@ -27,7 +27,6 @@ import {
   type ScholarlyFailure,
 } from "@/components/library/scholarly-errors";
 import { normalizeDoi, unfiledDestination, type Destination } from "@/components/library/types";
-import type { ZoteroDoiIndex } from "@/components/library/use-zotero-doi-index";
 import { VirtualList } from "@/components/library/virtual-list";
 import type { NormalizedScholarlyWork } from "@/lib/scholarly";
 // The search surface is shared with Research, which never imports the Library
@@ -66,14 +65,17 @@ type ResultPayload = ApiError & {
   cache?: string;
   cachedAt?: string;
   keyless?: boolean;
+  zoteroMatches?: ZoteroMatch[];
 };
+/** One row of the server-side DOI join against `zotero_items`. */
+type ZoteroMatch = { doi?: unknown; title?: unknown };
 type DetailPayload = ApiError & {
   entity?: ScholarlyEntity;
   work?: NormalizedScholarlyWork;
   relatedWorks?: NormalizedScholarlyWork[];
   totalWorks?: number;
   nextCursor?: string;
-  zoteroMatches?: Array<Record<string, unknown>>;
+  zoteroMatches?: ZoteroMatch[];
   cache?: string;
   cachedAt?: string;
 };
@@ -95,6 +97,26 @@ const currentYear = new Date().getFullYear();
  * explain.
  */
 const sessionCache = new Map<string, ResultPayload>();
+
+/**
+ * "In your Zotero" (§13.2, AC-Z3, finding S6).
+ *
+ * Every response that carries works also carries the exact DOI matches for
+ * *those* works, joined server-side against `zotero_items`. This replaced a
+ * session-wide client index that crawled up to 500 Zotero items on the first
+ * Discover visit: expensive, and only ever approximate — past the crawl limit,
+ * "no chip" meant "not indexed", not "not in your library". Matches accumulate
+ * across pages because paging appends works rather than replacing them.
+ */
+function mergeZoteroMatches(current: Map<string, string>, incoming: ZoteroMatch[] | undefined) {
+  if (!incoming?.length) return current;
+  const next = new Map(current);
+  for (const match of incoming) {
+    const doi = normalizeDoi(typeof match.doi === "string" ? match.doi : undefined);
+    if (doi) next.set(doi, typeof match.title === "string" ? match.title : "In your Zotero");
+  }
+  return next.size === current.size ? current : next;
+}
 
 function relativeAge(iso?: string) {
   if (!iso) return undefined;
@@ -136,7 +158,6 @@ export function ScholarlySearch({
   onChangeTarget,
   onSaveWork,
   onAsk,
-  zoteroIndex,
   seed,
 }: {
   mode: "explore" | "collect";
@@ -156,7 +177,6 @@ export function ScholarlySearch({
   onChangeTarget?: (destination?: Destination) => void;
   onSaveWork?: (work: NormalizedScholarlyWork, destination: Destination) => Promise<void> | void;
   onAsk?: (work: NormalizedScholarlyWork) => void;
-  zoteroIndex?: ZoteroDoiIndex;
   /**
    * A search handed in from elsewhere — currently the Zotero tab's "Find in
    * OpenAlex". `token` changes per request so the same DOI can be sent twice.
@@ -181,6 +201,7 @@ export function ScholarlySearch({
   const [nextCursor, setNextCursor] = useState<string>();
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([]);
   const [listCache, setListCache] = useState<{ cache?: string; cachedAt?: string }>({});
+  const [zoteroByDoi, setZoteroByDoi] = useState<Map<string, string>>(() => new Map());
 
   const [detailStatus, setDetailStatus] = useState<RegionStatus>("idle");
   const [detailFailure, setDetailFailure] = useState<ScholarlyFailure>();
@@ -242,6 +263,7 @@ export function ScholarlySearch({
       const payload = await response.json() as DetailPayload;
       if (!response.ok) throw failureFromResponse(response.status, payload);
       setDetail(payload);
+      setZoteroByDoi((current) => mergeZoteroMatches(current, payload.zoteroMatches));
       setDetailStatus("ready");
       if (options.pushUrl !== false) pushDeepLink(entry);
     } catch (cause) {
@@ -356,6 +378,7 @@ export function ScholarlySearch({
       setNextCursor(payload.nextCursor);
       setProviderStatuses(payload.providers ?? []);
       setListCache({ cache: payload.cache, cachedAt: payload.cachedAt });
+      setZoteroByDoi((current) => mergeZoteroMatches(current, payload.zoteroMatches));
       lastSearch.current = { kind, query: trimmed };
       setListStatus((kind === "works" ? nextWorks.length : nextResults.length) ? "ready" : "empty");
       if (!cursor) {
@@ -397,6 +420,7 @@ export function ScholarlySearch({
       if (!response.ok) throw failureFromResponse(response.status, payload);
       const nextGraph = cursor ? [...graph, ...(payload.works ?? [])] : payload.works ?? [];
       setGraph(nextGraph);
+      setZoteroByDoi((current) => mergeZoteroMatches(current, payload.zoteroMatches));
       setGraphCursor(payload.nextCursor);
       setGraphStatus(nextGraph.length ? "ready" : "empty");
     } catch {
@@ -454,8 +478,8 @@ export function ScholarlySearch({
 
   const zoteroFor = useCallback((work: NormalizedScholarlyWork) => {
     const doi = normalizeDoi(work.doi);
-    return doi ? zoteroIndex?.matches.get(doi) : undefined;
-  }, [zoteroIndex]);
+    return doi ? zoteroByDoi.get(doi) : undefined;
+  }, [zoteroByDoi]);
 
   const selectedTitle = detail?.entity?.title ?? detail?.work?.title;
   const cacheAge = relativeAge(listCache.cachedAt);
@@ -578,9 +602,9 @@ export function ScholarlySearch({
         {crossrefFailed ? (
           <StatusChip tone="warning" label="Crossref unavailable — showing OpenAlex only" className="scholarly-degraded" />
         ) : null}
-        {zoteroIndex?.partial ? (
-          <StatusChip tone="neutral" label="Zotero match covers your 500 most recent items" />
-        ) : null}
+        {/* The old client-side index could only see its first 500 items and had
+            to admit it here. The match is now an exact join over the whole
+            library, so there is nothing left to qualify. */}
       </div>
 
       <div className={showDetailFullPage ? "scholarly-layout scholarly-layout-detail" : "scholarly-layout"}>

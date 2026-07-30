@@ -5,6 +5,7 @@ import { del, put } from "@vercel/blob";
 import { extractText } from "unpdf";
 import mammoth from "mammoth";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getStore } from "@/lib/store";
 import { enforceRateLimit, getRequestUser, sameOriginWrite } from "@/lib/auth";
 import { detectQuestionImageType, extractContextFromImages, normalizeQuestionDocument } from "@/lib/image-question-extraction";
@@ -19,7 +20,58 @@ export async function GET(request: Request) {
   const rate = await enforceRateLimit(request, "source-read", Number(process.env.SOURCE_READS_PER_MINUTE ?? 60), 60_000, user.id);
   if (!rate.allowed) return NextResponse.json({ error: "Source read rate limit exceeded" }, { status: 429, headers: { "retry-after": "60" } });
   const store = getStore(user.id);
+  const url = new URL(request.url);
+  const sourceId = url.searchParams.get("sourceId");
+
+  // §13.3 source detail: the numbered passages Continuum actually indexed —
+  // the only honest answer to "what does it have from this file?".
+  if (url.searchParams.get("include") === "passages") {
+    if (!sourceId || sourceId.length > 200) return NextResponse.json({ error: "A valid sourceId is required" }, { status: 400 });
+    const passages = await store.listSourceChunks(sourceId);
+    // `listSourceChunks` is already user-scoped, so an id belonging to someone
+    // else simply has no passages — it never reveals that the source exists.
+    return NextResponse.json({
+      sourceId,
+      passages: passages.map((chunk) => ({ id: chunk.id, passage: chunk.passage, text: chunk.text, reference: chunk.reference })),
+    }, { headers: { "cache-control": "private, no-store" } });
+  }
+
   return NextResponse.json({ sources: await store.listSources(), adapter: store.kind }, { headers: { "cache-control": "private, no-store" } });
+}
+
+const patchSchema = z.object({
+  sourceId: z.string().min(3).max(200),
+  // `null` unfiles a source; a string files it into a project the caller owns.
+  projectId: z.string().min(3).max(200).nullable(),
+});
+
+/**
+ * §13.2 "Send to project" — re-files an already-indexed source.
+ *
+ * This was the write the Library's overflow menu was missing, which is why the
+ * item shipped disabled. Ownership is checked on both ends inside the store, so
+ * a guessed project id can neither be written to nor probed for existence.
+ */
+export async function PATCH(request: Request) {
+  if (!sameOriginWrite(request)) return NextResponse.json({ error: "Cross-origin source changes are not allowed" }, { status: 403 });
+  const user = await getRequestUser(request);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const rate = await enforceRateLimit(request, "source-update", Number(process.env.SOURCE_UPDATES_PER_HOUR ?? 120), 60 * 60_000, user.id);
+  if (!rate.allowed) return NextResponse.json({ error: "Source update rate limit exceeded" }, { status: 429, headers: { "retry-after": "3600" } });
+  const parsed = patchSchema.safeParse(await request.json().catch(() => undefined));
+  if (!parsed.success) return NextResponse.json({ error: "A sourceId and a projectId (or null) are required", issues: parsed.error.issues }, { status: 400 });
+  const store = getStore(user.id);
+  const result = await store.assignSourceToProject(parsed.data.sourceId, parsed.data.projectId);
+  if (result.status === "project_not_found") return NextResponse.json({ error: "Project not found or not accessible" }, { status: 404 });
+  if (result.status === "source_not_found") return NextResponse.json({ error: "Source not found" }, { status: 404 });
+  await store.appendEvent({
+    type: "source.project.changed",
+    summary: parsed.data.projectId ? `Filed ${result.source.title} into a research project.` : `Unfiled ${result.source.title} from its project.`,
+    entityIds: [result.source.id],
+    ...(parsed.data.projectId ? { projectId: parsed.data.projectId } : {}),
+    payload: { projectId: parsed.data.projectId },
+  });
+  return NextResponse.json({ source: result.source });
 }
 
 export async function DELETE(request: Request) {

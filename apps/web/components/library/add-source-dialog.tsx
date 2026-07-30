@@ -139,6 +139,9 @@ export function AddSourceDialog({
             processingState: "ready",
             metadataOnly: false,
             hasPdf: false,
+            // The duplicate is described from the upload response, which does
+            // not report storage; the Library row for the real record does.
+            hasOriginal: false,
           },
           kind: "content",
         });

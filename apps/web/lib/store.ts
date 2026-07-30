@@ -48,6 +48,19 @@ export type StoreWriteResult = {
   summary: string;
 };
 
+/**
+ * What "Forget" removed. `kind` says which of the two shapes on `/context` the
+ * caller named; the counts are what the route reports back, so the confirmation
+ * can state a fact rather than an assumption.
+ */
+export type ForgottenMemory = { id: string; kind: "record" | "passage"; records: number; passages: number };
+
+/** Ownership is checked on both the source and the destination project. */
+export type SourceAssignment =
+  | { status: "ok"; source: { id: string; title: string; projectId: string | null } }
+  | { status: "source_not_found" }
+  | { status: "project_not_found" };
+
 export interface Store {
   readonly kind: "memory" | "neon";
   readonly userId: string;
@@ -86,11 +99,18 @@ export interface Store {
   listSources(scope?: "library" | "all"): Promise<unknown[]>;
   savePaper(paper: PaperWrite): Promise<{ paper: unknown; duplicate: boolean }>;
   listPapers(projectId?: string): Promise<unknown[]>;
-  listSourceChunks(): Promise<StoredSourceChunk[]>;
+  /** All of the user's passages, or one source's (§13.3 source detail). */
+  listSourceChunks(sourceId?: string): Promise<StoredSourceChunk[]>;
   deleteSource(sourceId: string): Promise<{ id: string; title: string; storagePath?: string } | undefined>;
+  /** Re-files an indexed source into a project the caller owns, or unfiles it. */
+  assignSourceToProject(sourceId: string, projectId: string | null): Promise<SourceAssignment>;
+  /** The stored original, including the storage path listings deliberately strip. */
+  getSourceOriginal(sourceId: string): Promise<{ id: string; title: string; mimeType: string; storagePath?: string } | undefined>;
   vectorSearch(embedding: number[], limit: number): Promise<StoredSourceChunk[]>;
   searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }): Promise<StoredMemoryChunk[]>;
   searchWorkspace(input: { query: string; kinds?: string[]; limit?: number }): Promise<WorkspaceSearchHit[]>;
+  /** §9.9 AC-CX3 — permanently excludes one remembered record from retrieval. */
+  forgetMemoryRecord(recordId: string): Promise<ForgottenMemory | undefined>;
   saveReceipt(receipt: OutcomeReceipt, clientId?: string): Promise<void>;
   listReceipts(limit?: number): Promise<unknown[]>;
   createMilestone(input: { id: string; goalId: string; title: string; order: number; dueAt?: string }, now: string): Promise<void>;
@@ -172,6 +192,11 @@ function compactToBudget<T>(value: T, maxTokens: number): T {
   return clone;
 }
 
+/** The `superseded = false and deleted = false` predicate the Neon reads use. */
+function current(row: { superseded?: boolean; deleted?: boolean }) {
+  return !row.superseded && !row.deleted;
+}
+
 function memoryContent(input: AppEventInput) {
   const durablePayload = Object.fromEntries(Object.entries(input.payload).filter(([key]) => !["rawConversation", "transcript", "fullText"].includes(key)));
   return `${input.summary}\nType: ${input.type}\n${JSON.stringify(durablePayload)}`.slice(0, 12_000);
@@ -221,7 +246,7 @@ class MemoryStore implements Store {
       goals: ["goals", "tasks", "schedule"],
       learn: ["goals", "tasks", "taskDependencies", "learningState", "resourceActivities", "questionBanks", "receipts"],
       research: ["goals", "tasks", "projects", "decisions", "claims", "notes", "sources", "papers"],
-      memory: ["goals", "tasks", "projects", "decisions", "claims", "notes", "sources", "papers", "learningState", "memoryChunks", "receipts", "events", "schedule"],
+      memory: ["goals", "tasks", "projects", "decisions", "claims", "notes", "sources", "papers", "learningState", "memoryChunks", "memoryRecords", "receipts", "events", "schedule"],
       activity: ["proposals", "events"],
       code: ["goals", "tasks", "projects", "learningState", "receipts"],
       assistant: ["goals", "tasks", "projects", "learningState", "sources", "papers", "receipts", "assistantSessions"],
@@ -230,7 +255,12 @@ class MemoryStore implements Store {
     };
     return Object.fromEntries((selected[view] ?? []).map((key) => [
       key,
-      key === "questionBanks" ? publicQuestionBanksForWorkspace(state[key]) : state[key],
+      key === "questionBanks" ? publicQuestionBanksForWorkspace(state[key])
+        // Forgotten memory never reaches a screen, exactly as the Neon reads
+        // filter on `superseded`/`deleted` (§9.9 AC-CX3).
+        : key === "memoryRecords" ? demoStore.memoryRecords.filter(current)
+        : key === "memoryChunks" ? demoStore.memoryChunks.filter(current)
+        : state[key],
     ]));
   }
 
@@ -467,8 +497,19 @@ class MemoryStore implements Store {
     const event = toEvent(this.userId, input, now);
     const stored: DemoEvent = { id: event.id, type: event.type, entityIds: input.entityIds, summary: input.summary, payload: event.payload, occurredAt: event.timestamp };
     demoStore.events.unshift(stored);
+    // Materialise the record head exactly as `repo.appendMemoryEvent` does, so
+    // `/context` shows the same six sections locally and `forgetMemoryRecord`
+    // has both shapes to act on in either store (§16.8).
+    const recordId = `record_${event.id.replace(/^event_/, "")}`;
+    const supersededType = event.type.replace(/\.(deleted|superseded)$/, ".saved");
+    for (const existing of demoStore.memoryRecords) {
+      if (existing.type === supersededType && existing.entityId === event.entityId && current(existing)) existing.superseded = true;
+    }
+    if (!event.type.endsWith(".deleted") && !event.type.endsWith(".superseded")) {
+      demoStore.memoryRecords.unshift({ id: recordId, type: event.type, entityId: event.entityId, value: event.payload, sourceEventId: event.id, superseded: false, deleted: false, updatedAt: now });
+    }
     const content = memoryContent(input);
-    demoStore.memoryChunks.unshift({ id: opaqueId("memory"), kind: input.type, content, ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.goalId ? { goalId: input.goalId } : {}), occurredAt: now, importance: input.importance ?? 0.6, tokenEstimate: estimateTokens(content), sourceEventIds: [event.id], metadata: { surface: event.source.surface } });
+    demoStore.memoryChunks.unshift({ id: opaqueId("memory"), recordId, kind: input.type, content, ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.goalId ? { goalId: input.goalId } : {}), occurredAt: now, importance: input.importance ?? 0.6, tokenEstimate: estimateTokens(content), sourceEventIds: [event.id], metadata: { surface: event.source.surface }, superseded: false, deleted: false });
     return stored;
   }
 
@@ -565,8 +606,7 @@ class MemoryStore implements Store {
       .filter((item) => scope === "all" || (item.retention ?? "library") === "library")
       .map((item) => {
         const { storagePath, ...metadata } = item;
-        void storagePath;
-        return metadata;
+        return { ...metadata, hasStoredOriginal: Boolean(storagePath) };
       });
   }
   async savePaper(paper: PaperWrite) {
@@ -577,12 +617,46 @@ class MemoryStore implements Store {
     return { paper: saved, duplicate: false };
   }
   async listPapers(projectId?: string) { return demoStore.papers.filter((paper) => !projectId || paper.projectId === projectId); }
-  async listSourceChunks() { return demoStore.chunks; }
+  async listSourceChunks(sourceId?: string) { return demoStore.chunks.filter((chunk) => !sourceId || chunk.sourceId === sourceId); }
   async deleteSource(sourceId: string) { const source = demoStore.sources.find((item) => item.id === sourceId); if (!source) return undefined; demoStore.sources = demoStore.sources.filter((item) => item.id !== sourceId); demoStore.chunks = demoStore.chunks.filter((chunk) => chunk.sourceId !== sourceId); return { id: source.id, title: source.title, ...(source.storagePath ? { storagePath: source.storagePath } : {}) }; }
+  /**
+   * The local mirror of `repo.assignSourceToProject`. The demo store holds one
+   * identity, so "exists" and "is mine" are the same question here; the Neon
+   * implementation checks the project's `user_id` explicitly.
+   */
+  async assignSourceToProject(sourceId: string, projectId: string | null): Promise<SourceAssignment> {
+    if (projectId && !demoStore.projects.some((project) => project.id === projectId)) return { status: "project_not_found" };
+    const source = demoStore.sources.find((item) => item.id === sourceId && item.userId === this.userId);
+    if (!source) return { status: "source_not_found" };
+    if (projectId) source.projectId = projectId; else delete source.projectId;
+    return { status: "ok", source: { id: source.id, title: source.title, projectId } };
+  }
+  async getSourceOriginal(sourceId: string) {
+    const source = demoStore.sources.find((item) => item.id === sourceId && item.userId === this.userId);
+    return source ? { id: source.id, title: source.title, mimeType: source.mimeType, ...(source.storagePath ? { storagePath: source.storagePath } : {}) } : undefined;
+  }
   async vectorSearch() { return []; }
   async searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }) {
     const query = input.query.toLowerCase();
-    return demoStore.memoryChunks.filter((chunk) => (!input.goalId || chunk.goalId === input.goalId) && (!input.projectId || chunk.projectId === input.projectId) && (!input.types?.length || input.types.includes(chunk.kind)) && chunk.content.toLowerCase().includes(query)).slice(0, input.limit ?? 8);
+    return demoStore.memoryChunks.filter((chunk) => current(chunk) && (!input.goalId || chunk.goalId === input.goalId) && (!input.projectId || chunk.projectId === input.projectId) && (!input.types?.length || input.types.includes(chunk.kind)) && chunk.content.toLowerCase().includes(query)).slice(0, input.limit ?? 8);
+  }
+  /** The local mirror of `repo.forgetMemoryRecord` — same two flags, same reach. */
+  async forgetMemoryRecord(recordId: string): Promise<ForgottenMemory | undefined> {
+    const record = demoStore.memoryRecords.find((row) => row.id === recordId && current(row));
+    const chunk = record ? undefined : demoStore.memoryChunks.find((row) => row.id === recordId && current(row));
+    if (!record && !chunk) return undefined;
+    const eventIds = new Set((record ? [record.sourceEventId] : chunk?.sourceEventIds ?? []).filter(Boolean));
+    const forget = (row: { superseded?: boolean; deleted?: boolean }) => { row.superseded = true; row.deleted = true; };
+
+    const passages = demoStore.memoryChunks.filter((row) => current(row) && (
+      row.id === recordId
+      || (record ? row.recordId === record.id : false)
+      || row.sourceEventIds.some((id) => eventIds.has(id))
+    ));
+    const records = demoStore.memoryRecords.filter((row) => current(row) && (row.id === recordId || eventIds.has(row.sourceEventId)));
+    passages.forEach(forget);
+    records.forEach(forget);
+    return { id: recordId, kind: record ? "record" : "passage", records: records.length, passages: passages.length };
   }
   /**
    * The local-development mirror of `repo.searchWorkspace` (§8.4). It searches
@@ -614,7 +688,7 @@ class MemoryStore implements Store {
     if (wanted("paper")) for (const paper of demoStore.papers) if (matches(paper.title, paper.doi)) hits.push({ kind: "paper", id: String(paper.id), title: String(paper.title ?? "Untitled paper"), snippet: [Array.isArray(paper.authors) ? paper.authors.slice(0, 3).join(", ") : "", paper.year].filter(Boolean).join(" · "), context: projectTitle(paper.projectId), parentId: paper.projectId ? String(paper.projectId) : undefined, updatedAt: stamp(paper) });
     if (wanted("conversation")) for (const session of demoStore.assistantSessions) if (matches(session.title, session.summary)) hits.push({ kind: "conversation", id: String(session.id), title: String(session.title ?? "Conversation"), snippet: snippet(session.summary), context: "Conversation", updatedAt: String(session.lastMessageAt ?? stamp(session)) });
     if (wanted("note")) for (const note of demoStore.notes) if (matches(note.text)) hits.push({ kind: "note", id: String(note.id), title: snippet(note.text).slice(0, 80), snippet: snippet(note.text), context: projectTitle(note.projectId), parentId: note.projectId ? String(note.projectId) : undefined, updatedAt: stamp(note) });
-    if (wanted("memory")) for (const chunk of demoStore.memoryChunks) if (matches(chunk.content)) hits.push({ kind: "memory", id: chunk.id, title: snippet(chunk.content).slice(0, 80), snippet: snippet(chunk.content), context: `Remembered · ${chunk.kind.replaceAll("_", " ")}`, updatedAt: chunk.occurredAt });
+    if (wanted("memory")) for (const chunk of demoStore.memoryChunks) if (current(chunk) && matches(chunk.content)) hits.push({ kind: "memory", id: chunk.id, title: snippet(chunk.content).slice(0, 80), snippet: snippet(chunk.content), context: `Remembered · ${chunk.kind.replaceAll("_", " ")}`, updatedAt: chunk.occurredAt });
     return hits
       .sort((left, right) => {
         const rank = (hit: WorkspaceSearchHit) => (hit.title.toLowerCase().startsWith(needle) ? 0 : hit.title.toLowerCase().includes(needle) ? 1 : 2);
@@ -871,8 +945,10 @@ class NeonStore implements Store {
   async listSources(scope: "library" | "all" = "library") { return this.repo.listSources(this.userId, scope); }
   async savePaper(paper: PaperWrite) { return this.repo.savePaper({ ...paper, userId: this.userId }); }
   async listPapers(projectId?: string) { return this.repo.listPapers(this.userId, projectId); }
-  async listSourceChunks() { return this.repo.listSourceChunks(this.userId); }
+  async listSourceChunks(sourceId?: string) { return this.repo.listSourceChunks(this.userId, sourceId); }
   async deleteSource(sourceId: string) { const source = await this.repo.softDeleteSource(sourceId, this.userId); return source ? { id: source.id, title: source.title, ...(source.storagePath ? { storagePath: source.storagePath } : {}) } : undefined; }
+  async assignSourceToProject(sourceId: string, projectId: string | null) { return this.repo.assignSourceToProject(sourceId, this.userId, projectId); }
+  async getSourceOriginal(sourceId: string) { const source = await this.repo.getSourceOriginal(sourceId, this.userId); return source ? { id: source.id, title: source.title, mimeType: source.mimeType, ...(source.storagePath ? { storagePath: source.storagePath } : {}) } : undefined; }
   async vectorSearch(embedding: number[], limit: number) { return this.repo.vectorSearch(embedding, limit, this.userId); }
   async searchMemory(input: { query: string; types?: string[]; goalId?: string; projectId?: string; limit?: number }) {
     let embedding: number[] | undefined;
@@ -880,6 +956,7 @@ class NeonStore implements Store {
     return this.repo.searchMemory({ ...input, embedding }, this.userId);
   }
   async searchWorkspace(input: { query: string; kinds?: string[]; limit?: number }) { return this.repo.searchWorkspace(this.userId, input.query, input.kinds, input.limit); }
+  async forgetMemoryRecord(recordId: string) { return this.repo.forgetMemoryRecord(recordId, this.userId); }
   async saveReceipt(receipt: OutcomeReceipt, clientId?: string) { await this.repo.saveSessionReceipt(receipt, clientId); }
   async listReceipts(limit = 10) { return this.repo.listSessionReceipts(this.userId, limit); }
   async createMilestone(input: { id: string; goalId: string; title: string; order: number; dueAt?: string }, now: string) { await this.repo.createMilestone(input, now, this.userId); }

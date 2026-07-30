@@ -37,7 +37,14 @@ export interface DemoStore {
   sources: DemoSource[];
   papers: Array<Record<string, unknown>>;
   chunks: StoredSourceChunk[];
-  memoryChunks: Array<{ id: string; kind: string; content: string; projectId?: string; goalId?: string; occurredAt: string; importance: number; tokenEstimate: number; sourceEventIds: string[]; score?: number; metadata: Record<string, unknown> }>;
+  /**
+   * `recordId`, `superseded` and `deleted` mirror the `memory_chunks` columns
+   * every Neon read filters on, so "Forget" (§9.9 AC-CX3) behaves identically
+   * with and without a database — the dual implementation §16.8 requires.
+   */
+  memoryChunks: Array<{ id: string; recordId?: string; kind: string; content: string; projectId?: string; goalId?: string; occurredAt: string; importance: number; tokenEstimate: number; sourceEventIds: string[]; score?: number; metadata: Record<string, unknown>; superseded?: boolean; deleted?: boolean }>;
+  /** The materialised head of the event ledger, as `memory_records` is on Neon. */
+  memoryRecords: Array<{ id: string; type: string; entityId?: string; value: Record<string, unknown>; sourceEventId: string; superseded?: boolean; deleted?: boolean; updatedAt: string }>;
   receipts: Array<Record<string, unknown>>;
   resourceActivities: Array<Record<string, unknown>>;
   questionBanks: Array<Record<string, unknown>>;
@@ -69,6 +76,7 @@ export const demoStore: DemoStore = globalThis.__continuumDemoStore ?? {
   papers: [],
   chunks: [],
   memoryChunks: [],
+  memoryRecords: [],
   receipts: [],
   resourceActivities: [],
   questionBanks: [],
@@ -101,6 +109,7 @@ demoStore.imageExtractions ??= [];
 demoStore.questionBankAttempts ??= [];
 demoStore.assistantSessions ??= [];
 demoStore.assistantMessages ??= [];
+demoStore.memoryRecords ??= [];
 
 if (process.env.NODE_ENV !== "production") globalThis.__continuumDemoStore = demoStore;
 
@@ -118,7 +127,7 @@ export function readDemoState(name: string, args: Record<string, unknown>) {
   };
   if (name === "search_academic_memory" || name === "search_memory") {
     const query = String(args.query ?? "").toLowerCase();
-    const dynamic = demoStore.memoryChunks.filter((record) => JSON.stringify(record).toLowerCase().includes(query));
+    const dynamic = demoStore.memoryChunks.filter((record) => !record.superseded && !record.deleted && JSON.stringify(record).toLowerCase().includes(query));
     return dynamic.slice(0, Number(args.limit ?? 6));
   }
   if (name === "list_projects") return demoStore.projects.slice(0, Number(args.limit ?? 30));

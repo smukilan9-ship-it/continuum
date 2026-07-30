@@ -29,8 +29,9 @@ const glyphs = {
 export type SourceRowActions = {
   onOpen: (source: LibrarySource) => void;
   onAsk: (source: LibrarySource) => void;
-  /** Absent while no write exists to re-file an already-indexed source. */
-  onSendToProject?: (source: LibrarySource) => void;
+  /** `PATCH /api/sources` re-files an indexed source into a project. */
+  onSendToProject: (source: LibrarySource) => void;
+  /** `GET /api/sources/download` streams the stored original back. */
   onDownload: (source: LibrarySource) => void;
   onDelete: (source: LibrarySource) => void;
   onRetry?: (source: LibrarySource) => void;
@@ -67,25 +68,28 @@ export function SourceRow({
     {
       label: "Send to project",
       icon: <FolderInput size={14} />,
-      onSelect: () => actions.onSendToProject?.(source),
-      disabled: !actions.onSendToProject || source.origin === "OpenAlex",
+      onSelect: () => actions.onSendToProject(source),
+      // A saved OpenAlex work is a bookmark, not one of the user's own sources:
+      // filing it means saving the paper into a project, which Discover's
+      // destination picker does. Everything else re-files through the API.
+      disabled: source.origin === "OpenAlex",
       disabledReason: source.origin === "OpenAlex"
         ? "Saved OpenAlex works are filed from Discover, where the destination picker lives."
-        // Continuum has no write that re-files an indexed source, so the menu
-        // says so rather than offering an action that quietly does nothing.
-        : "Filing an existing source into a project isn't available yet — choose the project when you add the source.",
+        : undefined,
     },
     {
-      label: "Download",
+      label: "Download original",
       icon: <Download size={14} />,
       onSelect: () => actions.onDownload(source),
-      // The stored original is deliberately withheld from the browser
-      // (`publicSourceMetadata` strips `storage_path`), so offering a download
-      // that 404s would be worse than saying why it is unavailable.
-      disabled: !source.externalUrl,
-      disabledReason: source.externalUrl
+      // The Blob URL never reaches the browser, so the row cannot construct a
+      // link itself; `hasOriginal` says whether the server has a file to send,
+      // and when it does not the menu gives the actual reason.
+      disabled: !source.hasOriginal,
+      disabledReason: source.hasOriginal
         ? undefined
-        : "Continuum indexes the text, and does not serve the stored original file back to the browser.",
+        : source.metadataOnly
+          ? "This is a citation record — Continuum keeps its details, not a file."
+          : "Continuum indexed this source's text but kept no original file to hand back.",
     },
     { label: "Delete", icon: <Trash2 size={14} />, onSelect: () => actions.onDelete(source), destructive: true },
   ];
