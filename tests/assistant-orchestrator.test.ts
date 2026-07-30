@@ -345,3 +345,61 @@ describe("a question that names something the user named", () => {
     expect(calls.searchSourcePassages).toBe(1);
   });
 });
+
+/**
+ * The follow-up shortcut, and the question it swallowed.
+ *
+ * Step 2 skips all retrieval when a message looks like "why?" — a follow-up
+ * whose referent is already on screen. Its only guard was 80 characters.
+ *
+ * "Why can't OASIS claim single-cell co-expression?" is 47 characters. It was
+ * therefore taken for a bare "why?", the shortcut returned before any leg ran,
+ * and the assistant answered a question about the user's own indexed source
+ * from general knowledge — inventing a different OASIS to do it. Nothing timed
+ * out, nothing errored, `degraded` was empty, and the request was classified
+ * `about_my_work` the whole time. The retrieval simply never happened, which is
+ * why it survived three rounds of fixing the retrieval.
+ */
+describe("a question that opens with why but brings its own subject", () => {
+  const history = [{ role: "assistant", content: "Earlier answer.", usedContext: [{ id: "goal_sat", label: "Raise SAT score" }] }];
+
+  it("is not treated as a bare follow-up", async () => {
+    const { store, calls } = fakeStore();
+    const result = await orchestrate({
+      store,
+      message: "Why can't OASIS claim single-cell co-expression?",
+      attachmentIds: [],
+      history,
+    });
+    expect(calls.searchSourcePassages).toBe(1);
+    expect(result.usedContext.length).toBeGreaterThan(0);
+  });
+
+  it("still short-circuits an actual follow-up", async () => {
+    const { store, calls } = fakeStore();
+    const result = await orchestrate({ store, message: "why?", attachmentIds: [], history });
+    expect(calls.searchSourcePassages).toBe(0);
+    expect(calls.read).toEqual([]);
+    expect(result.usedContext).toEqual([]);
+  });
+
+  it("still short-circuits a follow-up that only points at a prior item", async () => {
+    const { store, calls } = fakeStore();
+    await orchestrate({ store, message: "expand on the second one", attachmentIds: [], history });
+    expect(calls.searchSourcePassages).toBe(0);
+  });
+
+  it("retrieves for any why-question naming the user's material, not just OASIS", async () => {
+    const { store, calls } = fakeStore();
+    await orchestrate({ store, message: "Why did ANHIR change the gate?", attachmentIds: [], history });
+    expect(calls.searchSourcePassages).toBe(1);
+  });
+
+  it("leaves a genuinely general why-question alone", async () => {
+    // Nothing in this names the user's work, so it stays general knowledge and
+    // costs no retrieval — the behaviour the shortcut exists to protect.
+    const { store, calls } = fakeStore();
+    await orchestrate({ store, message: "Why does water expand when it freezes?", attachmentIds: [], history });
+    expect(calls.searchSourcePassages).toBe(0);
+  });
+});

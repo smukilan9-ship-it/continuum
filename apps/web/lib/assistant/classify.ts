@@ -205,11 +205,47 @@ export function isAnsweredByConversation(input: ClassifyInput): boolean {
 
   const FOLLOW_UP =
     /^\s*(?:why|why not|how come|and\??|so\??|then\??|expand|go on|continue|more|tell me more|explain (?:that|it|more)|what about (?:that|it)|the (?:first|second|third|last) one|elaborate)\b/i;
-  if (!FOLLOW_UP.test(message)) return false;
+  const opener = message.match(FOLLOW_UP);
+  if (!opener) return false;
+
+  // A message that names something in the user's workspace brought its own
+  // subject. It is a new question that happens to open with "why".
+  if (namesWorkspaceEntity(message, input.workspaceVocabulary)) return false;
+
+  /**
+   * What is left once the opener is removed decides this, not the length of the
+   * whole message.
+   *
+   * The only guard used to be 80 characters, and a complete self-contained
+   * question fits in 80 characters easily. "Why can't OASIS claim single-cell
+   * co-expression?" is 47, so it was taken for a bare "why?", the shortcut
+   * returned before any retrieval ran, and the assistant answered a question
+   * about the user's own indexed source entirely from general knowledge —
+   * inventing a different OASIS to do it. Nothing timed out and nothing
+   * errored; the retrieval simply never happened.
+   *
+   * A real follow-up leaves almost nothing behind: "why?" leaves none, "expand
+   * on the second one" leaves "on the second one". A new question leaves its
+   * subject.
+   */
+  const remainder = message
+    .slice(opener[0].length)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .filter((word) => word.length > 2 && !FOLLOW_UP_FILLER.has(word));
+  if (remainder.length > 3) return false;
 
   // A follow-up only stands on its own if something preceded it.
   return (input.conversationEntities?.length ?? 0) > 0;
 }
+
+/** Words that carry no subject of their own, so they do not make a message new. */
+const FOLLOW_UP_FILLER = new Set([
+  "that", "this", "those", "these", "the", "one", "ones", "it", "its", "them", "they",
+  "first", "second", "third", "last", "next", "previous", "above", "you", "your", "about",
+  "not", "and", "but", "for", "with", "more", "again", "please", "can", "does", "did", "was",
+]);
 
 /** The retrieval plan a class permits, used by the orchestrator. */
 export function retrievalPlan(classification: Classification) {

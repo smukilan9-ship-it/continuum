@@ -258,7 +258,7 @@ export async function orchestrate(input: OrchestrateInput & { mode?: "auto" | "f
   };
 
   // Step 2 — a follow-up whose referent is already on screen costs nothing.
-  if (isAnsweredByConversation({ message: input.message, hasAttachments: false, hasPageContext: Boolean(input.pageContext), conversationEntities })) {
+  if (isAnsweredByConversation({ message: input.message, hasAttachments: false, hasPageContext: Boolean(input.pageContext), conversationEntities, workspaceVocabulary })) {
     return { ...base, context: {}, usedContext: [], labels: new Map(), groundedInWorkspace: false, statusLabel: "Thinking…" };
   }
 
