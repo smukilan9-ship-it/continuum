@@ -604,8 +604,11 @@ html[data-theme="dark"] .tooltip-arrow { fill: var(--accent-mark); }
 .modal-discard > div { display: flex; gap: var(--s-2); }
 
 /* The page header must wrap rather than push the page sideways: a long project
-   title plus a phase badge plus two actions exceeded 390px on Research. */
-.page-header { min-width: 0; }
+   title plus a phase badge plus two actions exceeded 390px on Research.
+   `minmax(0, 1fr)` is the part that actually binds — a grid column's default
+   `auto` track is sized by its content, so `max-width: 100%` on the row inside
+   resolved against a 299px track in a 232px container and the page scrolled. */
+.page-header { min-width: 0; grid-template-columns: minmax(0, 1fr); }
 .page-header-line { min-width: 0; max-width: 100%; }
 .page-header-line h1 { min-width: 0; overflow-wrap: anywhere; }
 .page-header-context { min-width: 0; max-width: 100%; flex: 1 1 auto; flex-wrap: wrap; }

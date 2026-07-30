@@ -130,6 +130,11 @@ html[data-theme="dark"] { color-scheme: dark; }
 body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--font-sans), Arial, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 a { color: inherit; text-decoration: none; }
 button, input, textarea, select { font: inherit; }
+/* A form control sized by its longest option can be wider than the viewport,
+   which is how one `<select>` on Research gave the whole page a horizontal
+   scrollbar at 320px. Nothing in a layout should be allowed to exceed its
+   container by default. */
+input, textarea, select, img, video, canvas, svg, table, pre { max-width: 100%; }
 button { color: inherit; }
 button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 button:disabled { cursor: not-allowed; opacity: .55; }
