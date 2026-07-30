@@ -909,6 +909,15 @@ export class NeonRepository {
         assistantSessions: sessionRows,
       };
     }
+    if (view === "library") {
+      // Library seeds its Discover suggestions from the user's own project
+      // titles, so the first scholarly search is one click rather than a blank
+      // field. There was no branch here, so the view fell through to `empty`
+      // and the suggestion strip the code carefully builds was always []. The
+      // panel it was written to fix stayed exactly as empty as before.
+      const [goalRows, projectRows] = await Promise.all([userGoals(), userProjects()]);
+      return { ...empty, goals: goalRows, projects: projectRows };
+    }
     return empty;
   }
 

@@ -60,7 +60,10 @@ const SCREENS: Array<{ view: string; label: string; files: string[] }> = [
   { view: "goal", label: "Goal", files: ["apps/web/components/goal/goal-screen.tsx"] },
   { view: "research", label: "Projects", files: ["apps/web/components/workspace/research-screen.tsx"] },
   { view: "today", label: "Home", files: ["apps/web/components/home/home-page.tsx"] },
-  { view: "sources", label: "Library", files: ["apps/web/components/library/library-page.tsx"] },
+  { view: "library", label: "Library", files: ["apps/web/components/library/library-page.tsx"] },
+  { view: "activity", label: "Review", files: ["apps/web/components/review/review-page.tsx"] },
+  { view: "memory", label: "Context", files: ["apps/web/components/context/context-page.tsx"] },
+  { view: "goals", label: "Plan", files: ["apps/web/components/plan/plan-page.tsx"] },
 ];
 
 describe("a screen may only read fields its view returns", () => {
