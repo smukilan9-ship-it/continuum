@@ -19,59 +19,32 @@ import { useEffect, useRef, type ReactNode } from "react";
 const reduced = () =>
   typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** Fades and lifts direct children in sequence. */
+/**
+ * Fades and lifts children in sequence — as a CSS animation, deliberately.
+ *
+ * This was GSAP, and it stranded a whole screen at a third of its opacity: the
+ * effect started a tween, a data fetch re-rendered, the cleanup killed it
+ * mid-flight, and the inline `opacity: 0.38` it had written stayed there. A JS
+ * entrance owns the element's visibility, so every path that can interrupt it
+ * is a path that can hide the page.
+ *
+ * A CSS animation cannot. It ends at `opacity: 1` by definition, it survives a
+ * re-render because nothing is holding state, and with no JS at all the element
+ * is simply visible. GSAP is still the right tool for the pointer sheen and the
+ * counter below, because neither of those decides whether content is readable.
+ */
 export function Stagger({
   children,
-  selector = ":scope > *",
-  delay = 0,
-  distance = 14,
   className,
 }: {
   children: ReactNode;
-  /** What to animate. Defaults to the direct children. */
+  /** Retained for call-site compatibility; the CSS drives the sequence. */
   selector?: string;
   delay?: number;
   distance?: number;
   className?: string;
 }) {
-  const host = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const node = host.current;
-    if (!node || reduced()) return;
-    let cancelled = false;
-    let tween: { kill: () => void } | undefined;
-
-    /**
-     * Motion must never be able to hide content. `gsap.context().revert()`
-     * restores the state it recorded, and if a re-render tears the effect down
-     * mid-flight that state is the tween's own start — opacity 0 — which left
-     * a whole screen faded out with no way back. So the elements are collected
-     * once, animated with an explicit `fromTo`, and the inline styles are
-     * cleared by hand on every exit path: complete, cancel, and unmount.
-     */
-    const targets = Array.from(node.querySelectorAll<HTMLElement>(selector));
-    if (!targets.length) return;
-    const clear = () => {
-      for (const target of targets) {
-        target.style.removeProperty("opacity");
-        target.style.removeProperty("transform");
-      }
-    };
-
-    void import("gsap").then(({ gsap }) => {
-      if (cancelled) { clear(); return; }
-      tween = gsap.fromTo(
-        targets,
-        { opacity: 0, y: distance },
-        { opacity: 1, y: 0, duration: 0.5, delay, ease: "power2.out", stagger: 0.055, onComplete: clear },
-      );
-    });
-
-    return () => { cancelled = true; tween?.kill(); clear(); };
-  }, [selector, delay, distance]);
-
-  return <div ref={host} className={className}>{children}</div>;
+  return <div className={className ? `stagger ${className}` : "stagger"}>{children}</div>;
 }
 
 /**

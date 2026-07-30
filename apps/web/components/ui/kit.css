@@ -787,3 +787,24 @@
 .meter > i { display: block; height: 100%; border-radius: inherit; background: var(--gradient-brand); transition: width var(--d-slow) var(--e-out); }
 .meter-amber > i { background: var(--gradient-amber); }
 .meter-target { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink-3); border-radius: 2px; }
+
+/* --- Entrance ------------------------------------------------------------- */
+
+/* A CSS sequence rather than a JS one. It ends at opacity 1 by definition, so
+   no interruption — a re-render, a failed chunk, a killed tween — can leave a
+   screen stranded half-visible, which is exactly what the JS version did. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+.stagger > * { animation: rise 460ms var(--e-out) both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 55ms; }
+.stagger > *:nth-child(3) { animation-delay: 110ms; }
+.stagger > *:nth-child(4) { animation-delay: 165ms; }
+.stagger > *:nth-child(5) { animation-delay: 220ms; }
+.stagger > *:nth-child(n+6) { animation-delay: 275ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .stagger > * { animation: none; }
+}
