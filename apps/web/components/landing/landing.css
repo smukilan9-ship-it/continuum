@@ -376,3 +376,86 @@ html.mk-reveal .mk-steps-board.is-revealed .mk-steps-line { transform: scaleX(1)
   .mk-consent li > span { justify-self: start; }
   .mk-footer-main { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); padding-block-start: var(--s-10); }
 }
+
+/* --- The thread diagram --------------------------------------------------- */
+
+/* Two panels, deliberately asymmetric in weight: the left is drawn in line
+   colour and the right in brand, so the difference reads before either label
+   is. On a phone they stack and the arrow between them becomes vertical. */
+.mk-thread {
+  margin: var(--s-8) 0 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--s-5);
+}
+.mk-thread::before {
+  content: "";
+  grid-column: 2;
+  width: 26px;
+  height: 26px;
+  border-top: 2px solid var(--brand);
+  border-right: 2px solid var(--brand);
+  transform: rotate(45deg);
+  opacity: .55;
+}
+/* Source order is before / after, so the arrow is placed explicitly. */
+.mk-thread-before { grid-column: 1; grid-row: 1; }
+.mk-thread-after { grid-column: 3; grid-row: 1; }
+
+.mk-thread-panel {
+  padding: var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+}
+.mk-thread-after {
+  border-color: color-mix(in srgb, var(--brand) 30%, var(--line));
+  box-shadow: 0 18px 40px -24px var(--brand-glow);
+}
+.mk-thread-panel svg { width: 100%; height: auto; display: block; }
+.mk-thread-label {
+  margin: 0 0 var(--s-3);
+  color: var(--ink-3);
+  font-size: var(--t-eyebrow);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.mk-thread-after .mk-thread-label { color: var(--brand-strong); }
+
+.mk-thread-card { fill: var(--surface-raised); stroke: var(--line); stroke-width: 1; }
+.mk-thread-card-live { fill: var(--brand-soft); stroke: color-mix(in srgb, var(--brand) 34%, transparent); }
+.mk-thread-text { fill: var(--ink-2); font-size: 12px; font-weight: 600; font-family: inherit; }
+.mk-thread-after .mk-thread-text { fill: var(--brand-deep); }
+
+/* The fragments that connect to nothing. */
+.mk-thread-stub { stroke: var(--line-strong); stroke-width: 1.5; stroke-dasharray: 3 3; fill: none; }
+.mk-thread-dead { fill: var(--line-strong); }
+
+.mk-thread-line { stroke: var(--brand); stroke-width: 2; fill: none; stroke-linecap: round; }
+.mk-thread-knot { fill: var(--brand); }
+.mk-thread-cite { fill: var(--amber); }
+.mk-thread-cite-text { fill: var(--on-amber); font-size: 11px; font-weight: 700; font-family: inherit; }
+.mk-thread-nothing { fill: var(--ink-3); font-size: 10px; font-style: italic; font-family: inherit; }
+
+/* A light travelling along the thread. It rides a stroke that is already fully
+   painted underneath, so if this never runs the diagram is still complete —
+   the same rule the app's entrance motion follows. */
+.mk-thread-pulse {
+  stroke: var(--on-brand);
+  stroke-width: 2.5;
+  stroke-dasharray: 26 386;
+  opacity: .85;
+  animation: thread-travel 3.4s linear infinite;
+}
+@keyframes thread-travel { from { stroke-dashoffset: 412; } to { stroke-dashoffset: 0; } }
+
+@media (prefers-reduced-motion: reduce) { .mk-thread-pulse { display: none; } }
+
+@media (max-width: 720px) {
+  .mk-thread { grid-template-columns: 1fr; gap: var(--s-4); }
+  .mk-thread::before { grid-column: 1; grid-row: 2; justify-self: center; transform: rotate(135deg); }
+  .mk-thread-before { grid-column: 1; grid-row: 1; }
+  .mk-thread-after { grid-column: 1; grid-row: 3; }
+}

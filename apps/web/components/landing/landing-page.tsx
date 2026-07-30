@@ -3,6 +3,7 @@ import { BookMarked, Check, Github, Landmark, Library, ShieldCheck } from "lucid
 import { BrandMark } from "@/components/brand-mark";
 import { DemoButton } from "@/components/landing/demo-button";
 import { MobileNav } from "@/components/landing/mobile-nav";
+import { ThreadDiagram } from "./thread-diagram";
 import { ProductShot } from "@/components/landing/product-shot";
 import { ScrollReveal } from "@/components/landing/scroll-reveal";
 import { demoLoginEnabled } from "@/lib/env";
@@ -213,6 +214,7 @@ export function LandingPage() {
                 <li key={label}><Icon size={16} aria-hidden="true" />{label}</li>
               ))}
             </ul>
+            <ThreadDiagram />
           </div>
         </section>
 
