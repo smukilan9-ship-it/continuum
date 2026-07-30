@@ -24,6 +24,13 @@ export interface AcademicPrompt {
   system: string;
   prompt: string;
   sections: string[];
+  /**
+   * The persona and output contract with no retrieved content, for an
+   * instruction-leak detector to compare a reply against. Comparing against
+   * `prompt` instead makes quoting the user's own source indistinguishable from
+   * reciting our instructions — and a cited answer is supposed to quote it.
+   */
+  instructions: string;
 }
 
 const surfacePolicy: Record<PromptSurface, string[]> = {
