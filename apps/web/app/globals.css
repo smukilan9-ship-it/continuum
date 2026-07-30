@@ -349,7 +349,7 @@ body {
 
 .nav-item:hover { color: var(--ink); background: var(--surface-raised); }
 
-.nav-item.active { color: #171812; background: var(--accent-mark); box-shadow: none; }
+.nav-item.active { color: var(--on-accent-mark); background: var(--accent-mark); box-shadow: none; }
 
 
 /* The user's own goals. A goal row is quieter than a destination — it carries a
@@ -389,7 +389,7 @@ body {
   background: color-mix(in srgb, var(--accent-mark) 55%, transparent);
   border-radius: 2px;
 }
-.avatar { width: 34px; height: 34px; flex: none; display: grid; place-items: center; color: #171812; background: var(--accent-mark); border-radius: 50%; font-size: 12px; font-weight: 800; }
+.avatar { width: 34px; height: 34px; flex: none; display: grid; place-items: center; color: var(--on-accent-mark); background: var(--accent-mark); border-radius: 50%; font-size: 12px; font-weight: 800; }
 
 .main-area { min-height: 100vh; margin-left: 248px; }
 
@@ -414,7 +414,7 @@ html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([ty
   background: var(--surface);
   border-color: var(--line-strong);
 }
-html[data-theme="dark"] .nav-item.active { color: #171812; }@media (max-width: 1050px) {
+@media (max-width: 1050px) {
   .sidebar { width: 232px; }
   .main-area { margin-left: 232px; }
   .content-wrap { padding-inline: 30px; }

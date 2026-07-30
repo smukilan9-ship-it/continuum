@@ -6,14 +6,17 @@ deviated from, and what will waste your time if you don't know it.
 **Where the two disagree, trust this file.**
 
 **Branch:** `feat/product-ready-premium-rebuild`
-**Green:** 498 tests across 51 files · `turbo typecheck` · `turbo build` · ESLint clean
+**Green:** 965 tests across 66 files · 9 Playwright journeys + axe + responsive ·
+`turbo typecheck` · `turbo build` · ESLint clean
 
 ---
 
 ## Where it stands
 
-Every phase of §17 has landed. The remaining work is verification breadth,
-not features — see "What is still open" at the bottom.
+Every phase of §17 has landed, §18 is built, and §19 and §20 are closed.
+`docs/acceptance.md` records what verifies each §19 criterion and, where a
+criterion is only partly mechanical, names the half that still needs a person.
+What remains is listed at the bottom and is all of that kind.
 
 | Area | State |
 |---|---|
@@ -26,7 +29,9 @@ not features — see "What is still open" at the bottom.
 | §13.1 project page | New at `/g/[goalId]/p/[projectId]`. |
 | §16.1 route groups + §16.7 redirects | Done. 16 rules, 13 of the 15 (see the deviation below). |
 | §10 marketing page | Rebuilt. 5,479px at 1440 (ceiling 6,500). Real screenshots. |
-| §15.9 CSS paydown | `globals.css` 3,889 → 510 lines. Legacy token aliases deleted. |
+| §15.9 CSS paydown | `globals.css` 3,889 → 554 lines. No literal colour survives outside it. |
+| §18 testing plan | Component, a11y, assistant-quality, responsive, visual and Lighthouse suites. |
+| §19 / §20 | Closed. See `docs/acceptance.md`. |
 | §9.9 Forget, §13.2/13.3 gaps | Done. |
 | §12.6 MCP verification | 11 of 12 steps pass against a live deployment. |
 
@@ -57,7 +62,17 @@ not features — see "What is still open" at the bottom.
    model selection. The budgets are right; the diagnosis in the plan is not.
 
 6. **The `probe` conversations were never seeded.** §3.4 claimed `seed-demo.ts`
-   produced them. They were runtime artifacts from load testing.
+   produced them. They were runtime artifacts from load testing. The same was
+   true of the proposal queue: Review's four "byte-identical proposals" were
+   load-test residue, and once they were cleaned out the screen had nothing to
+   show. Two are seeded now, deliberately.
+
+7. **Two of §20 Phase 2's four deletions did not happen.** `workspace-page.tsx`
+   is a 33-line auth-and-shell wrapper and `lib/workspace-routes.ts` is the
+   route table. Inlining either into twenty route files would duplicate code to
+   satisfy a filename. What the box was for — per-route data, per-route bundles,
+   real navigation — is done: every screen is `dynamic()`-split and every view
+   reads only its own rows.
 
 ---
 

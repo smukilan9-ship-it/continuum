@@ -711,7 +711,7 @@
 .learn-landing-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .learn-landing-actions > button { min-height: 108px; padding: 15px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 3px 10px; color: var(--ink); text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; cursor: pointer; box-shadow: var(--shadow-1); }
 .learn-landing-actions > button:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); }
-.learn-landing-actions > button > span { width: 37px; height: 37px; grid-row: 1 / 3; display: grid; place-items: center; color: var(--on-accent); background: var(--accent-mark); border-radius: 9px; }
+.learn-landing-actions > button > span { width: 37px; height: 37px; grid-row: 1 / 3; display: grid; place-items: center; color: var(--on-accent-mark); background: var(--accent-mark); border-radius: 9px; }
 .learn-landing-actions strong { align-self: end; font-size: 14px; }
 .learn-landing-actions small { align-self: start; color: var(--ink-2); font-size: 11px; line-height: 1.35; }
 .learn-landing-actions > button > svg { grid-column: 3; grid-row: 1 / 3; color: var(--ink-2); }
@@ -820,7 +820,7 @@
 .resource-stats span { gap: 6px; }
 .resource-stats span strong { color: var(--ink); }
 .resource-exact-action, .resource-focus-grid section { padding: 18px; display: flex; align-items: flex-start; gap: 13px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 11px; }
-.resource-exact-action > span, .resource-focus-grid section > span { width: 28px; height: 28px; flex: none; display: grid; place-items: center; color: var(--on-accent); background: var(--accent-mark); border-radius: 8px; font-size: 12px; font-weight: 850; }
+.resource-exact-action > span, .resource-focus-grid section > span { width: 28px; height: 28px; flex: none; display: grid; place-items: center; color: var(--on-accent-mark); background: var(--accent-mark); border-radius: 8px; font-size: 12px; font-weight: 850; }
 .resource-focus-grid { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .resource-focus-grid ul { margin: 7px 0 0; padding-left: 17px; color: var(--ink-2); font-size: 13px; line-height: 1.58; }
 .resource-focus-grid p { margin-top: 10px; font-size: 12px; }

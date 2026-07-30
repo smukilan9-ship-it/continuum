@@ -936,7 +936,7 @@ html[data-theme="dark"] .code-editor-shell .cm-activeLineGutter { color: var(--a
 .build-stages > li.current { color: var(--ink); font-weight: 600; }
 .build-stages > li.done { color: var(--ink-2); }
 .build-stage-dot { width: 24px; height: 24px; display: grid; place-items: center; flex: 0 0 auto; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 50%; font-size: var(--t-micro); }
-.build-stages > li.done .build-stage-dot { color: var(--on-accent); background: var(--accent-mark); border-color: var(--accent-mark); }
+.build-stages > li.done .build-stage-dot { color: var(--on-accent-mark); background: var(--accent-mark); border-color: var(--accent-mark); }
 .build-stages > li.current .build-stage-dot { color: var(--accent-hover); border-color: var(--accent); }
 
 /* §6.1 Code — three panes on desktop, two on tablet, one at a time on mobile.
@@ -1065,7 +1065,7 @@ html[data-theme="dark"] .code-editor-shell .cm-activeLineGutter { color: var(--a
 .output-diff-row.differs code:first-child { background: var(--success-surface); }
 .output-diff-row.differs code:last-child { color: var(--danger); background: var(--danger-surface); }
 
-.coach-actions button.primary { color: var(--on-accent); background: var(--accent-mark); border-color: var(--accent-mark); font-weight: 600; }
+.coach-actions button.primary { color: var(--on-accent-mark); background: var(--accent-mark); border-color: var(--accent-mark); font-weight: 600; }
 .coach-more > summary { color: var(--ink-2); font-size: var(--t-micro); cursor: pointer; }
 .coach-more > div { margin-top: var(--s-2); display: flex; flex-wrap: wrap; gap: var(--s-2); }
 

@@ -653,7 +653,7 @@
 .connection-list { gap: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 19px; }
 .connection-card { padding: 21px 22px; background: color-mix(in srgb, var(--surface) 82%, transparent); border: 0; border-radius: 0; box-shadow: none; }
 .connection-list .connection-card + .connection-card { border-top: 1px solid var(--line); }
-.connection-mark { color: var(--on-accent); background: var(--accent-mark); border-radius: 11px; }
+.connection-mark { color: var(--on-accent-mark); background: var(--accent-mark); border-radius: 11px; }
 .connection-card-head h2 { color: var(--ink); }
 .connection-guide summary, .official-links a { color: var(--accent); }
 .connection-note { background: var(--surface-raised); border-left-color: var(--accent); }

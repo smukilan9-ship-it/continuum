@@ -64,7 +64,7 @@
 .onboarding-steps .step-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .onboarding-steps li.current .step-dot { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
 .onboarding-steps li.current { color: var(--ink); }
-.onboarding-steps li.done .step-dot { color: var(--on-accent); background: var(--accent-mark); border-color: var(--accent-mark); }
+.onboarding-steps li.done .step-dot { color: var(--on-accent-mark); background: var(--accent-mark); border-color: var(--accent-mark); }
 .onboarding-panel { padding: 26px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-1); }
 .onboarding-panel fieldset { margin: 0; padding: 0; border: 0; }
 .onboarding-panel legend { padding: 0; color: var(--ink); font-size: 21px; font-weight: 720; letter-spacing: -.02em; }

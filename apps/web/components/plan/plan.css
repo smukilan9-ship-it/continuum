@@ -575,7 +575,7 @@
 .week-day > header span { color: var(--ink-2); font-size: 9px; font-weight: 780; text-transform: uppercase; letter-spacing: .06em; }
 .week-day > header strong { color: var(--ink); font-size: 20px; }
 .week-day.today > header { background: var(--accent-quiet); }
-.week-day.today > header strong { width: 32px; height: 32px; display: grid; place-items: center; color: var(--on-accent); background: var(--accent-mark); border-radius: 50%; }
+.week-day.today > header strong { width: 32px; height: 32px; display: grid; place-items: center; color: var(--on-accent-mark); background: var(--accent-mark); border-radius: 50%; }
 .week-day-blocks { min-height: 410px; padding: 8px; display: grid; align-content: start; gap: 7px; background: color-mix(in srgb, var(--surface) 86%, var(--canvas)); }
 .week-block { min-height: 84px; padding: 9px; display: grid; align-content: start; gap: 4px; border: 1px solid; border-radius: 8px; }
 .week-block small { font-size: 9px; font-weight: 750; }
@@ -710,7 +710,7 @@
 
 .day-state { padding: 3px 9px; border-radius: 99px; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
 .day-state-done { color: var(--ink-2); background: var(--surface-raised); }
-.day-state-now { color: var(--on-accent); background: var(--accent-mark); }
+.day-state-now { color: var(--on-accent-mark); background: var(--accent-mark); }
 .day-state-upcoming { color: var(--ink-2); background: var(--surface-raised); }
 .day-state-missed { color: var(--danger, var(--danger)); background: color-mix(in srgb, var(--danger, var(--danger)) 12%, transparent); }
 

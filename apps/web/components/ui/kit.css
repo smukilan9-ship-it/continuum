@@ -431,8 +431,12 @@
 
 .section-description { margin: 3px 0 0; color: var(--ink-2); font-size: 12px; }
 .modal-inline-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.button-primary { color: var(--on-accent); background: var(--accent-mark); border-color: var(--accent-mark); }
-.button-primary:hover:not(:disabled) { color: var(--on-accent); background: var(--accent-mark); border-color: var(--accent-mark); box-shadow: none; transform: translateY(-1px); }
+/* The primary action is --accent, not --accent-mark. This block used to
+   override the rule above with the indicator lime, which broke §15.2 twice
+   over: --accent-mark "must never fill more than 4px in any dimension", and
+   --on-accent is white in the light theme, so every primary button in the
+   product rendered white-on-lime at 1.49:1. Only the lift survives. */
+.button-primary:hover:not(:disabled) { box-shadow: none; transform: translateY(-1px); }
 .button-danger { color: var(--on-accent); background: var(--danger); border-color: var(--danger); }
 .button-danger:hover:not(:disabled) { color: var(--on-accent); background: var(--danger-hover); border-color: var(--danger-hover); transform: translateY(-1px); }
 .button-secondary { color: var(--ink); background: var(--surface); border-color: var(--line-strong); }
@@ -532,12 +536,12 @@ html[data-theme="dark"] .toast {
   box-shadow: 0 18px 50px rgb(0 0 0 / 46%);
 }
 html[data-theme="dark"] .toast-icon {
-  color: var(--on-accent);
+  color: var(--on-accent-mark);
   background: var(--accent-mark);
 }
 html[data-theme="dark"] .toast button { color: var(--ink-2); }
 html[data-theme="dark"] .tooltip {
-  color: var(--on-accent);
+  color: var(--on-accent-mark);
   background: var(--accent-mark);
   box-shadow: 0 10px 28px rgb(0 0 0 / 36%);
 }
@@ -628,7 +632,6 @@ html[data-theme="dark"] .button-secondary {
   background-color: var(--surface);
   color: var(--ink);
 }
-html[data-theme="dark"] .button-primary { color: var(--on-accent); }
 .page-stack > .page-intro h1 {
   font-size: clamp(36px, 4vw, 50px);
 }

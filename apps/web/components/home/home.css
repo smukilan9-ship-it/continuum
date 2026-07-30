@@ -147,7 +147,7 @@
 .next-action-card h2 { margin-top: 26px; font-size: clamp(33px, 4vw, 50px); }
 .next-action-card .button { margin-top: 28px; }
 .next-action-card > p, .action-evidence { color: var(--ink-inverse-2); }
-.next-action-card .button { color: var(--on-accent); background: var(--accent-mark); border-color: var(--accent-mark); }
+.next-action-card .button { color: var(--on-accent-mark); background: var(--accent-mark); border-color: var(--accent-mark); }
 .summary-card { min-height: 0; background: color-mix(in srgb, var(--surface) 72%, transparent); border: 0; }
 .summary-card .workspace-metrics { border-top-color: var(--line); }
 .summary-card .workspace-metrics strong { color: var(--ink); }
