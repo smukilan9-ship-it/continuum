@@ -100,7 +100,7 @@ export function AskThread({ state, compact = false }: { state: WorkspaceState; c
       {!assistant.loadingSession && !messages.length && !live ? (
         <div className="assistant-welcome">
           <span><Sparkles size={22} /></span>
-          <h1>What are you working on?</h1>
+          <h2>What are you working on?</h2>
           <p>Continuum answers from your own goals, sources, study, and code — and shows you exactly what it used.</p>
           <div className="assistant-starters">
             {starters.map((starter) => {

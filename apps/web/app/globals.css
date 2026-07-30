@@ -218,12 +218,25 @@ textarea { min-height: 90px; resize: vertical; }
   .main-area { margin-left: 0; }
   .mobile-only { display: grid; }
   .sidebar-head .mobile-only { color: var(--ink); }
-  .topbar { padding: 0 18px; gap: 12px; }
-  .search-button { width: 44px; margin-left: auto; padding: 0; justify-content: center; }
+  /* §8.9: the top bar keeps the breadcrumb and the search icon; everything
+     else collapses. The theme toggle is a 100px segmented control and the Ask
+     label is redundant next to its icon — together they pushed the bar 44px
+     past a 320px viewport and gave every authenticated route a horizontal
+     scrollbar. */
+  .topbar { padding: 0 14px; gap: 8px; overflow: hidden; }
+  .location-label { min-width: 0; overflow: hidden; }
+  .location-label strong, .location-label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .search-button { width: 44px; flex: none; margin-left: auto; padding: 0; justify-content: center; }
   .search-button span, .search-button kbd, .privacy-state { display: none; }
+  .topbar-right { flex: none; gap: 6px; }
+  /* Appearance lives in Settings › Appearance and the account menu (§8.10). */
+  .topbar-right .theme-toggle { display: none; }
   .content-wrap { padding: 28px 20px calc(92px + env(safe-area-inset-bottom)); }
   .mobile-bottom-nav { height: calc(66px + env(safe-area-inset-bottom)); position: fixed; inset: auto 0 0; z-index: 30; padding-bottom: env(safe-area-inset-bottom); display: grid; grid-template-columns: repeat(5, 1fr); background: color-mix(in srgb, var(--surface) 96%, transparent); border-top: 1px solid var(--line); backdrop-filter: blur(12px); }
-  .mobile-bottom-nav a, .mobile-bottom-nav button { min-height: 44px; display: grid; place-items: center; align-content: center; gap: 3px; color: var(--ink-2); background: transparent; border: 0; font-size: 10px; }
+  /* `min-width: 0` on the grid items: without it each one is sized by its
+     label and five of them refuse to fit 320px. */
+  .mobile-bottom-nav a, .mobile-bottom-nav button { min-width: 0; min-height: 44px; display: grid; place-items: center; align-content: center; gap: 3px; color: var(--ink-2); background: transparent; border: 0; font-size: 10px; }
+  .mobile-bottom-nav span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mobile-bottom-nav .active { color: var(--accent-hover); background: var(--accent-quiet); }
   .today-grid, .research-layout { grid-template-columns: 1fr; }
 }
@@ -448,10 +461,9 @@ html[data-theme="dark"] .nav-item.active { color: #171812; }@media (max-width: 1
    screens, which made cards uncomfortable to read. */
 .content-wrap > .screen,
 .content-wrap > .page-stack { max-width: 1440px; margin-inline: auto; padding-top: var(--s-6); }
-:root { --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px; --space-8: 32px; --space-12: 48px; --space-16: 64px; --radius-card: 12px; --type-display: 40px; --type-title: 24px; --type-heading: 18px; --type-body: 14px; --type-small: 13px; --type-caption: 12px; --motion-fast: 150ms; --motion-panel: 200ms; --motion-modal: 250ms; --muted-text: #5c5f54; --muted-strong: #43463d; }
 
-html[data-theme="dark"] { --muted-text: #b3b5a8; --muted-strong: #d2d1c7; }
-.button { min-height: 36px; padding-inline: 18px; border-radius: 10px; letter-spacing: -.01em; font-size: var(--t-body); transition: background var(--motion-fast) ease-out, border-color var(--motion-fast) ease-out, color var(--motion-fast) ease-out; }
+html[data-theme="dark"] { }
+.button { min-height: 36px; padding-inline: 18px; border-radius: 10px; letter-spacing: -.01em; font-size: var(--t-body); transition: background var(--d-fast) ease-out, border-color var(--d-fast) ease-out, color var(--d-fast) ease-out; }
 .button:focus-visible, .nav-item:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
 .card { border-color: color-mix(in srgb, var(--line) 78%, transparent); border-radius: var(--r-lg); box-shadow: none; }
 .command-panel { box-shadow: var(--shadow-2); }
@@ -468,7 +480,7 @@ html[data-theme="dark"] { --muted-text: #b3b5a8; --muted-strong: #d2d1c7; }
 .shortcut-sheet dd { margin: 0; color: var(--ink-2); font-size: var(--t-small); }
 .theme-toggle { min-height: 36px; padding: 2px; display: inline-flex; align-items: center; gap: 2px; color: var(--ink-2); background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; font-size: 11px; font-weight: 750; text-transform: capitalize; }
 
-.theme-toggle button { width: 30px; height: 28px; display: grid; place-items: center; color: var(--ink-2); background: transparent; border: 0; border-radius: 8px; cursor: pointer; transition: color var(--motion-fast) ease-out, background var(--motion-fast) ease-out; }
+.theme-toggle button { width: 30px; height: 28px; display: grid; place-items: center; color: var(--ink-2); background: transparent; border: 0; border-radius: 8px; cursor: pointer; transition: color var(--d-fast) ease-out, background var(--d-fast) ease-out; }
 .theme-toggle button:hover { color: var(--ink); }
 .theme-toggle button.active { color: var(--ink); background: var(--surface); box-shadow: var(--shadow-1); }/* §9 Responsiveness — touch targets, sticky bars clearing the bottom nav, and no
    horizontal page scroll at any width. */

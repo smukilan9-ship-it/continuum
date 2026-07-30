@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm --filter @continuum/web build",
+  "buildCommand": "node ../../scripts/migrate-on-deploy.mjs && pnpm --filter @continuum/web build",
   "devCommand": "pnpm --filter @continuum/web dev",
   "installCommand": "pnpm install",
   "framework": "nextjs"

@@ -69,15 +69,17 @@ export function AskSurface({ state, showToast, onRefresh }: {
       <section className="assistant-workspace">
         <header className="assistant-topline">
           <div>
-            {active ? (
-              <button
-                className="assistant-title"
-                onClick={() => setRenaming(active)}
-                aria-label={`Rename ${active.title}`}
-              >
-                {active.title}
-              </button>
-            ) : <span className="assistant-title">New conversation</span>}
+            {/* §19.1 wants exactly one `<h1>` per route, and on Ask the page's
+                subject is the conversation — so the title carries it whether or
+                not a thread is open. The empty-state heading below is an `<h2>`
+                for the same reason. */}
+            <h1 className="assistant-title-heading">
+              {active ? (
+                <button className="assistant-title" onClick={() => setRenaming(active)} aria-label={`Rename ${active.title}`}>
+                  {active.title}
+                </button>
+              ) : "New conversation"}
+            </h1>
             {active?.obsidianSync ? (
               <Badge tone={active.obsidianSync.status === "synced" ? "green" : active.obsidianSync.status === "conflict" ? "orange" : "neutral"}>
                 Obsidian: {active.obsidianSync.status === "synced" ? "synced" : active.obsidianSync.status === "conflict" ? "needs review" : "pending"}

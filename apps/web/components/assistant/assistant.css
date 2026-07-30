@@ -127,7 +127,7 @@
 
 .assistant-welcome { display: grid; justify-items: center; padding-top: 5vh; text-align: center; }
 .assistant-welcome > span { display: grid; width: 48px; height: 48px; place-items: center; border-radius: var(--r-lg); color: var(--accent); background: var(--accent-quiet); }
-.assistant-welcome h1 { max-width: 680px; margin: var(--s-5) 0 var(--s-2); color: var(--ink); font-size: var(--t-h1); line-height: var(--t-h1-lh); letter-spacing: -.02em; }
+.assistant-welcome h2 { max-width: 680px; margin: var(--s-5) 0 var(--s-2); color: var(--ink); font-size: var(--t-h1); line-height: var(--t-h1-lh); letter-spacing: -.02em; }
 .assistant-welcome > p { max-width: 640px; margin: 0; color: var(--ink-3); font-size: var(--t-body); line-height: var(--t-body-lh); }
 
 .assistant-starters { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-3); margin-top: var(--s-6); }
@@ -280,7 +280,7 @@
   .assistant-topline { padding: var(--s-2) var(--s-3); }
   .assistant-thread { padding: var(--s-5) var(--s-4) var(--s-12); }
   .assistant-welcome { padding-top: 2vh; }
-  .assistant-welcome h1 { font-size: var(--t-h2); }
+  .assistant-welcome h2 { font-size: var(--t-h2); }
   .assistant-starters { grid-template-columns: 1fr; margin-top: var(--s-5); }
   .assistant-starters > button { min-height: 72px; }
   .assistant-message.user { max-width: 90%; }
@@ -289,6 +289,8 @@
 }
 
 /* --- Thread header -------------------------------------------------------- */
+
+.assistant-title-heading { margin: 0; min-width: 0; font-size: var(--t-h3); font-weight: 600; }
 
 .assistant-title {
   padding: 0;
@@ -566,7 +568,7 @@
 .assistant-panel .assistant-thread { max-width: none; padding: var(--s-4) var(--s-4) var(--s-5); }
 .assistant-panel .assistant-composer { width: auto; margin: 0 var(--s-3) var(--s-3); }
 .assistant-panel .assistant-starters { grid-template-columns: minmax(0, 1fr); }
-.assistant-panel .assistant-welcome h1 { font-size: var(--t-h2); }
+.assistant-panel .assistant-welcome h2 { font-size: var(--t-h2); }
 .assistant-panel .assistant-message.user { max-width: 92%; }
 
 /* --- Top bar trigger ------------------------------------------------------ */

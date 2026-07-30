@@ -848,10 +848,10 @@
 /* §6.7 Connections — one row per integration, expanded on click. */
 .connection-card > summary { display: flex; align-items: center; gap: var(--s-3); cursor: pointer; list-style: none; }
 .connection-card > summary::-webkit-details-marker { display: none; }
-.connection-card-chevron { margin-inline-start: var(--s-2); color: var(--ink-2); transition: transform var(--motion-panel) ease-out; }
+.connection-card-chevron { margin-inline-start: var(--s-2); color: var(--ink-2); transition: transform var(--d-base) ease-out; }
 .connection-card[open] .connection-card-chevron { transform: rotate(180deg); }
 .connection-card-body { padding-top: var(--s-4); display: grid; gap: var(--s-3); }
-.connection-card-head h2 { font-size: var(--type-heading); }
+.connection-card-head h2 { font-size: var(--t-h2); }
 
 /* §6.8 Account — the session list is capped and the current session is pinned. */
 .session-current { border-color: var(--accent) !important; }

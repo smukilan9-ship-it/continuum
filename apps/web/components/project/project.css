@@ -228,7 +228,7 @@
 .research-templates { padding-top: var(--s-4); display: grid; gap: var(--s-2); }
 .research-templates > p { margin: 0; color: var(--ink-2); font-size: var(--t-small); }
 .research-templates > div { display: grid; gap: var(--s-2); grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
-.research-templates button { padding: var(--s-3); display: grid; gap: var(--s-1); text-align: start; background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--r-lg); cursor: pointer; transition: border-color var(--motion-fast) ease-out; }
+.research-templates button { padding: var(--s-3); display: grid; gap: var(--s-1); text-align: start; background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--r-lg); cursor: pointer; transition: border-color var(--d-fast) ease-out; }
 .research-templates button:hover:not(:disabled) { border-color: var(--accent); }
 .research-templates small { color: var(--ink-2); font-size: var(--t-micro); line-height: 1.45; }
 .research-project-switcher-inline { max-width: 100%; }

@@ -163,7 +163,7 @@ html[data-theme="dark"] .next-action-card { color: #f6f3e9; background: #0b0c09;
 /* §8.2 The next action is the one thing to read on Today, but at 38px it was
    display type inside a card. `title` is the largest size a workspace screen
    uses. */
-.next-action-card h2 { margin: var(--s-4) 0 var(--s-2); font-size: var(--type-title); line-height: 1.25; letter-spacing: -.01em; }
+.next-action-card h2 { margin: var(--s-4) 0 var(--s-2); font-size: var(--t-h1); line-height: 1.25; letter-spacing: -.01em; }
 .next-action-card { min-height: 0; }
 .next-action-card > p { font-size: var(--t-body); }
 

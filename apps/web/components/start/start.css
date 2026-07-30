@@ -98,7 +98,7 @@
 /* §10.2 Onboarding — real progress and an honest completion state. */
 .onboarding-building { display: grid; gap: var(--s-4); }
 .onboarding-complete { display: grid; gap: var(--s-4); }
-.onboarding-complete h2 { margin: 0; font-size: var(--type-heading); }
+.onboarding-complete h2 { margin: 0; font-size: var(--t-h2); }
 .onboarding-rationale { margin: 0; color: var(--ink-2); font-size: var(--t-small); line-height: 1.5; }
 
 /* §10 First run — welcome route, tour, shortcut sheet. */
