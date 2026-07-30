@@ -165,7 +165,7 @@ slowdown**. Run it with `npx lhci autorun`.
 | Accessibility | ≥ 95 | **100** |
 | Best practices | ≥ 95 | **100** |
 | SEO | — | **100** |
-| Largest contentful paint | < 2.0s | see the run |
+| Largest contentful paint | < 2.0s | **3.0s** ⚠️ |
 | Cumulative layout shift | < 0.05 | **0** |
 | Total blocking time | < 200ms | see the run |
 
@@ -176,6 +176,39 @@ condition §19.9 budgets, so the 100 it produced measured the wrong thing. The
 preset is gone and the mobile numbers are the ones recorded.
 
 Reports are 8 MB per run and are gitignored, not committed.
+
+### Why LCP is 3.0s and what was tried
+
+The LCP element is the hero screenshot. Two changes took real time out of it:
+
+- **The hero no longer reveals.** `html.mk-reveal [data-reveal]` held it at
+  `opacity: 0` until ScrollReveal hydrated, and LCP ignores a transparent
+  element. Render delay: **2,419ms → 549ms**.
+- **The hero is preloaded.** It had `loading="lazy"`, so the browser waited for
+  layout before starting the image the page is judged on. Load delay:
+  **1,107ms → 542ms**.
+
+What remains is the deliberate tradeoff in `product-shot.tsx`: both theme
+variants are in the DOM and the inactive one is `display: none`, because the
+theme comes from `localStorage` — the marketing page has its own toggle — so
+`<picture media="(prefers-color-scheme: dark)">` would show a light screenshot
+to someone who chose dark. Correct in every theme, no flash, no JS dependency;
+and on a 1.6 Mbps simulated link, two images for one visible slot cost about a
+second.
+
+Rejected, with the reason:
+
+- **`<picture>` + `prefers-color-scheme`** — one fetch, but wrong for anyone who
+  used the toggle, and a light screenshot on a dark page reads as a bug.
+- **Swapping `src` in the pre-paint inline script** — the script runs in
+  `<head>`, before the images exist.
+- **Rendering one variant server-side** — possible now the page is
+  `force-dynamic`, but it needs the theme in a cookie, which means changing how
+  the whole app stores its theme for the sake of one image.
+
+The honest position is that this is a fidelity-versus-latency choice, it was
+measured rather than assumed, and it is not free. A cookie-backed theme would
+resolve it properly and is the recommended next step.
 
 ## Not measured
 

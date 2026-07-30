@@ -52,14 +52,17 @@ export function ProductShot({
   /** Which part of the capture to show when the frame is cropped tighter than 16:10. */
   crop?: "top" | "center" | "bottom" | "right";
   /**
-   * The hero frame, which is the LCP element. It stays `lazy` — that is what
-   * keeps the off-theme copy from being fetched — but asks for high priority so
-   * it is not queued behind the rest of the page once it does start.
+   * The hero frame, which is the LCP element, so it is preloaded.
    *
-   * Next logs a dev-only warning here suggesting `priority`. Do not take it:
-   * `priority` implies `loading="eager"`, which would make the browser fetch the
-   * hidden variant too. On the connection AC-M5 targets, a second full-size
-   * screenshot on the critical path costs more than the preload hint buys.
+   * This used to stay `lazy` on the reasoning that `priority` implies
+   * `loading="eager"` and would fetch the hidden off-theme copy too — "a second
+   * full-size screenshot on the critical path costs more than the preload hint
+   * buys". Measured on the throttled mobile profile §19.9 budgets, that is
+   * wrong in both halves. The hint buys 1.1s: lazy loading made the browser
+   * wait for layout before starting the LCP image, and largest-contentful-paint
+   * sat at 3.0s against a 2.0s ceiling with `Load Delay 1107ms`. And the second
+   * screenshot is not full-size — Next serves it through the image optimiser at
+   * the width `sizes` asks for, which measured 24kB.
    */
   eager?: boolean;
 }) {
@@ -75,8 +78,7 @@ export function ProductShot({
           width={SHOT_WIDTH}
           height={SHOT_HEIGHT}
           sizes={sizes}
-          loading="lazy"
-          fetchPriority={eager ? "high" : undefined}
+          {...(eager ? { priority: true } : { loading: "lazy" as const })}
           decoding="async"
         />
       ))}
