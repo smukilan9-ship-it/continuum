@@ -132,41 +132,82 @@
    one piece of Stripe's language worth borrowing wholesale, because it gives an
    otherwise white page a horizon. The wash is behind everything and never
    intercepts a pointer. */
-.mk-hero-band { position: relative; }
-/* A real layer rather than a `z-index: -1` pseudo. Inside an isolated stacking
-   context a negative-index pseudo paints behind its own ancestor's background,
-   which is how the hero screenshot ended up invisible. */
+/* The hero is a colour field, not a white page with a tint on it.
+   A saturated band under the fold is the one thing that makes a marketing page
+   read as a product with a point of view rather than a template — the type goes
+   white and large on it, and the product shot floats above it with real
+   elevation instead of sitting in the same plane as the copy. */
+.mk-hero-band {
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
+  color: #ffffff;
+  background: var(--gradient-field);
+}
 .mk-hero-wash {
   position: absolute;
-  inset: -20% -30% auto -10%;
-  height: 150%;
-  background: var(--gradient-wash);
-  transform: skewY(-4deg);
-  transform-origin: top right;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(52% 60% at 82% 8%, rgba(10, 188, 144, .42), transparent 66%),
+    radial-gradient(38% 46% at 96% 84%, rgba(245, 158, 11, .22), transparent 70%);
   pointer-events: none;
 }
-.mk-hero-band > .mk-hero { position: relative; }
+/* Grain, so a field this large is a surface rather than a flat fill. */
+.mk-hero-band::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image: var(--grain);
+  opacity: .14;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+.mk-hero-band > .mk-hero { position: relative; z-index: 1; }
+
+.mk-hero-band h1 { color: #ffffff; }
+.mk-hero-band .mk-eyebrow { color: #7fe6c4; }
+.mk-hero-band .mk-lead { color: rgba(255, 255, 255, .82); }
+.mk-hero-band .mk-proof { color: rgba(255, 255, 255, .64); }
+.mk-hero-band .mk-proof > svg { color: #7fe6c4; }
+.mk-hero-band .mk-proof i { color: rgba(255, 255, 255, .3); }
+.mk-hero-band .mk-btn-secondary {
+  color: #ffffff;
+  background: rgba(255, 255, 255, .08);
+  border-color: rgba(255, 255, 255, .26);
+  box-shadow: none;
+  backdrop-filter: blur(6px);
+}
+.mk-hero-band .mk-btn-secondary:hover:not(:disabled) { background: rgba(255, 255, 255, .16); border-color: rgba(255, 255, 255, .44); }
 
 .mk-hero {
   max-width: var(--mk-max); margin: 0 auto;
-  padding: calc(var(--mk-section-y) * 0.62) var(--mk-gutter) calc(var(--mk-section-y) * 0.72);
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.28fr);
+  padding: calc(var(--mk-section-y) * 0.78) var(--mk-gutter) calc(var(--mk-section-y) * 0.86);
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.24fr);
   gap: var(--s-12); align-items: center;
 }
+
 .mk-hero-copy { max-width: 560px; display: grid; gap: var(--s-5); align-content: start; }
 .mk-hero-copy .mk-lead { font-size: 19px; }
 /* The product shot is the proof, so it is framed like a window: a hairline,
    a deep lift, and a slight rotation that settles to flat on hover. */
+/* Floating above the field, tilted and cropped at the right edge — the shot
+   reads as a window into the product rather than a picture pasted onto a page. */
 .mk-hero-frame {
   min-width: 0;
-  border: 1px solid var(--line);
+  position: relative;
+  margin-right: calc(var(--mk-gutter) * -3);
+  border: 1px solid rgba(255, 255, 255, .14);
   border-radius: var(--r-xl);
-  box-shadow: var(--shadow-4);
+  box-shadow: 0 40px 90px -30px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .06);
   background: var(--surface);
   overflow: hidden;
+  transform: rotate(-1.4deg);
   transition: transform var(--d-slow) var(--e-out), box-shadow var(--d-slow) var(--e-out);
 }
-.mk-hero-frame:hover { transform: translateY(-4px); box-shadow: var(--shadow-4), 0 40px 80px -30px var(--brand-glow); }
+.mk-hero-frame:hover { transform: rotate(0deg) translateY(-6px); box-shadow: 0 56px 120px -34px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 255, 255, .1); }
+@media (max-width: 1000px) { .mk-hero-frame { margin-right: 0; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .mk-hero-frame, .mk-hero-frame:hover { transform: none; } }
 .mk-proof { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); color: var(--ink-3); font-size: var(--t-small); }
 .mk-proof span { display: inline-flex; align-items: center; gap: var(--s-2); }
