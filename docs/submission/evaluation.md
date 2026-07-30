@@ -1,4 +1,4 @@
-# How we know it works
+# Verification
 
 1,117 unit and component tests across 71 files, plus Playwright end-to-end,
 accessibility, responsive, and visual suites. Counts are cheap, so this document
@@ -60,6 +60,13 @@ assistant's welcome heading and defined nowhere.
 example that the question-bank set scoring lowest is the one whose concept has the
 most lapses, and that every `sourceChunkId` on a question points at a chunk that
 exists. A demo whose numbers disagree with each other is worse than no demo.
+
+
+<p align="center">
+  <img src="../../pr_assets/07-library-discover.png" alt="Discover, running a live OpenAlex query. Result rows were the subject of four layout repairs before they held a title, byline, badge and an unclipped Save." width="100%">
+</p>
+
+<p align="center"><sub>Discover, running a live OpenAlex query. Result rows were the subject of four layout repairs before they held a title, byline, badge and an unclipped Save.</sub></p>
 
 ## Contrast measured, not eyeballed
 

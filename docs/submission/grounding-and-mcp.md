@@ -33,6 +33,13 @@ flowchart TD
 `retrievalPlan` decides which legs run. A general-knowledge question runs none of
 them and costs nothing. A question about the user's own work runs all four.
 
+
+<p align="center">
+  <img src="../../pr_assets/09-ask-grounded.png" alt="The chain working: retrieval finds the passages, provenance attaches them, and the answer cites them." width="100%">
+</p>
+
+<p align="center"><sub>The chain working: retrieval finds the passages, provenance attaches them, and the answer cites them.</sub></p>
+
 ## Five ways it silently did not work
 
 All five were found by asking production one question whose answer sat verbatim in
@@ -120,6 +127,13 @@ prompt Continuum does not control.
 
 > Progress here reflects real assessment evidence, not time spent.
 
+
+<p align="center">
+  <img src="../../pr_assets/15-mcp-authorize.png" alt="Scope-by-scope consent before any client is connected." width="100%">
+</p>
+
+<p align="center"><sub>Scope-by-scope consent before any client is connected.</sub></p>
+
 ### Writes are proposals
 
 Every write tool declares `class: "write"` and a scope, and consequential writes
@@ -142,6 +156,13 @@ Estimated minutes  90                    ->  75
 work writes a `session_receipt` with decisions, concepts covered, unresolved
 questions, next actions, and evidence ids. The next session, in the app or in
 Claude, resumes from it.
+
+
+<p align="center">
+  <img src="../../pr_assets/14-settings-connections.png" alt="Connections. Bring-your-own-key for every provider, and any connected client can be revoked here." width="100%">
+</p>
+
+<p align="center"><sub>Connections. Bring-your-own-key for every provider, and any connected client can be revoked here.</sub></p>
 
 ## Why this matters for the claim
 

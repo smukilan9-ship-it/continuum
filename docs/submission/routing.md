@@ -26,6 +26,13 @@ flowchart TD
   G --> M[independentVerifier picks a<br/>different provider with fresh context]
 ```
 
+
+<p align="center">
+  <img src="../../pr_assets/10-context-routing.png" alt="Every decision the router takes is stored and rendered, including the reason and whether a fallback was used." width="100%">
+</p>
+
+<p align="center"><sub>Every decision the router takes is stored and rendered, including the reason and whether a fallback was used.</sub></p>
+
 ## Why each branch exists
 
 ### Scheduling runs no model
@@ -179,6 +186,13 @@ Featherless, or Zotero credentials in Settings, stored encrypted in the
 `integrations` table. When a saved credential can no longer be decrypted the API
 returns a 502 with an explicit message and the UI offers reconnect and retry
 rather than rendering an empty list.
+
+
+<p align="center">
+  <img src="../../pr_assets/05-review-proposals.png" alt="A model-proposed change, held for approval as a field-level diff." width="100%">
+</p>
+
+<p align="center"><sub>A model-proposed change, held for approval as a field-level diff.</sub></p>
 
 ## Grading is not a single model call
 

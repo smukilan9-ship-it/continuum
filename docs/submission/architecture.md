@@ -92,6 +92,13 @@ rendered permanently empty: the component asked for a field, the view never
 returned it, and an empty array renders as a well-designed "nothing here yet"
 which is indistinguishable from the truth.
 
+
+<p align="center">
+  <img src="../../pr_assets/10-context-routing.png" alt="Context. The routing table, provenance and token accounting the architecture below produces." width="100%">
+</p>
+
+<p align="center"><sub>Context. The routing table, provenance and token accounting the architecture below produces.</sub></p>
+
 ## The store boundary
 
 `apps/web/lib/store.ts` is the only thing that talks to the database on behalf of
@@ -139,6 +146,13 @@ concatenates claims, decisions, notes, and passages in that order and then slice
 so asking it for six results on a term that also appears in a decision returns six
 decisions and zero passages. It was structurally incapable of returning the thing
 it was being used to return.
+
+
+<p align="center">
+  <img src="../../pr_assets/06-library-sources.png" alt="Library. Imported sources with their processing state, chunk counts and retention." width="100%">
+</p>
+
+<p align="center"><sub>Library. Imported sources with their processing state, chunk counts and retention.</sub></p>
 
 ## Deadlines and degradation
 

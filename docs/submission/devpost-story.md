@@ -4,6 +4,13 @@
 
 Try it: **https://continuumstudy.vercel.app**. Click "Explore the demo". No signup.
 
+
+<p align="center">
+  <img src="../../pr_assets/01-home-today.png" alt="Home. One next action with the reason it was chosen, a week built by the constraint solver, and today's agenda." width="100%">
+</p>
+
+<p align="center"><sub>Home. One next action with the reason it was chosen, a week built by the constraint solver, and today's agenda.</sub></p>
+
 ---
 
 ## I. The problem
@@ -106,6 +113,13 @@ verification: "not_required",
 costClass: "none",
 ```
 
+
+<p align="center">
+  <img src="../../pr_assets/02-plan-week.png" alt="The week grid. Every block placed by the solver against deadlines, prerequisites and fixed commitments. No model was called." width="100%">
+</p>
+
+<p align="center"><sub>The week grid. Every block placed by the solver against deadlines, prerequisites and fixed commitments. No model was called.</sub></p>
+
 `costClass: "none"`. Scheduling is free, instant, and correct.
 
 This is the branch worth defending hardest, because the fashionable answer in 2026
@@ -122,6 +136,13 @@ if (evidence.kind === "lesson_read") {
   next.explanation = "Lesson exposure was recorded; transfer did not change because no independent evidence was provided.";
 }
 ```
+
+
+<p align="center">
+  <img src="../../pr_assets/04-learn-status.png" alt="Study status. Concepts carry mastery evidence rather than a completion percentage, and open misconceptions are named." width="100%">
+</p>
+
+<p align="center"><sub>Study status. Concepts carry mastery evidence rather than a completion percentage, and open misconceptions are named.</sub></p>
 
 Four dimensions are tracked per concept: exposure, understanding, transfer,
 retention. Mastery is a strict conjunction, not an average:
@@ -144,6 +165,13 @@ That disclosure is not politeness. It is load-bearing, and the next section is w
 
 One question, asked against production, with the answer sitting verbatim in an
 indexed passage:
+
+
+<p align="center">
+  <img src="../../pr_assets/09-ask-grounded.png" alt="The same class of question, answered from the workspace. Two accepted decisions and a source passage, each an openable citation chip." width="100%">
+</p>
+
+<p align="center"><sub>The same class of question, answered from the workspace. Two accepted decisions and a source passage, each an openable citation chip.</sub></p>
 
 > **Why can't OASIS claim single-cell co-expression?**
 
@@ -236,6 +264,13 @@ flowchart TD
   G --> M[Independent verifier<br/>different provider, fresh context]
 ```
 
+
+<p align="center">
+  <img src="../../pr_assets/10-context-routing.png" alt="The Context screen. Every routing decision is recorded with the reason it was taken and what verified it." width="100%">
+</p>
+
+<p align="center"><sub>The Context screen. Every routing decision is recorded with the reason it was taken and what verified it.</sub></p>
+
 Two branches carry most of the value.
 
 **Latency is a routing input, not an afterthought.** A comment in the policy file
@@ -324,6 +359,13 @@ Awaiting the embedding and falling back only on an exception means a slow but
 returns empty. That is a latency spike wearing the costume of an empty library.
 Racing makes the failure mode "slower but correct".
 
+
+<p align="center">
+  <img src="../../pr_assets/08-library-citation-graph.png" alt="A work opened from Discover, with its references, citations and related papers. Saving it indexes the passages that answers can then cite." width="100%">
+</p>
+
+<p align="center"><sub>A work opened from Discover, with its references, citations and related papers. Saving it indexes the passages that answers can then cite.</sub></p>
+
 Four legs run concurrently under explicit deadlines. A leg that misses its deadline
 appends to a `degraded` list that surfaces to the user as a disclosure:
 
@@ -354,6 +396,13 @@ about your own work runs all four.
 ### Spaced repetition, with the self-report taken out
 
 SM-2, with two deliberate departures.
+
+
+<p align="center">
+  <img src="../../pr_assets/03-goal-concept-map.png" alt="The concept map for a goal. Branches are learning jobs, and only saved dependencies become prerequisites." width="100%">
+</p>
+
+<p align="center"><sub>The concept map for a goal. Branches are learning jobs, and only saved dependencies become prerequisites.</sub></p>
 
 **Recognition does not advance the interval.** Standard SM-2 takes a self-reported
 grade from 0 to 5, and self-report is precisely the signal that inflates. A learner
@@ -403,6 +452,13 @@ const downgrade = deterministic.correct && !confirmed;
 
 **A single evaluator may lower a pass. It may never award one.**
 
+
+<p align="center">
+  <img src="../../pr_assets/05-review-proposals.png" alt="Review. Every proposed change waits here as a field-level diff with a risk label. Nothing lands without approval." width="100%">
+</p>
+
+<p align="center"><sub>Review. Every proposed change waits here as a field-level diff with a risk label. Nothing lands without approval.</sub></p>
+
 That rule exists because this grader once marked a textbook misconception
 **"Correct"**. A model was generous about parameter order, and a student would have
 walked away with the error confirmed by the exact tool meant to catch it.
@@ -415,6 +471,13 @@ wrong about a misconception costs them the concept.
 46 MCP tools over Streamable HTTP with OAuth and PKCE, backed by the same store the
 web app uses. One implementation means an external agent cannot see a different
 workspace than the person does.
+
+
+<p align="center">
+  <img src="../../pr_assets/15-mcp-authorize.png" alt="The MCP consent screen. Each scope is a separate checkbox in plain English, badged read-only or can-make-changes. PKCE protected, short-lived, revocable." width="100%">
+</p>
+
+<p align="center"><sub>The MCP consent screen. Each scope is a separate checkbox in plain English, badged read-only or can-make-changes. PKCE protected, short-lived, revocable.</sub></p>
 
 Two tool descriptions carry real policy rather than documentation.
 `read_source_passage`:
@@ -460,6 +523,13 @@ pnpm/Turborepo monorepo across six packages.
 it imports no database client, makes no network call, and calls no model. That is
 what makes the mastery model testable as mathematics rather than as behaviour
 observed through three layers of I/O.
+
+
+<p align="center">
+  <img src="../../pr_assets/12-build-console.png" alt="Build. A sandboxed editor and console where runtime output is passed to the model as evidence, never as instruction." width="100%">
+</p>
+
+<p align="center"><sub>Build. A sandboxed editor and console where runtime output is passed to the model as evidence, never as instruction.</sub></p>
 
 ### What was hard
 
@@ -538,6 +608,13 @@ front of actual students, to find out where it disagrees with a teacher.
 The demo workspace holds a real SAT goal with a detected misconception, a research
 project with evidence-linked claims, three indexed sources, and a week built by the
 solver rather than by a model.
+
+
+<p align="center">
+  <img src="../../pr_assets/13-command-palette.png" alt="One search across goals, projects, sources, passages and memory. Opening a result never changes data." width="100%">
+</p>
+
+<p align="center"><sub>One search across goals, projects, sources, passages and memory. Opening a result never changes data.</sub></p>
 
 Then ask it the question that started all of this:
 

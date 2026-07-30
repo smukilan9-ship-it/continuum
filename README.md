@@ -1,167 +1,373 @@
-# Continuum
+<p align="center">
+  <img src="pr_assets/01-home-today.png" alt="Continuum Home: one next action with the reason it was chosen, a week built by the constraint solver, and today's agenda." width="100%">
+</p>
 
-Continuum is a user-owned academic memory, learning, research, and scheduling system that can be used from the standalone web app and from authorized AI assistants through MCP.
+<h1 align="center">Continuum</h1>
 
-Its two product rules are:
+<p align="center">
+  <strong>A study and research workspace where the AI already knows your work.</strong>
+</p>
 
-1. One academic memory follows the user across the tools they already use.
-2. Continuum recommends the resource most likely to improve the user’s outcome, even when that means leaving Continuum.
+<p align="center">
+  <a href="https://continuumstudy.vercel.app"><strong>Live demo</strong></a> ·
+  <a href="docs/submission/devpost-story.md">The story</a> ·
+  <a href="docs/submission/architecture.md">Architecture</a> ·
+  <a href="docs/submission/routing.md">Model routing</a> ·
+  <a href="docs/submission/prompt-engineering.md">Prompting</a> ·
+  <a href="docs/submission/learning-science.md">Learning science</a>
+</p>
 
-## Implemented product paths
+<p align="center">
+  <img alt="Next.js 15.5" src="https://img.shields.io/badge/Next.js-15.5-0c8168?style=flat-square">
+  <img alt="React 19" src="https://img.shields.io/badge/React-19-0c8168?style=flat-square">
+  <img alt="Postgres and pgvector" src="https://img.shields.io/badge/Postgres-pgvector-0c8168?style=flat-square">
+  <img alt="1117 tests" src="https://img.shields.io/badge/tests-1%2C117-0c8168?style=flat-square">
+  <img alt="46 MCP tools" src="https://img.shields.io/badge/MCP%20tools-46-0c8168?style=flat-square">
+</p>
 
-- Persistent accounts with slow-hashed passwords or verified Google OpenID sign-in, durable provider identities, revocable opaque sessions, same-origin write protection, and PostgreSQL-backed rate limits.
-- User-scoped goals, tasks, projects, learning states, research notes and decisions, source passages, claims, schedule blocks, resource activities, audit events, and compact outcome receipts.
-- Token-efficient context assembly: structured current state plus hybrid semantic/lexical retrieval, ranking, a caller-selected token budget, provenance, and an access log. Raw transcripts are not copied into memory chunks.
-- A remote Streamable HTTP MCP server with OAuth authorization code + PKCE, dynamic client registration, per-tool scopes, durable grants, token rotation, and immediate revocation checks.
-- Fifteen outcome-shaped MCP tools, each named for a question a student would ask: find what I have, what am I working on, open this goal or project, read this passage, show the evidence behind this claim, what changed since last time, what do I know, what should I do next, start and record practice, save work, and propose a change. Every documented workflow completes in at most two calls. Accepting a decision, confirming a proposal, and committing a schedule stay app-only, because they are the user's actions.
-- A reviewed resource registry and deterministic native-versus-external ranking policy. Recommendations include exact location, authority, access, time, focus, completion, alternatives, and a return-verification contract.
-- A real external-resource lifecycle: save handoff, leave, record return, verify or hold for review, update mastery only from valid evidence, save an outcome receipt, and schedule a spaced follow-up.
-- Deterministic plan generation and repair. Generated schedules become expiring proposals; explicit confirmation and commit are separate writes.
-- Evidence-linked research retrieval over real user sources. Claims saved by assistants remain `unverified`; they may link only to exact user-owned passages.
-- Private PDF/text ingestion with sanitization, stable chunks, content hashes, duplicate detection, optional private Blob originals, pgvector embeddings, lexical fallback, and source deletion from retrieval.
-- A syllabus-aware Code Lab with disposable browser workers for real JavaScript, TypeScript, Python (Pyodide), and SQLite execution; stdout/stderr/exit/timeout/test reporting; persisted local sessions; and visibly separate streaming AI coaching. Java, C/C++, and Rust remain honestly editor-only.
-- Featherless task-aware routing from the live plan/catalog with up to four server-side Featherless keys, health/backoff-aware least-busy selection, reviewed task fallbacks, Groq low-latency and reasoning routes, direct Gemini generation/embeddings with up to ten server-side keys, AI Gateway fallback, Featherless embeddings, and optional local Ollama.
-- Real user connection flows for Claude remote MCP, encrypted paginated Zotero library indexing, NotebookLM source-pack handoff, Obsidian, and Ollama. Continuum’s own editable planner has no external-calendar dependency. Personal NotebookLM is correctly labeled as a handoff because it exposes no general account API.
-- An optional Obsidian plugin. The user chooses one folder or explicitly opts into the whole vault; secrets use Obsidian SecretStorage, generated Continuum notes cannot overwrite ordinary notes, and original binaries require private Blob storage.
+---
 
-Zero-credential local mode uses an explicitly labeled in-memory development identity. The optional Maya database seed is a separate acceptance fixture. Ordinary persistent accounts never receive its goals or research data; they start with honest onboarding and user-owned records.
+## The problem
 
-ChatGPT MCP is future scope. The endpoint is standards-based, but this repository currently exposes and documents Claude connection setup only and does not claim a tested ChatGPT product integration.
+Ask a student where their work is and you get a list, not a place.
+
+The syllabus is a PDF in Downloads. Notes are in Notion. Papers are in Zotero.
+Practice questions are in a WhatsApp group. The plan is a photo of a whiteboard.
+And the AI doing the heavy lifting is a chat window that knows none of it.
+
+So every session opens the same way: paste the syllabus, paste the notes, explain
+what you already tried. Then close the tab and start from zero tomorrow.
+
+That ritual quietly breaks three things.
+
+**The AI is confidently wrong about you.** With no memory of your work it has to
+guess what you know, so it re-explains what you understood last week and skips what
+you have never seen. The failure is invisible, because the prose is fluent.
+
+**Progress becomes unmeasurable.** Time in an app is not learning, but it is the
+only signal available to a tool that never checks whether you can *do* anything. A
+study tool that cannot tell recognition from recall is measuring attendance.
+
+**Citation becomes optional.** When an AI answers from general knowledge about a
+paper you uploaded, nothing in the output tells you.
+
+| Tool | Holds | Does not know |
+|---|---|---|
+| Notion | Notes and structure | What you understand |
+| Anki | Review scheduling | Anything about your research or sources |
+| Zotero | Papers and citations | What you are trying to learn |
+| ChatGPT | Reasoning | You, tomorrow |
+| NotebookLM | Your sources | Your week, your goals, your misconceptions |
+
+Each is good at its corner. None holds the whole thing, so the student becomes the
+integration layer. By hand. Forever.
+
+---
+
+## What Continuum does
+
+Goals, plan, sources, research and learning state live in one database, and the AI
+works from that database instead of from a text box.
+
+The interesting part is not that it has an assistant. It is what the assistant is
+forbidden to do.
+
+### 1. AI where judgment is needed. A solver where arithmetic is enough
+
+<p align="center">
+  <img src="pr_assets/02-plan-week.png" alt="The week grid, with every block placed by the constraint solver." width="100%">
+</p>
+
+Building a week from deadlines, prerequisites, estimated minutes and fixed
+commitments is a constraint problem with a correct answer. Hand it to a model and
+you get something plausible that occasionally schedules a task before its
+prerequisite.
+
+```ts
+route: "deterministic",
+model: "continuum/constraint-solver-v1",
+reason: "Constraints, dependencies, dates, and arithmetic are solved deterministically.",
+costClass: "none",
+```
+
+`costClass: "none"`. Scheduling is free, instant, and correct.
+
+### 2. Progress is evidence, never time
+
+<p align="center">
+  <img src="pr_assets/04-learn-status.png" alt="Study status: concepts carry mastery evidence rather than a completion percentage." width="100%">
+</p>
+
+Reading a lesson cannot move the number that means "can apply this":
+
+```ts
+if (evidence.kind === "lesson_read") {
+  next.exposure = Math.max(next.exposure, 0.8);
+  next.explanation = "Lesson exposure was recorded; transfer did not change because no independent evidence was provided.";
+}
+```
+
+Four dimensions per concept, and mastery is a strict conjunction: four separate
+pieces of evidence, high transfer to unseen problems, and retention that has
+already survived a gap.
+
+### 3. An answer cites a passage, or says it could not
+
+<p align="center">
+  <img src="pr_assets/09-ask-grounded.png" alt="A grounded answer citing two accepted decisions and a source passage." width="100%">
+</p>
+
+Every claim in an answer is an openable citation chip pointing at the user's own
+decision, source passage, or saved note. When retrieval finds nothing, the
+assistant says so rather than inventing.
+
+That disclosure is load-bearing. It is the only reason a
+[five-link grounding failure](docs/submission/grounding-and-mcp.md) was ever
+findable.
+
+---
+
+## Model routing
+
+There is no "the model". A pure function picks a route per task and records why.
+
+<p align="center">
+  <img src="pr_assets/10-context-routing.png" alt="The Context screen: every routing decision with its reason and verification." width="100%">
+</p>
+
+```mermaid
+flowchart TD
+  A[Task with a taskClass] --> B{schedule_optimization?}
+  B -->|yes| C[Deterministic solver<br/>no model, no tokens]
+  B -->|no| D{image or pdf?}
+  D -->|yes| E[Gemini multimodal]
+  D -->|no| F{citation_entailment<br/>or high stakes?}
+  F -->|yes| G[Specialist reasoning<br/>verification: pending]
+  F -->|no| H{someone waiting<br/>on a cursor?}
+  H -->|yes| I[Groq fast conversational]
+  H -->|no| J{bounded task?}
+  J -->|yes| K[Small shared model]
+  J -->|no| L[Lowest-cost general reasoning]
+  G --> M[Independent verifier<br/>different provider, fresh context]
+```
+
+Evidence checking gets a second opinion from a **different vendor**, because asking
+a model to check its own work with the same context in scope mostly measures its
+consistency:
+
+```ts
+const provider = decision.route === "featherless" ? "ai_gateway" : "featherless";
+return { provider, model: `${provider}/evidence-verifier`, freshContext: true };
+```
+
+Full policy: [docs/submission/routing.md](docs/submission/routing.md)
+
+---
+
+## Claude works in the same workspace
+
+<p align="center">
+  <img src="pr_assets/15-mcp-authorize.png" alt="The MCP consent screen: scope-by-scope permission in plain English." width="100%">
+</p>
+
+46 MCP tools over Streamable HTTP with OAuth and PKCE, backed by the same store the
+web app uses. One implementation means an external agent cannot see a different
+workspace than you do.
+
+Every scope is a separate checkbox with a plain-English name, badged read-only or
+can-make-changes. Writes are proposals, not mutations:
+
+> `save_progress_note` This cannot mark work complete: completion is a change the
+> user approves in Continuum, so use `propose_change` for that.
+
+<p align="center">
+  <img src="pr_assets/05-review-proposals.png" alt="Review: every proposed change as a field-level diff with a risk label." width="100%">
+</p>
+
+Every pending change lands on Review as a field-level diff. Nothing is applied
+without approval.
+
+---
+
+## Research that keeps its provenance
+
+<p align="center">
+  <img src="pr_assets/07-library-discover.png" alt="Discover, running a live OpenAlex query." width="100%">
+</p>
+
+Live OpenAlex search, Zotero import, and PDF/DOCX ingestion. Saving a work indexes
+its passages so answers can cite them.
+
+<p align="center">
+  <img src="pr_assets/08-library-citation-graph.png" alt="A work opened with its references, citations and related papers." width="100%">
+</p>
+
+<p align="center">
+  <img src="pr_assets/11-research-projects.png" alt="A research project with evidence-linked claims and accepted decisions." width="100%">
+</p>
+
+A claim carries the exact passages that support or contradict it, each with its
+evidence status and the independent route that verified it.
+
+---
+
+## Learning that measures the right thing
+
+<p align="center">
+  <img src="pr_assets/03-goal-concept-map.png" alt="The concept map for a goal: branches, prerequisites, and what each concept unlocks." width="100%">
+</p>
+
+SM-2 spaced repetition with two deliberate departures. **Recognition does not
+advance the interval**, because self-report is exactly the signal that inflates:
+
+```ts
+if (!evidence.correct) return "forgot";
+if (evidence.explanationScore !== undefined && evidence.explanationScore < 0.5) {
+  // Right answer, cannot explain it. That is recognition, and it is exactly
+  // the case a self-reported grade would call "easy".
+  return "hard";
+}
+if (!evidence.unseen) return "hard";
+```
+
+And **a lapse costs ease but never resets the record**, so a shaky concept returns
+soon without pretending it was never learned.
+
+Every interval ships with a sentence, because a scheduler that says "review this
+Tuesday" and cannot say why is asking for trust it has not earned:
+
+```
+"You had this at 12 days. Back to 6 days."
+"Right, but not yet fluent, back in 4 days."
+```
+
+Full model: [docs/submission/learning-science.md](docs/submission/learning-science.md)
+
+---
+
+## Everything else
+
+<table>
+<tr>
+<td width="50%"><img src="pr_assets/06-library-sources.png" alt="Library: imported sources with processing state and chunk counts."></td>
+<td width="50%"><img src="pr_assets/12-build-console.png" alt="Build: a sandboxed editor and console."></td>
+</tr>
+<tr>
+<td><sub><strong>Library.</strong> Imported sources with processing state, chunk counts and retention.</sub></td>
+<td><sub><strong>Build.</strong> Runtime output reaches the model as evidence, never as instruction.</sub></td>
+</tr>
+<tr>
+<td><img src="pr_assets/13-command-palette.png" alt="Command palette searching across every record type."></td>
+<td><img src="pr_assets/14-settings-connections.png" alt="Connections: bring-your-own-key for every provider."></td>
+</tr>
+<tr>
+<td><sub><strong>Command palette.</strong> One search across goals, projects, sources, passages and memory. Opening a result never changes data.</sub></td>
+<td><sub><strong>Connections.</strong> Bring-your-own-key for every provider. Any connected client is revocable.</sub></td>
+</tr>
+</table>
+
+---
 
 ## Architecture
 
-```text
-apps/web                 Next.js app, accounts, API, OAuth, MCP, product UI
-apps/obsidian-plugin     Optional local-vault connector
-packages/db              Drizzle schema, migrations, user-scoped repository
-packages/domain          Learning, memory, scheduler, resources, permissions
-packages/retrieval       Sanitization, chunking, hashing, source retrieval
-packages/ai              Model policy, Featherless, Gemini, embeddings
-packages/mcp             Canonical tools, scopes, validation, resources
-packages/schemas         Shared Zod contracts
-tests                    Domain and contract acceptance tests
-docs                     Operator, security, memory, MCP, and integration guides
+```mermaid
+flowchart LR
+  U[Student] --> W[Next.js app]
+  C[Claude] --> O[OAuth and PKCE]
+  O --> M[Streamable HTTP MCP]
+  V[Obsidian plugin] --> T[Scoped vault token]
+  W --> S[User-bound Store]
+  M --> S
+  T --> S
+  S --> P[(Postgres and pgvector)]
+  S --> D[Deterministic domain engines]
+  S --> A[Model router]
+  A --> F[Featherless]
+  A --> G[Gemini]
+  A --> RQ[Groq]
+  A --> GW[AI Gateway]
 ```
 
-See [architecture](docs/architecture.md), [code execution](docs/code-execution.md), [Learn](docs/learn-workspace.md), [Research](docs/research-workspace.md), [memory](docs/memory-architecture.md), [MCP context](docs/mcp-context.md), [resource broker](docs/resource-broker.md), and [security](docs/security.md).
+One store, three consumers. The scope system is enforced once.
 
-## Local development
+```
+apps/
+  web/              Next.js 15.5 App Router, React 19
+  obsidian-plugin/  The same workspace from an Obsidian vault
+  video/            Remotion project for the demo film
+packages/
+  ai/               Provider clients, routing policy, embeddings
+  db/               Drizzle schema, migrations, seeds
+  domain/           Pure logic: mastery, spaced repetition, scheduling
+  mcp/              46 tools with scopes and classes
+  retrieval/        Vector and lexical primitives
+  schemas/          Zod schemas shared across every boundary
+```
 
-Requirements: Node.js 24+ and pnpm 11+.
+`packages/domain` imports no database client, makes no network call, and calls no
+model. That is what makes the mastery model testable as mathematics rather than as
+behaviour observed through three layers of I/O.
 
-For the isolated seeded workspace:
+| | |
+|---|---|
+| Tables | 67 |
+| API routes | 51 |
+| MCP tools | 46 |
+| Tests | 1,117 across 71 files |
+| Embeddings | 1536-dim, HNSW over `vector_cosine_ops` |
+
+Full detail: [docs/submission/architecture.md](docs/submission/architecture.md)
+
+---
+
+## Running it
 
 ```bash
 pnpm install
-pnpm dev:seeded
-```
-
-For persistent accounts and cross-client state:
-
-```bash
-cp .env.example .env.local
-# Add DATABASE_URL and server-only provider/configuration values.
-pnpm install
+cp .env.example .env.local     # DATABASE_URL is the only required value
 pnpm db:migrate
-pnpm db:seed
+pnpm seed:demo
 pnpm dev
 ```
 
-The dev server prints the URL it actually bound to — usually [http://localhost:3000](http://localhost:3000), but if that port is busy Next.js falls back automatically (e.g. `http://localhost:3001`), so use whichever URL the terminal reports. Never commit `.env.local`; it is ignored by Git.
-
-Account passwords require a minimum of **6 characters** (client validation, server schema, and helper text share one policy in `apps/web/lib/password-policy.ts`).
-
-## Demo account
-
-For hackathon judges and local demos, a single disposable, fully populated demo account is available. From a clone with `.env.local` configured:
-
 ```bash
-pnpm seed:demo            # create or reset the demo account + demonstration data
-pnpm dev                  # start the app; open the URL the terminal prints
-```
-
-- **Username:** `demo`  ·  **Password:** `demo123`
-- On the sign-in page, **“Try the demo”** logs in with one click (normal authentication — no bypass).
-- The account is a lived-in Class 12 student workspace: SAT prep, a SQL/Python–MySQL unit, the **OASIS** cross-marker IHC research (with citable sources), and an exoplanet classifier.
-- Seeding is **idempotent** and safe to re-run — it resets only the `demo` account to its canonical state and never touches other users. It is created **only** by this command, never by an ordinary request.
-
-Full details, the reset guarantees, and a 2–4 minute walkthrough are in [docs/demo-account.md](docs/demo-account.md) and [docs/demo-walkthrough.md](docs/demo-walkthrough.md).
-
-## Provider configuration
-
-- Featherless: set exactly `FEATHERLESS_API_KEY_PRIMARY` and
-  `FEATHERLESS_API_KEY_SECONDARY` in the server environment. Values never enter
-  client configuration, payloads, HTML, logs, status responses, or source maps.
-  The central gateway balances healthy slots, backs off rate-limited/provider-error
-  slots, and performs at most one safe failover. Model overrides are optional;
-  the router uses reviewed fallbacks when discovery is unavailable. The default
-  embedding model is `Qwen/Qwen3-Embedding-8B` at 1,536 dimensions.
-- Groq: set `GROQ_API_KEY`. The default policy uses Llama 3.1 8B Instant for bounded work, Qwen3.6 27B for reasoning, GPT-OSS 120B for code, and GPT-OSS 20B for verification, subject to the live models enabled for the Groq project.
-- Gemini: set `GEMINI_API_KEY_1` through `GEMINI_API_KEY_10` or `GEMINI_API_KEYS`, then explicitly set `GEMINI_DATA_USE_ACKNOWLEDGED=true`. Keys are server-only and responses never expose them. Multiple keys in one Google Cloud project do not multiply project quota.
-- Embeddings: keep `EMBEDDING_DIMENSIONS=1536`. Provider order may include Gemini, Featherless, AI Gateway, or Ollama. Lexical retrieval remains available if every embedding provider fails.
-- Ollama: browser-local generation accepts only loopback endpoints by default. Server-side remote Ollama is rejected unless `ALLOW_REMOTE_OLLAMA=true` is deliberately set.
-
-Structured (JSON-schema) generation is bounded by the central request deadline
-(`AI_REQUEST_TIMEOUT_MS`, default 30 s). Policy chooses the lowest-cost qualified
-model for each task; safe bounded requests may fail over once, while expensive
-or high-stakes requests are never repeatedly retried.
-
-Provider keys belong in an encrypted deployment secret store or the ignored local environment file. No system can make a key literally impossible to compromise; Continuum reduces exposure through server-only access, least privilege, no logging/display of values, rotation, and revocation.
-
-The model layer is health-aware (`packages/ai/src/health.ts`), and every route,
-fallback, timeout, quota, and unsupported category is documented in
-[model routing](docs/model-routing.md). Prompt composition, trust boundaries,
-schemas, and actual limitations are documented in
-[prompt engineering](docs/prompt-engineering.md).
-
-See [deployment and configuration](docs/deployment.md) and the [exact integration setup guide](docs/integrations.md). A full audit of performance, security, and feature verification is in [AUDIT_REPORT.md](AUDIT_REPORT.md).
-
-## Claude MCP
-
-The canonical endpoint is `https://<your-domain>/mcp` (`/api/mcp` remains a compatibility alias). Production requires HTTPS, `APP_BASE_URL`, `MCP_OAUTH_ISSUER_URL`, and a strong `MCP_JWT_SIGNING_SECRET`. Claude completes OAuth in the browser and receives only approved scopes. Connection status and revocation are visible under Connections.
-
-The local development token path is disabled in production unless the operator explicitly overrides the safety flag. Do not use a shared static token in production.
-
-See [Claude MCP setup and tool contract](docs/mcp-tools.md).
-
-## Obsidian
-
-Build the connector with:
-
-```bash
-pnpm --filter @continuum/obsidian-plugin build
-```
-
-Install `apps/obsidian-plugin/manifest.json`, `main.js`, and `versions.json` in the vault’s `.obsidian/plugins/continuum-sync/` directory. Create a one-time vault token from Continuum Integrations and paste it into the plugin. Whole-vault sync is opt-in, not the default.
-
-See [Obsidian integration](docs/obsidian.md).
-
-## Verification
-
-```bash
-pnpm test
-pnpm test:e2e
-pnpm typecheck
-pnpm lint
+pnpm test          # 1,117 unit and component tests
+pnpm test:e2e      # Playwright
 pnpm build
-pnpm --filter @continuum/obsidian-plugin build
 ```
 
-Passing local checks does not configure external credentials, publish a production domain, or complete the final Claude account-side connector action. Those are deployment gates, not source-code claims.
+Zero-credential local mode uses an explicitly labelled in-memory development
+identity. With no model keys configured, the router degrades honestly rather than
+routing to a provider that cannot answer.
 
-The stable Playwright suite covers demo login; native Learn and a YouTube-provider contract result; deterministic browser code output; separated AI-feedback rendering; navigation persistence; Plan proposals; OpenAlex discovery normalization/save through a contract fixture; Memory context packs; a real OAuth+PKCE MCP read-after-write; and mobile navigation. Live external-provider credentials are checked separately so CI never disguises a fixture as a live provider call.
+---
 
-## Cost boundary
+## What this project taught
 
-Continuum itself does not require an end-user subscription in this repository. Infrastructure and providers may still charge:
+**Good empty states hide bugs.** A well-designed "nothing here yet" is
+indistinguishable from a broken retrieval leg, a missing view field, or an
+unimported stylesheet. Every serious defect in this codebase failed as an
+*absence*, never as an exception. So the tests assert that a specific thing **is**
+retrieved, not that retrieval did not throw.
 
-- Featherless Premium is a paid operator plan; the current documented plan includes four concurrency units, not four unlimited large-model requests.
-- Gemini and hosted infrastructure have quotas and free-tier limits that can change.
-- Ollama and Obsidian are local/free software paths, but use the user’s hardware and storage.
-- Neon, Vercel, and Blob can exceed free allowances in real production use.
+**Honest disclosure is a debugging tool.** The only reason the grounding failure
+was findable is that the assistant said out loud it had answered from general
+knowledge. A system that hid its uncertainty would have shipped a confident,
+invented answer for months.
 
-Continuum supports local fallbacks and operator-side provider health checks, but does not expose infrastructure details in the consumer Connections screen or label a hosted production deployment as universally free.
+**Prompt rules need their reasons beside them.** A rule with no recorded failure
+behind it is a rule the next person deletes when it looks redundant.
 
-## License
+Verification approach: [docs/submission/evaluation.md](docs/submission/evaluation.md)
 
-MIT. See [THIRD_PARTY.md](THIRD_PARTY.md) for dependencies and content attribution.
+---
+
+<p align="center">
+  <strong><a href="https://continuumstudy.vercel.app">Try the demo</a></strong><br>
+  <sub>Click "Explore the demo". No signup.</sub>
+</p>
+
+<p align="center">
+  <sub>Then ask it: <em>"Why can't OASIS claim single-cell co-expression?"</em><br>
+  It cites the passage.</sub>
+</p>

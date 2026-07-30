@@ -20,6 +20,13 @@ tracks four dimensions per concept in `learning_states`:
 Plus `confidence`, tracked separately and never mixed into the others, because the
 gap between confidence and transfer is itself the useful signal.
 
+
+<p align="center">
+  <img src="../../pr_assets/04-learn-status.png" alt="Mastery per concept, with the evidence behind it rather than a time-based percentage." width="100%">
+</p>
+
+<p align="center"><sub>Mastery per concept, with the evidence behind it rather than a time-based percentage.</sub></p>
+
 ### Reading never raises transfer
 
 ```ts
@@ -89,6 +96,13 @@ a gap. One good day does not produce "mastered".
 `misconception_detected` is sticky: later exposure and practice cannot silently
 clear it, because the status guard preserves it. It clears when the learner passes
 an unseen checkpoint on the thing they got wrong.
+
+
+<p align="center">
+  <img src="../../pr_assets/03-goal-concept-map.png" alt="Concepts, prerequisites and what each one unlocks, with mastery and confidence shown separately." width="100%">
+</p>
+
+<p align="center"><sub>Concepts, prerequisites and what each one unlocks, with mastery and confidence shown separately.</sub></p>
 
 ## Spaced repetition: SM-2 with two departures
 

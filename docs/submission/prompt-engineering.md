@@ -142,6 +142,13 @@ const CONTEXT_KEY_WORDS: ReadonlyArray<[RegExp, string]> = [
 Each pattern absorbs a preceding article so "the relevantMemories" does not become
 "the your saved notes".
 
+
+<p align="center">
+  <img src="../../pr_assets/09-ask-grounded.png" alt="An answer that quotes the user's own source and survives the instruction-leak filter, because `instructions` excludes retrieved content." width="100%">
+</p>
+
+<p align="center"><sub>An answer that quotes the user's own source and survives the instruction-leak filter, because `instructions` excludes retrieved content.</sub></p>
+
 ## Two prompts, not one
 
 `buildAcademicPrompt` returns `prompt` and `instructions` separately:
@@ -159,7 +166,7 @@ instructions: string;
 The output filter suppresses a reply that shares a long verbatim run with what the
 model was told, which is correct for the system prompt and the output contract and
 catastrophic once retrieved passages join the prompt. An answer that quoted the
-user's own source became indistinguishable from one reciting our instructions and
+user's own source became indistinguishable from one reciting the system instructions and
 was dropped in full. The user saw "I couldn't produce a clean answer for that."
 
 The output contract three lines above the filter asks the model to cite the
