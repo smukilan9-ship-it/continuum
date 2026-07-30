@@ -54,15 +54,28 @@ function memoryType(kind: string): UsedContextType {
   return "memory";
 }
 
-function hrefFor(type: UsedContextType, id: string, goalId?: string, projectId?: string): string | undefined {
-  if (type === "goal") return `/goals`;
-  if (type === "project" || type === "decision" || type === "claim") return `/research`;
-  if (type === "source" || type === "passage") return `/library`;
-  if (type === "concept") return `/learn`;
-  if (type === "receipt") return `/memory`;
-  if (type === "task") return `/goals`;
-  void id; void goalId; void projectId;
-  return undefined;
+/**
+ * Where clicking a citation chip goes (§11.6). Every type has a destination —
+ * the inspector's **Open** action is half of what makes provenance checkable,
+ * and a record with no href renders the panel with only "Don't use this again".
+ *
+ * These are the §7.1 addresses. They were the pre-rename ones, so every chip
+ * cost a redirect and `memory` — the most common type by far, since it is what
+ * `searchMemory` returns — had no destination at all.
+ */
+export function hrefFor(type: string, id: string, goalId?: string, projectId?: string): string {
+  const record = encodeURIComponent(id);
+  if (type === "goal") return goalId ? `/g/${encodeURIComponent(goalId)}` : "/plan";
+  if (type === "task") return goalId ? `/g/${encodeURIComponent(goalId)}?view=plan` : "/plan";
+  if (type === "project" || type === "decision" || type === "claim") {
+    return projectId && goalId ? `/g/${encodeURIComponent(goalId)}/p/${encodeURIComponent(projectId)}` : "/research";
+  }
+  if (type === "source" || type === "passage" || type === "attachment") return `/library?tab=sources&source=${record}`;
+  // `misconception` and `progress` are memory-chunk kinds the seed writes.
+  if (type === "concept") return `/learn?concept=${record}`;
+  // Receipts, notes and memory chunks are all things Continuum remembers, and
+  // /context is where a user inspects — or forgets — any of them.
+  return `/context?record=${record}`;
 }
 
 /** Builds provenance entries from retrieved memory chunks. */
@@ -103,7 +116,7 @@ export function fromAttachments(
       type: "attachment",
       id: sourceId,
       label: trimLabel(firstString(source, ["title"]) || "Attached source"),
-      href: `/library`,
+      href: hrefFor("attachment", sourceId),
       snippet: str(chunk, "text").slice(0, 400),
     });
   }

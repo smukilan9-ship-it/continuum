@@ -471,9 +471,9 @@ export function buildDemoData(now: Date) {
       model: "seed",
       metadata: {
         usedContext: [
-          { type: "decision", id: "decision_demo_oasis_coexpr", label: "Cross-marker association is not co-expression" },
-          { type: "decision", id: "decision_demo_oasis_warp", label: "Registration stays similarity-only" },
-          { type: "source", id: "source_demo_ihc", label: "OASIS — Technical Reference" },
+          { type: "decision", id: "decision_demo_oasis_coexpr", label: "Cross-marker association is not co-expression", href: "/g/goal_demo_oasis/p/project_demo_oasis?view=decisions", snippet: "Cross-marker spatial association is never same-cell co-expression. Serial sections are different physical slices, so a CD8 cell and a TIM-3 cell cannot be the same cell." },
+          { type: "decision", id: "decision_demo_oasis_warp", label: "Registration stays similarity-only", href: "/g/goal_demo_oasis/p/project_demo_oasis?view=decisions", snippet: "A non-rigid warp fabricates the very inter-cell distances the statistic consumes, so it is forbidden before any cross-K test." },
+          { type: "source", id: "source_demo_ihc", label: "OASIS — Technical Reference", href: "/library?tab=sources&source=source_demo_ihc", snippet: "Multiplexed immunohistochemistry permits co-expression claims on a single section; serial single-plex does not." },
         ],
       },
       createdAt: hoursFromNow(-22),
@@ -500,9 +500,9 @@ export function buildDemoData(now: Date) {
       model: "seed",
       metadata: {
         usedContext: [
-          { type: "goal", id: "goal_demo_sat", label: "Raise SAT score from 1520 to 1570+" },
-          { type: "misconception", id: "mchunk_demo_misc_sat", label: "Arc-length and sector-area swapped under time pressure" },
-          { type: "progress", id: "mchunk_demo_progress_sat", label: "Parabola pace 95s → 68s" },
+          { type: "goal", id: "goal_demo_sat", label: "Raise SAT score from 1520 to 1570+", href: "/g/goal_demo_sat", snippet: "Break 1570 on the October SAT by closing Module-2 reading and advanced-geometry gaps and holding pace under timed conditions." },
+          { type: "misconception", id: "mchunk_demo_misc_sat", label: "Arc-length and sector-area swapped under time pressure", href: "/context?record=mchunk_demo_misc_sat", snippet: "The error log shows the arc-length and sector-area formulas swapping in the last third of timed sets — a recall-under-pressure failure, not a comprehension one." },
+          { type: "progress", id: "mchunk_demo_progress_sat", label: "Parabola pace 95s → 68s", href: "/context?record=mchunk_demo_progress_sat", snippet: "Parabola items went from 95s to 68s after the error-log rework, and Math practice is trending toward 800." },
         ],
       },
       createdAt: hoursFromNow(-4),

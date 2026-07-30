@@ -194,3 +194,33 @@ describe("assistant orchestrator", () => {
     expect(work.statusLabel).toMatch(/Looking through/);
   });
 });
+
+/**
+ * §11.6: clicking a citation chip must open the record. The inspector's
+ * **Open** action is half of what makes provenance checkable — a chip you can
+ * read but not follow is still just a claim.
+ *
+ * These were the pre-rename addresses, so every chip cost a redirect, and
+ * `memory` — the most common type, since it is what `searchMemory` returns —
+ * had no destination at all and rendered the inspector without Open.
+ */
+describe("provenance destinations", () => {
+  it("gives every retrieved record a §7.1 address", async () => {
+    const { store } = fakeStore();
+    const result = await orchestrate({ store, message: "what did I decide about my project?", attachmentIds: [], history: [] });
+    expect(result.usedContext.length).toBeGreaterThan(0);
+    for (const entry of result.usedContext) {
+      expect(entry.href, `${entry.type} has no destination`).toBeTruthy();
+      expect(entry.href).toMatch(/^\/(g|plan|research|library|learn|context)\b/);
+      // None of the pre-rename paths survive.
+      expect(entry.href).not.toMatch(/^\/(goals|memory|assistant|code|today|activity|integrations|account)\b/);
+    }
+  });
+
+  it("routes an attachment to the Library entry for that source", async () => {
+    const { store } = fakeStore();
+    const result = await orchestrate({ store, message: "summarise this", attachmentIds: ["source_1"], history: [] });
+    const attachment = result.usedContext.find((entry) => entry.type === "attachment");
+    expect(attachment?.href).toBe("/library?tab=sources&source=source_1");
+  });
+});

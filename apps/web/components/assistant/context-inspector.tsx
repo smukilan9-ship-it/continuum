@@ -4,6 +4,7 @@ import { ExternalLink, ShieldOff } from "lucide-react";
 import Link from "next/link";
 import type { Route } from "next";
 import { Button, SidePanel } from "@/components/ui";
+import { hrefFor } from "@/lib/assistant/provenance";
 import { formatLabel } from "@/lib/labels";
 import type { UsedContext } from "./types";
 
@@ -48,11 +49,14 @@ export function ContextInspector({
             </p>
           )}
           <div className="context-inspector-actions">
-            {record.href ? (
-              <Link className="button button-secondary" href={record.href as Route} onClick={onClose}>
-                <ExternalLink size={14} aria-hidden="true" />Open
-              </Link>
-            ) : null}
+            {/* Derived when the stored record has no href: messages persisted
+                before provenance carried one — and the seeded demo
+                conversations — would otherwise open an inspector with no way
+                to follow the citation, which is the half that makes it
+                checkable rather than just readable. */}
+            <Link className="button button-secondary" href={(record.href ?? hrefFor(record.type, record.id)) as Route} onClick={onClose}>
+              <ExternalLink size={14} aria-hidden="true" />Open
+            </Link>
             <Button
               className="button-quiet"
               disabled={excluded}
