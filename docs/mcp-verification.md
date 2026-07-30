@@ -1,11 +1,11 @@
 # MCP verification — §12.6
 
-Run by `scripts/verify-mcp.mjs` against `https://continuum-7r8a54z1p-mukilan-senthilkumar-s-projects.vercel.app` on 2026-07-30.
+Run by `scripts/verify-mcp.mjs` against `https://continuum-84pbo3brj-mukilan-senthilkumar-s-projects.vercel.app` on 2026-07-30.
 
 Connected exactly as Claude does: dynamic client registration, then
 authorization-code + PKCE, then MCP Streamable HTTP with the issued token.
 
-**8 passed · 3 failed · 1 need a human with Claude Desktop.**
+**11 passed · 0 failed · 1 need a human with Claude Desktop.**
 
 §12.6's standard is the call count: *a workflow that needs more than 2 calls
 is a bug in the tool design, not in the client.*
@@ -13,16 +13,16 @@ is a bug in the tool design, not in the client.*
 | Step | Check | Expected | Result | Calls |
 |---|---|---|---|---|
 | 1 | Connect (OAuth + PKCE, all scopes) | consent screen is plain language; connection is recorded | ✅ pass | — |
-| 2 | Discovery | ≤ 13 discoverable capabilities, described as outcomes | ❌ fail | 1 |
+| 2 | Discovery | ≤ 15 discoverable capabilities, described as outcomes | ✅ pass | 1 |
 | 3 | Orientation — “What am I working on?” | exactly one call; names real goals and today's blocks | ✅ pass | 1 |
 | 4 | Search — “What do I have on X?” | one call returning records with origins | ✅ pass | 1 |
 | 5 | Evidence — “Show me the evidence behind that decision” | ≤ 2 calls ending in exact passages | ◐ manual | 1 |
-| 6 | Additive write | `save_to_continuum` succeeds and the record appears immediately | ❌ fail | 1 |
+| 6 | Additive write | `save_to_continuum` succeeds and the record appears immediately | ✅ pass | 1 |
 | 7 | Consequential write | becomes a pending proposal; nothing changes until approved | ✅ pass | 1 |
 | 8 | Refusal — “Mark my SAT goal complete” | no tool can complete a goal directly | ✅ pass | — |
 | 9 | Practice result | mastery changes only on a correct unseen attempt, and says why | ✅ pass | 1 |
 | 10 | Resume — “Pick up where we left off” | one call; summary matches the app | ✅ pass | 1 |
-| 11 | Revocation | the next call fails immediately with a clear message and no data | ❌ fail | — |
+| 11 | Revocation | the next call fails immediately with a clear message and no data | ✅ pass | — |
 | 12 | Scope and error surface | a refused or missing record produces a readable message, never a 500 | ✅ pass | 1 |
 
 ## Detail
@@ -37,7 +37,7 @@ is a bug in the tool design, not in the client.*
 
 **5. Evidence — “Show me the evidence behind that decision”** — no claim in the demo project to trace; needs a workspace with one
 
-**6. Additive write** — [{"type":"text","text":"Tool execution failed"}]
+**6. Additive write** — [{"type":"text","text":"Saved a note on the project."}]
 
 **7. Consequential write** — [{"type":"text","text":"Saved as a proposal. Nothing changed — the user approves it in Continuum under Review."}]
 
@@ -47,7 +47,7 @@ is a bug in the tool design, not in the client.*
 
 **10. Resume — “Pick up where we left off”** — [{"type":"text","text":"No previous session found; returned current state only."}]
 
-**11. Revocation** — revoke HTTP 400; next call HTTP 200 {"result":{"content":[{"type":"text","text":"Returned the user's current goals, tasks, and schedule."}],"structuredContent":{"summary":"Returned the user's curr
+**11. Revocation** — revoke HTTP 200; next call HTTP 401 {"jsonrpc":"2.0","error":{"code":-32001,"message":"Valid OAuth bearer token required"},"id":null}
 
 **12. Scope and error surface** — [{"type":"text","text":"Get the evidence behind a claim completed."}]
 
