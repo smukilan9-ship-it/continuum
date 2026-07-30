@@ -14,116 +14,92 @@
    nothing new should reference them.
    ========================================================================== */
 
+/* ==========================================================================
+   Design tokens.
+
+   One theme, built properly, rather than two half-tuned ones. The palette is
+   the Stripe family: a saturated indigo that only ever carries action, deep
+   navy ink that reads as considered rather than harsh, and a cool off-white
+   canvas that makes white cards float. Nothing here is a hue "because the
+   brand is green" — every value is picked against the surface it sits on.
+   ========================================================================== */
+
 :root {
-  /* Accent. `--accent` carries the one primary action per screen; `--accent-mark`
-     is an indicator only and must never fill more than 4px in any dimension
-     (§15.2), which is what stops the lime from becoming a 265x44 nav block. */
-  --accent:            #6f7a2e;
-  --accent-hover:      #5a6325;
-  --accent-quiet:      #eef3cf;
-  --accent-mark:       #c8df24;
+  /* Action. --brand fills the one primary control per screen; --brand-strong
+     is its pressed and hover state; --brand-soft is the tint behind a selected
+     row or an informational panel. */
+  --brand:             #635bff;
+  --brand-strong:      #4b45d1;
+  --brand-hover:       #7a73ff;
+  --brand-soft:        #f0efff;
+  --brand-line:        #d7d4ff;
+  --brand-glow:        rgba(99, 91, 255, .38);
 
-  --ink:               #1b1c16;
-  --ink-2:             #4a4d42;
-  /* Tertiary ink carries eyebrows, footnotes and meta lines at 11-13px, so it
-     is body text for WCAG 1.4.3 and needs 4.5:1 against every surface it can
-     sit on — not just `--surface`. The previous #74776b cleared white (4.57)
-     but failed the canvas (4.30), `--surface-raised` (4.04) and
-     `--surface-sunken` (3.90); axe flagged it as serious on `/` in both themes.
-     This value clears 4.57:1 at the worst of the four. */
-  --ink-3:             #696c60;
+  /* A second accent, used only for gradients and small marks. */
+  --cyan:              #00d4ff;
+  --violet:            #9b6dff;
 
-  --canvas:            #faf8f1;
+  /* Ink. Navy rather than black: at 15px on a white card, #0a2540 reads as
+     deliberate and #000 reads as a default. */
+  --ink:               #0a2540;
+  --ink-2:             #425466;
+  --ink-3:             #5b6b7f;
+
+  --canvas:            #f6f9fc;
   --surface:           #ffffff;
-  --surface-raised:    #f3f1e8;
-  --surface-sunken:    #efede3;
+  --surface-raised:    #f6f9fc;
+  --surface-sunken:    #eef3f8;
 
-  --line:              #e2dfd2;
-  --line-strong:       #cbc7b7;
+  --line:              #e3e8ee;
+  --line-strong:       #cfd7e0;
 
-  --success: #4f6526; --success-surface: #edf3d5;
-  --warning: #8a5b24; --warning-surface: #f9edd8;
-  --danger:  #a13a3a; --danger-surface:  #f9e2e0;
-  --info:    #3f5a6b; --info-surface:    #e6eef2;
-  --focus:   #7d8b2b;
+  --success: #0f7b55; --success-surface: #e7f8f1; --success-line: #b6e6d3;
+  --warning: #9a5b06; --warning-surface: #fff4e5; --warning-line: #f6d9ac;
+  --danger:  #b3261e; --danger-surface:  #fdecea; --danger-line:  #f5c4c0;
+  --danger-hover: #8f1d17;
+  --info:    #0b6fb8; --info-surface:    #e8f4fd; --info-line:    #b9dcf5;
+  --focus:   #635bff;
 
-  /* Text drawn on top of an --accent fill. Not in §15.2, but required: the
-     accent inverts between themes, so a literal #fff fails contrast on the
-     light-olive dark accent. */
-  --on-accent: #ffffff;
+  --on-brand: #ffffff;
 
-  /* --accent-mark is bright lime in BOTH themes, so text on it is dark in both
-     and --on-accent (white in light) fails on it at 1.7:1. */
-  --on-accent-mark:   #1f2114;
-  --on-accent-mark-2: #4a4d2a;
+  /* Deliberately dark surfaces: console output and code blocks, which stay
+     dark on a light page because that is what code looks like everywhere. */
+  --surface-inverse:        #0a2540;
+  --surface-inverse-raised: #123255;
+  --surface-inverse-danger: #3d1512;
+  --ink-inverse:            #e6edf5;
+  --ink-inverse-2:          #b3c2d3;
+  --ink-inverse-3:          #8797a9;
+  --ink-inverse-danger:     #ffc9c4;
 
-  --danger-hover: #862f2f;
+  --syntax-string: #b3261e;
 
-  /* Deliberately dark in both themes: console output, code blocks, and the one
-     next-action card. These are not the dark theme's surfaces — they stay dark
-     when the page is light, so they cannot use --surface. */
-  --surface-inverse:        #181912;
-  --surface-inverse-raised: #22241b;
-  --surface-inverse-danger: #331a1d;
-  --ink-inverse:            #f6f3e9;
-  --ink-inverse-2:          #c6c7ba;
-  --ink-inverse-3:          #a9aa9d;
-  --ink-inverse-danger:     #ffd8dc;
+  /* Stripe's shadow language: two layers, one tight and one wide, both tinted
+     with the ink rather than pure black, so a card lifts without dirtying the
+     canvas. */
+  --shadow-1: 0 1px 2px rgba(10, 37, 64, .06), 0 1px 3px rgba(10, 37, 64, .04);
+  --shadow-2: 0 2px 5px -1px rgba(50, 50, 93, .10), 0 1px 3px -1px rgba(10, 37, 64, .08);
+  --shadow-3: 0 13px 27px -5px rgba(50, 50, 93, .18), 0 8px 16px -8px rgba(10, 37, 64, .20);
+  --shadow-4: 0 30px 60px -12px rgba(50, 50, 93, .22), 0 18px 36px -18px rgba(10, 37, 64, .26);
+  --glow:     0 0 0 1px var(--brand-strong), 0 2px 5px -1px rgba(50, 50, 93, .18), 0 8px 24px -6px var(--brand-glow);
+  --glow-lg:  0 0 0 1px var(--brand-strong), 0 4px 10px -2px rgba(50, 50, 93, .20), 0 14px 40px -8px var(--brand-glow);
 
-  /* CodeMirror's default light theme paints string literals at #ee4400, which
-     is off-palette and fails on the editor surface. */
-  --syntax-string: #b8330b;
-
-  --shadow-1: 0 1px 2px rgba(27, 28, 22, .05);
-  --shadow-2: 0 8px 24px rgba(27, 28, 22, .08);
-  --shadow-3: 0 24px 64px rgba(27, 28, 22, .14);
+  --gradient-brand: linear-gradient(101deg, var(--cyan) 0%, var(--brand) 48%, var(--violet) 100%);
+  --gradient-ink:   linear-gradient(160deg, #0a2540 0%, #163a5f 60%, #1d4c7c 100%);
 
   /* Goal identity: assigned by hash, rendered only as a 3px edge bar. */
-  --goal-1: #6f7a2e; --goal-2: #3f5a6b; --goal-3: #8a5b24;
-  --goal-4: #6b4a6b; --goal-5: #2e6f5e; --goal-6: #8a3f4f;
-}
+  --goal-1: #635bff; --goal-2: #0b6fb8; --goal-3: #9a5b06;
+  --goal-4: #9b6dff; --goal-5: #0f7b55; --goal-6: #b3261e;
 
-html[data-theme="dark"] {
-  --accent:            #c3d268;
-  --accent-hover:      #d6e57a;
-  --accent-quiet:      #2b301c;
-  --accent-mark:       #dff53b;
-
-  --ink:               #eceade;
-  --ink-2:             #a9ab9d;
-  /* Same fix in the dark theme. #7e8175 measured 4.04:1 on `--surface-raised`
-     (the marketing footer) and 3.87:1 on `--accent-quiet` (a selected row, the
-     next-action card). This clears 4.58:1 at the worst of the five surfaces. */
-  --ink-3:             #94978b;
-
-  --canvas:            #101109;
-  --surface:           #17180f;
-  --surface-raised:    #20221a;
-  --surface-sunken:    #0c0d07;
-
-  --line:              #2c2e24;
-  --line-strong:       #43463a;
-
-  --success: #b9cd74; --success-surface: #232c17;
-  --warning: #dfae68; --warning-surface: #2f2718;
-  --danger:  #e8968f; --danger-surface:  #331d1c;
-  --info:    #8fb3c6; --info-surface:    #1a2429;
-  --focus:   #dff53b;
-  --on-accent: #171812;
-  --danger-hover: #f2b3ad;
-
-  --surface-inverse:        #0b0c09;
-  --surface-inverse-raised: #17180f;
-  --surface-inverse-danger: #2a1516;
-
-  --syntax-string: #ff9a6b;
-
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, .3);
-  --shadow-2: 0 8px 24px rgba(0, 0, 0, .35);
-  --shadow-3: 0 24px 64px rgba(0, 0, 0, .5);
-
-  --goal-1: #c3d268; --goal-2: #8fb3c6; --goal-3: #dfae68;
-  --goal-4: #c0a2c0; --goal-5: #7fc4ae; --goal-6: #e59aa6;
+  /* Aliases kept so the legacy accent names in per-screen CSS resolve. */
+  --accent: var(--brand);
+  --accent-hover: var(--brand-strong);
+  --accent-quiet: var(--brand-soft);
+  --accent-mark: var(--brand);
+  --accent-line: var(--brand-line);
+  --on-accent: var(--on-brand);
+  --on-accent-mark: var(--on-brand);
+  --on-accent-mark-2: rgba(255, 255, 255, .82);
 }
 
 /* A status tint needs a border a step stronger than its surface but far weaker
@@ -176,7 +152,7 @@ html[data-density="compact"] { --row-h: 32px; }
 
 * { box-sizing: border-box; }
 html { min-width: 320px; color-scheme: light; background: var(--canvas); color: var(--ink); scroll-behavior: smooth; }
-html[data-theme="dark"] { color-scheme: dark; }
+
 body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--font-sans), Arial, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 a { color: inherit; text-decoration: none; }
 button, input, textarea, select { font: inherit; }
@@ -191,12 +167,16 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 /* Shared controls */
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow-1); }
-.button { min-height: 40px; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 14px; transition: background .15s ease, border-color .15s ease, box-shadow .15s ease; }
-.button-primary { color: var(--on-accent); background: var(--accent-hover); border-color: var(--accent-hover); }
-.button-primary:hover:not(:disabled) { background: var(--ink-2); border-color: var(--ink-2); box-shadow: var(--shadow-2); }
-.button-secondary { color: var(--ink); background: var(--surface); border-color: var(--line-strong); }
-.button-secondary:hover:not(:disabled) { background: var(--surface-raised); border-color: var(--line-strong); }
+.card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-2);
+  transition: box-shadow var(--d-base) var(--e-out), transform var(--d-base) var(--e-out), border-color var(--d-base) var(--e-out);
+}
+.card-interactive:hover { box-shadow: var(--shadow-3); transform: translateY(-2px); border-color: var(--line-strong); }
+.button-large { min-height: 46px; padding: 0 20px; border-radius: var(--r-lg); }
 .button-large { min-height: 46px; padding: 0 20px; }
 .badge { width: fit-content; min-height: 24px; padding: 4px 9px; display: inline-flex; align-items: center; border-radius: 999px; font-size: 11px; font-weight: 750; line-height: 1.1; white-space: nowrap; }
 .badge-neutral { color: var(--ink-2); background: var(--surface-sunken); }
@@ -210,9 +190,9 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .tooltip-arrow { fill: var(--ink); }
 .eyebrow { margin: 0; color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: .1em; }
 .subtle-meta { color: var(--ink-2); font-size: 13px; }
-.form-error, .auth-error { margin: 0; padding: 10px 12px; color: var(--danger); background: var(--danger-surface); border: 1px solid #f3c9cd; border-radius: 8px; font-size: 13px; }
-.modal-backdrop { position: fixed; inset: 0; z-index: 90; background: rgba(18, 19, 14, .56); backdrop-filter: blur(2px); animation: modal-fade .15s ease-out; }
-.modal-content { width: min(610px, calc(100vw - 30px)); max-height: min(760px, calc(100vh - 32px)); position: fixed; inset: 50% auto auto 50%; z-index: 91; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 28px 80px rgba(17, 18, 14, .25); transform: translate(-50%, -50%); animation: modal-enter .18s ease-out; }
+.form-error, .auth-error { margin: 0; padding: 10px 12px; color: var(--danger); background: var(--danger-surface); border: 1px solid var(--danger-line); border-radius: 8px; font-size: 13px; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 90; background: rgba(10, 37, 64, .42); backdrop-filter: blur(4px) saturate(1.1); animation: modal-fade .15s ease-out; }
+.modal-content { width: min(610px, calc(100vw - 30px)); max-height: min(760px, calc(100vh - 32px)); position: fixed; inset: 50% auto auto 50%; z-index: 91; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow-4); transform: translate(-50%, -50%); animation: modal-enter .18s ease-out; }
 .modal-heading { padding: 22px 24px 17px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); }
 .modal-heading h2 { margin: 0; font-size: 22px; line-height: 1.2; letter-spacing: -.025em; }
 .modal-heading p { margin: 5px 0 0; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
@@ -285,8 +265,7 @@ textarea { min-height: 90px; resize: vertical; }
   .search-button span, .search-button kbd, .privacy-state { display: none; }
   .topbar-right { flex: none; gap: 6px; }
   /* Appearance lives in Settings › Appearance and the account menu (§8.10). */
-  .topbar-right .theme-toggle { display: none; }
-  .content-wrap { padding: 28px 20px calc(92px + env(safe-area-inset-bottom)); }
+  .topbar-right   .content-wrap { padding: 28px 20px calc(92px + env(safe-area-inset-bottom)); }
   .mobile-bottom-nav { height: calc(66px + env(safe-area-inset-bottom)); position: fixed; inset: auto 0 0; z-index: 30; padding-bottom: env(safe-area-inset-bottom); display: grid; grid-template-columns: repeat(5, 1fr); background: color-mix(in srgb, var(--surface) 96%, transparent); border-top: 1px solid var(--line); backdrop-filter: blur(12px); }
   /* `min-width: 0` on the grid items: without it each one is sized by its
      label and five of them refuse to fit 320px. */
@@ -345,11 +324,13 @@ body {
 
 .brand-symbol, .brand-mark { width: 31px; height: 31px; flex: none; display: block; border-radius: 10px; }
 
-.nav-item { min-height: 42px; padding: 0 10px; display: flex; align-items: center; gap: 10px; color: var(--ink-2); border-radius: 11px; font-size: 13px; font-weight: 650; }
+.nav-item { min-height: 42px; padding: 0 12px; display: flex; align-items: center; gap: 11px; color: var(--ink-2); border-radius: var(--r-lg); font-size: 13.5px; font-weight: 550; letter-spacing: -.005em; transition: color var(--d-fast) var(--e-out), background var(--d-fast) var(--e-out), box-shadow var(--d-base) var(--e-out), transform var(--d-fast) var(--e-out); }
 
-.nav-item:hover { color: var(--ink); background: var(--surface-raised); }
+.nav-item:hover { color: var(--brand); background: var(--brand-soft); }
+.nav-item:active { transform: scale(.99); }
 
-.nav-item.active { color: var(--on-accent-mark); background: var(--accent-mark); box-shadow: none; }
+.nav-item.active { color: var(--on-brand); background: var(--brand); box-shadow: 0 1px 2px rgba(10,37,64,.10), 0 6px 18px -6px var(--brand-glow); font-weight: 600; }
+.nav-item.active:hover { background: var(--brand-hover); color: var(--on-brand); }
 
 
 /* The user's own goals. A goal row is quieter than a destination — it carries a
@@ -389,31 +370,23 @@ body {
   background: color-mix(in srgb, var(--accent-mark) 55%, transparent);
   border-radius: 2px;
 }
-.avatar { width: 34px; height: 34px; flex: none; display: grid; place-items: center; color: var(--on-accent-mark); background: var(--accent-mark); border-radius: 50%; font-size: 12px; font-weight: 800; }
+.avatar { width: 34px; height: 34px; flex: none; display: grid; place-items: center; color: var(--on-brand); background: var(--gradient-brand); border-radius: 50%; font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px -2px var(--brand-glow); }
 
 .main-area { min-height: 100vh; margin-left: 248px; }
 
-.topbar { height: 68px; position: sticky; top: 0; z-index: 25; padding: 0 30px; display: flex; align-items: center; gap: 24px; background: color-mix(in srgb, var(--canvas) 86%, transparent); border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); padding-inline: 38px; border-bottom-color: color-mix(in srgb, var(--line) 75%, transparent); }
+.topbar { height: 68px; position: sticky; top: 0; z-index: 25; padding: 0 30px; display: flex; align-items: center; gap: 24px; background: rgba(255,255,255,.72); border-bottom: 1px solid var(--line); backdrop-filter: blur(14px) saturate(1.6); padding-inline: 38px; border-bottom-color: color-mix(in srgb, var(--line) 75%, transparent); }
 
 .search-button { width: min(390px, 38vw); min-height: 44px; margin-left: auto; padding: 0 11px; display: flex; align-items: center; gap: 9px; color: var(--ink-2); background: color-mix(in srgb, var(--surface) 82%, transparent); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; border-color: var(--line); }
 
 .topbar-right { display: flex; align-items: center; gap: 14px; }
 
-.theme-toggle:hover { color: var(--ink); background: var(--surface); }
 .content-wrap { width: min(1260px, 100%); margin: 0 auto; padding: 46px 46px 92px; }
 
 .screen > .resume-card { margin-bottom: 0; }
 .screen > .next-action-card, .screen > .resume-card { margin-bottom: 22px; padding: 28px; }
 
-html[data-theme="dark"] .sidebar, html[data-theme="dark"] .topbar, html[data-theme="dark"] .card, html[data-theme="dark"] .search-button {
-  background-color: var(--surface);
-  color: var(--ink);
-}
-html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), html[data-theme="dark"] select {
-  color: var(--ink);
-  background: var(--surface);
-  border-color: var(--line-strong);
-}
+
+
 @media (max-width: 1050px) {
   .sidebar { width: 232px; }
   .main-area { margin-left: 232px; }
@@ -426,13 +399,12 @@ html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([ty
   .content-wrap { padding: 30px 20px 90px; }
 }
 @media (max-width: 760px) {
-  .theme-toggle span { display: none; }
-}
+  }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
-.sidebar { width: 248px; position: fixed; inset: 0 auto 0 0; z-index: 40; display: flex; flex-direction: column; padding: 22px 16px 16px; color: var(--ink); background: color-mix(in srgb, var(--surface) 90%, var(--canvas)); border-right: 1px solid var(--line); border-right-color: color-mix(in srgb, var(--line) 78%, transparent); height: 100dvh; max-height: 100dvh; overflow: hidden; }
+.sidebar { width: 248px; position: fixed; inset: 0 auto 0 0; z-index: 40; display: flex; flex-direction: column; padding: 22px 16px 16px; color: var(--ink); background: var(--surface); border-right: 1px solid var(--line); box-shadow: 1px 0 0 rgba(10,37,64,.02), 4px 0 24px -12px rgba(10,37,64,.10); height: 100dvh; max-height: 100dvh; overflow: hidden; }
 
 .main-nav { display: grid; gap: 20px; margin-top: 34px; min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 0 3px 12px 0; scrollbar-color: var(--line-strong) transparent; scrollbar-width: thin; }
 
@@ -498,7 +470,8 @@ html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([ty
 .nav-group-utility .nav-item { font-size: var(--t-small); }
 .nav-group > p { margin: 0 10px 5px; color: var(--ink-2); font-size: var(--t-micro); font-weight: 600; letter-spacing: .16em; text-transform: uppercase; }
 
-.nav-item small { min-width: 21px; margin-left: auto; padding: 2px 6px; color: #171812; background: color-mix(in srgb, white 55%, transparent); border-radius: 999px; text-align: center; font-size: var(--t-micro); }
+.nav-item small { min-width: 21px; margin-left: auto; padding: 2px 6px; color: var(--brand-strong); background: var(--surface); border-radius: 999px; text-align: center; font-size: var(--t-micro); font-weight: 650; }
+.nav-item.active small { color: var(--brand-strong); background: #fff; }
 
 /* §8.3 The lime accent signals "the primary action / where you are" and nothing
    else, so an active nav item and a primary button are the only lime surfaces. */
@@ -517,21 +490,15 @@ html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([ty
 .content-wrap > .screen,
 .content-wrap > .page-stack { max-width: 1440px; margin-inline: auto; padding-top: var(--s-6); }
 
-html[data-theme="dark"] { }
-.button { min-height: 36px; padding-inline: 18px; border-radius: 10px; letter-spacing: -.01em; font-size: var(--t-body); transition: background var(--d-fast) ease-out, border-color var(--d-fast) ease-out, color var(--d-fast) ease-out; }
-.button:focus-visible, .nav-item:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
-.card { border-color: color-mix(in srgb, var(--line) 78%, transparent); border-radius: var(--r-lg); box-shadow: none; }
+
+.button:focus-visible, .nav-item:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .command-panel { box-shadow: var(--shadow-2); }
 
 .shortcut-sheet dl { margin: 0; display: grid; gap: var(--s-3); }
 .shortcut-sheet dl > div { display: flex; align-items: center; gap: var(--s-3); }
 .shortcut-sheet dt { min-width: 64px; }
 .shortcut-sheet dd { margin: 0; color: var(--ink-2); font-size: var(--t-small); }
-.theme-toggle { min-height: 36px; padding: 2px; display: inline-flex; align-items: center; gap: 2px; color: var(--ink-2); background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; font-size: 11px; font-weight: 750; text-transform: capitalize; }
 
-.theme-toggle button { width: 30px; height: 28px; display: grid; place-items: center; color: var(--ink-2); background: transparent; border: 0; border-radius: 8px; cursor: pointer; transition: color var(--d-fast) ease-out, background var(--d-fast) ease-out; }
-.theme-toggle button:hover { color: var(--ink); }
-.theme-toggle button.active { color: var(--ink); background: var(--surface); box-shadow: var(--shadow-1); }/* §9 Responsiveness — touch targets, sticky bars clearing the bottom nav, and no
    horizontal page scroll at any width. */
 @media (max-width: 767px) {
   .content-wrap > .screen,

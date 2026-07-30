@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 
 import { Tabs } from "@/components/ui";
-import { ThemeToggle } from "@/components/theme-toggle";
 
 import { SettingsSection } from "../section";
 
@@ -34,10 +33,6 @@ export function AppearanceSegment() {
 
   return (
     <>
-      <SettingsSection title="Theme" description="Light, dark, or whatever your system is doing right now.">
-        <ThemeToggle />
-      </SettingsSection>
-
       <SettingsSection title="Density" description="How much vertical room a list row takes. Compact fits more on a small screen.">
         <Tabs
           label="Row density"

@@ -122,8 +122,4 @@
 .auth-result { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: start; gap: var(--s-3); padding: var(--s-4); color: var(--ink); background: var(--surface-raised); border: 1px solid var(--line); border-radius: 12px; text-align: start; }
 .auth-result p { margin: 0; color: var(--ink-2); font-size: var(--t-small); line-height: 1.6; }
 .auth-result-actions { display: grid; gap: var(--s-3); justify-items: center; }
-html[data-theme="dark"] .auth-error {
-  color: var(--danger);
-  background: var(--danger-surface);
-  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
-}
+

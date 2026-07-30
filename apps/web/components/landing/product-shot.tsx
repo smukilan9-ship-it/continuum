@@ -68,20 +68,16 @@ export function ProductShot({
 }) {
   return (
     <span className={className ? `mk-shot ${className}` : "mk-shot"} data-crop={crop ?? "top"}>
-      {(["light", "dark"] as const).map((theme) => (
-        <Image
-          key={theme}
-          className={`mk-shot-img mk-shot-${theme}`}
-          src={`/marketing/${theme}/${name}.png`}
-          alt={theme === "light" ? alt : ""}
-          aria-hidden={theme === "dark" ? true : undefined}
-          width={SHOT_WIDTH}
-          height={SHOT_HEIGHT}
-          sizes={sizes}
-          {...(eager ? { priority: true } : { loading: "lazy" as const })}
-          decoding="async"
-        />
-      ))}
+      <Image
+        className="mk-shot-img"
+        src={`/marketing/light/${name}.png`}
+        alt={alt}
+        width={SHOT_WIDTH}
+        height={SHOT_HEIGHT}
+        sizes={sizes}
+        {...(eager ? { priority: true } : { loading: "lazy" as const })}
+        decoding="async"
+      />
     </span>
   );
 }

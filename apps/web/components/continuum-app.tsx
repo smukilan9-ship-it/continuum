@@ -11,6 +11,8 @@ import {
   Database,
   Library,
   Goal,
+  GraduationCap,
+  FlaskConical,
   LogOut,
   Menu,
   MessageCircle,
@@ -28,7 +30,6 @@ import { AssistantProvider, useAssistantController } from "@/components/assistan
 import type { AssistantSession, PageContext } from "@/components/assistant/types";
 import { BrandMark } from "@/components/brand-mark";
 import { CommandPalette, type PaletteAction } from "@/components/shell/command-palette";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { SKIP_ONBOARDING_KEY } from "@/components/start/start-screen";
 import { normalizeWorkspaceState, WorkspaceScreens, type WorkspaceState } from "@/components/workspace-screens";
 import { canonicalView, workspaceMeta, workspacePath, type WorkspaceView } from "@/lib/workspace-routes";
@@ -49,6 +50,13 @@ type NavGroup = { label: string; items: NavItem[]; variant?: "primary" | "utilit
  * owns the practice-set builder, and Research is where a project without a goal
  * still lives — but they are not destinations in their own right.
  */
+/**
+ * The sidebar names what the product does. An earlier pass collapsed it to six
+ * destinations and buried Learn, Research and the concept map inside other
+ * screens — which reads as a smaller product than this is. Study, the research
+ * workbench, and the scholarly integrations are the differentiators, so they
+ * get their own line.
+ */
 const navGroups: NavGroup[] = [
   {
     label: "",
@@ -60,10 +68,17 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: "Across your work",
+    label: "Learn & build",
     items: [
-      { id: "library", label: "Library", icon: Library },
+      { id: "learn", label: "Study", icon: GraduationCap },
       { id: "code", label: "Build", icon: Code2 },
+    ],
+  },
+  {
+    label: "Research",
+    items: [
+      { id: "research", label: "Projects", icon: FlaskConical },
+      { id: "library", label: "Library", icon: Library },
       { id: "memory", label: "Context", icon: Database },
     ],
   },
@@ -378,7 +393,6 @@ export function ContinuumApp({ user, initialState, shell, view, goalId, projectI
             <button className={panelOpen ? "topbar-ask active" : "topbar-ask"} onClick={() => setPanelOpen(!panelOpen)} aria-pressed={panelOpen} aria-label="Ask Continuum about this page">
               <Sparkles size={16} /><span>Ask</span><kbd>⌘J</kbd>
             </button>
-            <ThemeToggle />
             <span className="privacy-state"><i />Saved</span>
           </div>
         </header>

@@ -125,8 +125,8 @@
 /* Theme swap. The inactive variant keeps `loading="lazy"`, so `display: none`
    also means it is never fetched — see product-shot.tsx. */
 .mk-shot-dark { display: none; }
-html[data-theme="dark"] .mk-shot-light { display: none; }
-html[data-theme="dark"] .mk-shot-dark { display: block; }
+
+
 
 /* ── 1 · Hero ───────────────────────────────────────────────────────────── */
 .mk-hero {

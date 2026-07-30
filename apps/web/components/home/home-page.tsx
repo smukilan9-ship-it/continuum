@@ -3,6 +3,7 @@
 import { ArrowRight, CalendarClock, Check, CircleDot, MessageSquare, Play, SquareTerminal } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { Spotlight } from "@/components/ui/motion";
 import { Button, EmptyState, Menu, ProgressBar, StatusChip } from "@/components/ui";
 import { plainCopy as plain } from "@/lib/user-copy";
 import type { WorkspaceView } from "@/lib/workspace-routes";
@@ -175,6 +176,7 @@ export function HomePage({
       <div className="home-layout">
         <div className="home-main">
           {/* The ONLY accent element on this page (AC-H1). */}
+          <Spotlight className="next-action-shell spotlight-over">
           <section className="next-action" aria-labelledby="next-action-heading">
             <p className="eyebrow" id="next-action-heading">Next</p>
             {nextTask ? (
@@ -214,6 +216,7 @@ export function HomePage({
               </>
             )}
           </section>
+          </Spotlight>
 
           {resumeItems.length ? (
             <section className="home-section" aria-labelledby="resume-heading">

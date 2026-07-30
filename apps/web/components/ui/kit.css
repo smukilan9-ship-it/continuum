@@ -9,6 +9,7 @@
 /* --- Buttons -------------------------------------------------------------- */
 
 .button {
+  position: relative;
   min-height: var(--row-h);
   padding: 0 var(--s-4);
   display: inline-flex;
@@ -19,36 +20,78 @@
   border-radius: var(--r-md);
   cursor: pointer;
   font-size: var(--t-body);
-  font-weight: 500;
+  font-weight: 550;
+  letter-spacing: -.01em;
   line-height: 1;
-  transition: background-color var(--d-fast) var(--e-out), border-color var(--d-fast) var(--e-out), color var(--d-fast) var(--e-out);
+  white-space: nowrap;
+  transition:
+    background var(--d-fast) var(--e-out),
+    border-color var(--d-fast) var(--e-out),
+    color var(--d-fast) var(--e-out),
+    box-shadow var(--d-base) var(--e-out),
+    transform var(--d-fast) var(--e-out);
 }
-.button-sm { min-height: 32px; padding: 0 var(--s-3); font-size: var(--t-small); }
-.button-lg { min-height: 44px; padding: 0 var(--s-5); }
+.button:active:not(:disabled) { transform: translateY(1px) scale(.995); }
+.button-sm { min-height: 32px; padding: 0 var(--s-3); font-size: var(--t-small); border-radius: var(--r-sm); }
+.button-lg { min-height: 46px; padding: 0 var(--s-6); font-size: var(--t-body-lg); border-radius: var(--r-lg); }
 
-.button-primary { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
-.button-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
-.button-secondary { color: var(--ink); background: var(--surface); border-color: var(--line-strong); }
-.button-secondary:hover:not(:disabled) { background: var(--surface-raised); }
+/* The one primary action per screen. It carries the brand fill, a hairline of
+   its own darker edge, and a coloured lift — the glow is the brand's shadow,
+   not a neon ring, so it reads as depth rather than decoration. */
+.button-primary {
+  color: var(--on-brand);
+  background: var(--brand);
+  border-color: transparent;
+  box-shadow: var(--glow);
+}
+.button-primary:hover:not(:disabled) {
+  background: var(--brand-hover);
+  box-shadow: var(--glow-lg);
+  transform: translateY(-1px);
+}
+.button-primary:active:not(:disabled) { background: var(--brand-strong); box-shadow: var(--glow); transform: translateY(0) scale(.995); }
+
+/* A gradient variant for the single hero action on a marketing or empty state. */
+.button-gradient {
+  color: var(--on-brand);
+  background: var(--gradient-brand);
+  background-size: 160% 160%;
+  border-color: transparent;
+  box-shadow: var(--glow);
+}
+.button-gradient:hover:not(:disabled) {
+  background-position: 100% 0;
+  box-shadow: var(--glow-lg);
+  transform: translateY(-1px);
+}
+
+.button-secondary {
+  color: var(--ink);
+  background: var(--surface);
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-1);
+}
+.button-secondary:hover:not(:disabled) { border-color: var(--ink-3); box-shadow: var(--shadow-2); transform: translateY(-1px); }
 .button-quiet { color: var(--ink-2); background: transparent; border-color: transparent; }
-.button-quiet:hover:not(:disabled) { color: var(--ink); background: var(--surface-raised); }
-.button-danger { color: var(--danger); background: var(--danger-surface); border-color: transparent; }
-.button-danger:hover:not(:disabled) { border-color: var(--danger); }
+.button-quiet:hover:not(:disabled) { color: var(--brand); background: var(--brand-soft); }
+.button-danger { color: var(--on-brand); background: var(--danger); border-color: transparent; box-shadow: var(--shadow-2); }
+.button-danger:hover:not(:disabled) { background: var(--danger-hover); transform: translateY(-1px); box-shadow: var(--shadow-3); }
+.button:disabled { box-shadow: none; transform: none; }
 
 .icon-button {
   display: inline-grid;
   place-items: center;
-  color: var(--ink-2);
+  color: var(--ink-3);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--r-md);
   cursor: pointer;
-  transition: background-color var(--d-fast) var(--e-out), color var(--d-fast) var(--e-out);
+  transition: background-color var(--d-fast) var(--e-out), color var(--d-fast) var(--e-out), box-shadow var(--d-fast) var(--e-out);
 }
 .icon-button-28 { width: 28px; height: 28px; }
 .icon-button-32 { width: 32px; height: 32px; }
 .icon-button-36 { width: 36px; height: 36px; }
-.icon-button:hover:not(:disabled) { color: var(--ink); background: var(--surface-raised); }
+.icon-button:hover:not(:disabled) { color: var(--brand); background: var(--brand-soft); }
 .icon-button-danger:hover:not(:disabled) { color: var(--danger); background: var(--danger-surface); }
 /* 2.5.8 target size: the visual box may be 28px, the hit area may not. */
 .icon-button::after { content: ""; position: absolute; inset: 50% auto auto 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
@@ -513,39 +556,15 @@
    legacy dark tokens to values that no longer agreed with the canonical set
    (§15.2), so pre-redesign screens rendered on #1a1c16 while the component kit
    rendered on var(--surface). Deleted: both now resolve through the same tokens. */
-html[data-theme="dark"] .badge-neutral { color: var(--ink-2); background: var(--surface-raised); }
-html[data-theme="dark"] .modal-content,
-html[data-theme="dark"] .modal-heading,
-html[data-theme="dark"] .modal-body {
-  color: var(--ink);
-  border-color: var(--line);
-}
-html[data-theme="dark"] .modal-content {
-  background: var(--surface);
-  box-shadow: 0 28px 80px rgb(0 0 0 / 48%);
-}
-html[data-theme="dark"] .modal-footer {
-  color: var(--ink-2);
-  background: var(--surface-raised);
-  border-color: var(--line);
-}
-html[data-theme="dark"] .toast {
-  color: var(--ink);
-  background: var(--surface-sunken);
-  border: 1px solid var(--line-strong);
-  box-shadow: 0 18px 50px rgb(0 0 0 / 46%);
-}
-html[data-theme="dark"] .toast-icon {
-  color: var(--on-accent-mark);
-  background: var(--accent-mark);
-}
-html[data-theme="dark"] .toast button { color: var(--ink-2); }
-html[data-theme="dark"] .tooltip {
-  color: var(--on-accent-mark);
-  background: var(--accent-mark);
-  box-shadow: 0 10px 28px rgb(0 0 0 / 36%);
-}
-html[data-theme="dark"] .tooltip-arrow { fill: var(--accent-mark); }
+
+
+
+
+
+
+
+
+
 
 /* §5.4 Compact page header — replaces the ~250px marketing hero on every screen. */
 .page-header { display: grid; gap: var(--s-2); padding-block: var(--s-2) var(--s-3); }
@@ -628,22 +647,52 @@ html[data-theme="dark"] .tooltip-arrow { fill: var(--accent-mark); }
 .section-heading button, .inline-form-heading button { padding: 4px; color: var(--accent); background: transparent; border: 0; cursor: pointer; font-weight: 700; }
 .workspace-form label { display: grid; gap: 7px; color: var(--ink); font-size: 13px; font-weight: 700; }
 .workspace-form input, .workspace-form textarea, .workspace-form select { width: 100%; min-height: 42px; padding: 9px 11px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; font-size: 14px; font-weight: 450; }
-html[data-theme="dark"] .button-secondary {
-  background-color: var(--surface);
-  color: var(--ink);
-}
+
 .page-stack > .page-intro h1 {
   font-size: clamp(36px, 4vw, 50px);
 }
-html[data-theme="dark"] .form-error {
-  color: var(--danger);
-  background: var(--danger-surface);
-  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
-}
-html[data-theme="dark"] .feedback-panel textarea, html[data-theme="dark"] .feedback-panel input, html[data-theme="dark"] .feedback-panel select {
-  color: var(--ink);
-  background: var(--surface);
-}
+
+
 .section-tabs > button:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
 .modal-content, .page-header-popover, .page-header-menu { box-shadow: var(--shadow-2); }
 .state-detail p { max-width: 100%; overflow-x: auto; }
+
+/* --- Motion surfaces ------------------------------------------------------ */
+
+/* The spotlight follows the pointer through two custom properties set by
+   components/ui/motion.tsx. With no pointer it never resolves, so the layer
+   stays invisible and the surface is an ordinary card. */
+.spotlight { position: relative; isolation: isolate; }
+.spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  opacity: 0;
+  background: radial-gradient(420px circle at var(--spot-x, -100%) var(--spot-y, -100%), rgba(99, 91, 255, .16), transparent 62%);
+  transition: opacity var(--d-slow) var(--e-out);
+  pointer-events: none;
+}
+.spotlight:hover::before { opacity: 1; }
+.spotlight > * { position: relative; z-index: 1; }
+
+/* When the child is an opaque surface, the sheen has to sit above it or the
+   card's own background hides it. It never takes pointer events, so nothing
+   inside becomes unclickable. */
+.spotlight-over::before { z-index: 2; }
+
+/* A hairline of the brand gradient along the top of a feature surface. */
+.gradient-edge { position: relative; overflow: hidden; }
+.gradient-edge::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--gradient-brand);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spotlight::before { display: none; }
+}

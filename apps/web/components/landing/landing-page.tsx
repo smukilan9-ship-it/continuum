@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { BookMarked, Check, Github, Landmark, Library, ShieldCheck } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { DemoButton } from "@/components/landing/demo-button";
 import { MobileNav } from "@/components/landing/mobile-nav";
 import { ProductShot } from "@/components/landing/product-shot";
@@ -144,7 +143,6 @@ export function LandingPage() {
           </nav>
 
           <div className="mk-header-actions">
-            <ThemeToggle />
             <Link className="mk-signin" href="/login">Sign in</Link>
             {demoAvailable
               ? <DemoButton className="mk-btn mk-btn-primary mk-btn-sm" label="Try the demo" />

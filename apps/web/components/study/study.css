@@ -905,8 +905,8 @@
   .lesson-checkpoint .button { min-height: 44px; }
 }
 
-html[data-theme="dark"] .mode-tabs { background: var(--surface-raised); }
-html[data-theme="dark"] .mode-tabs button.active { color: var(--ink); background: var(--surface-sunken); }
+
+
 
 /* Document question banks */
 .question-bank-section { margin-top: 34px; }
@@ -1103,37 +1103,13 @@ html[data-theme="dark"] .mode-tabs button.active { color: var(--ink); background
   .lesson-generic-check .button { grid-column: 1 / -1; }
 }
 
-html[data-theme="dark"] .question-mode-grid button.active,
-html[data-theme="dark"] .practice-choices button.active {
-  color: var(--ink);
-  background: var(--accent-quiet);
-  border-color: var(--accent);
-}
-html[data-theme="dark"] .question-dropzone,
-html[data-theme="dark"] .practice-question,
-html[data-theme="dark"] .lesson-objectives,
-html[data-theme="dark"] .lesson-examples {
-  color: var(--ink);
-  background: var(--surface-raised);
-  border-color: var(--line-strong);
-}
-html[data-theme="dark"] .concept-path-root,
-html[data-theme="dark"] .concept-branch-hub,
-html[data-theme="dark"] .concept-outline > section > button.selected {
-  color: var(--ink);
-  background: var(--accent-quiet);
-  border-color: var(--accent);
-}
-html[data-theme="dark"] .concept-node.state-needs-review { background: var(--warning-surface); }
-html[data-theme="dark"] .concept-node.state-mastered { background: var(--success-surface); }
-html[data-theme="dark"] .concept-warning {
-  color: var(--warning);
-  background: var(--warning-surface);
-}
-html[data-theme="dark"] .lesson-generic-check {
-  color: var(--success);
-  background: var(--success-surface);
-}
+
+
+
+
+
+
+
 .concept-map-viewport {
   position: relative;
   contain: inline-size layout paint;

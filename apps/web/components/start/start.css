@@ -106,7 +106,4 @@
 .welcome-shell .main-area { max-width: 900px; margin-inline: auto; }
 .welcome-skip { padding: var(--s-6) 0; text-align: center; }
 .welcome-skip button { color: var(--ink-2); background: transparent; border: 0; font-size: var(--t-small); text-decoration: underline; cursor: pointer; }
-html[data-theme="dark"] .onboarding-panel, html[data-theme="dark"] .onboarding-review div {
-  background-color: var(--surface);
-  color: var(--ink);
-}
+
