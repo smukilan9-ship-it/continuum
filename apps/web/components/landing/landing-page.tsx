@@ -1,329 +1,363 @@
 import Link from "next/link";
-import { ArrowRight, Check, Github, Play, ShieldCheck } from "lucide-react";
+import { BookMarked, Check, Github, Landmark, Library, ShieldCheck } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
-import {
-  FragmentationMerge,
-  HeroProductMockup,
-  Reveal,
-  WorkflowShowcase,
-} from "@/components/landing/landing-motion";
+import { DemoButton } from "@/components/landing/demo-button";
+import { MobileNav } from "@/components/landing/mobile-nav";
+import { ProductShot } from "@/components/landing/product-shot";
+import { ScrollReveal } from "@/components/landing/scroll-reveal";
+import { demoLoginEnabled } from "@/lib/env";
 import "./landing.css";
 
-const features = [
+/**
+ * The marketing page, rebuilt against redesign.md §10.
+ *
+ * Seven sections, in the §10.2 order. Every claim on the page is one that §10.1
+ * classified as verified; the deleted sections (fragmentation animation, six-card
+ * feature grid, journey timeline, comparison table, quote, trust logo cloud) took
+ * the unsupported claims and about 3,800 px with them.
+ *
+ * The product frames are real captures of the running app, not DOM mockups —
+ * see `product-shot.tsx` for the current placeholder state.
+ */
+
+const NAV_LINKS = [
+  ["How it works", "#proof"],
+  ["What's inside", "#inside"],
+  ["Connections", "#connections"],
+  ["Control", "#control"],
+] as const;
+
+const PROOF_POINTS = [
+  "No credit card",
+  "Your workspace is private",
+  "Works with Claude, Zotero, Obsidian",
+] as const;
+
+const PROBLEM_ITEMS = [
+  { icon: Library, label: "Sources you can't find again" },
+  { icon: Landmark, label: "Plans that drift" },
+  { icon: BookMarked, label: "AI that forgets" },
+] as const;
+
+const STEPS = [
   {
-    id: "assistant",
-    number: "01",
-    title: "Assistant",
-    eyebrow: "A collaborator that already knows the work",
-    description: "Ask a better question without rebuilding the context first.",
-    points: ["Persistent memory", "Context-aware conversations", "Attachments", "Reasoning", "Project awareness"],
+    caption: "Ask in your own words",
+    shot: "ask-cited",
+    crop: "bottom",
+    alt: "The Ask composer holding the question “What did I decide about cross-marker association?” with a context chip reading “Project: OASIS”.",
+  },
+  {
+    caption: "Get an answer from your work",
+    shot: "ask-cited",
+    crop: "top",
+    alt: "An answer in the Ask surface with two citation chips beneath it, each naming a record from the workspace.",
+  },
+  {
+    caption: "Open exactly what it used",
+    shot: "ask-inspector",
+    crop: "right",
+    alt: "The context inspector open beside an answer, showing the decision record and the source passage the answer was built from.",
+  },
+] as const;
+
+const INSIDE_ROWS = [
+  {
+    id: "study",
+    title: "Study that only counts real evidence",
+    body: "A concept moves forward when you answer something you haven't seen before — not when you finish a video.",
+    shot: "study-check",
+    alt: "A study checkpoint asking an unseen question, with the concept's mastery breakdown beside it.",
   },
   {
     id: "research",
-    number: "02",
-    title: "Research",
-    eyebrow: "Move from search results to defensible claims",
-    description: "Discover, compare, cite, and preserve the evidence behind every decision.",
-    points: ["OpenAlex integration", "Citation graphs", "Paper discovery", "Related work", "One-click citations"],
+    title: "Research with the evidence attached",
+    body: "Search 250M+ works through OpenAlex, save what matters to a project, and keep every claim tied to the passage that supports it.",
+    shot: "goal-overview",
+    alt: "A research goal showing its saved sources and the claims linked to the passages that support them.",
   },
   {
-    id: "learn",
-    number: "03",
-    title: "Learn",
-    eyebrow: "A path shaped by evidence, not engagement",
-    description: "Continuum adapts only when your work demonstrates a real change in understanding.",
-    points: ["Adaptive learning paths", "Mastery tracking", "Concept maps", "Practice questions", "Weakness detection"],
+    id: "build",
+    title: "Code beside your material",
+    body: "Run Python, JavaScript, TypeScript, and SQL in the browser. Ask for help and the answer uses your actual error, not a guess.",
+    shot: "build-run",
+    alt: "The code editor with a Python program and its console output, run in the browser.",
   },
   {
-    id: "projects",
-    number: "04",
-    title: "Projects",
-    eyebrow: "The outcome holds the context together",
-    description: "Sources, claims, and the decisions behind them — still connected when you return.",
-    points: ["Decision history", "Evidence-linked claims", "Research context", "Session summaries", "Project memory"],
-  },
-  {
-    id: "code",
-    number: "05",
-    title: "Code",
-    eyebrow: "Build beside the evidence",
-    description: "Move from a paper or explanation to a working experiment without changing mental workspaces.",
-    points: ["Run Python", "JavaScript and SQL", "Debug with real output", "Integrated workspace", "Source-aware help"],
-  },
-  {
-    id: "memory",
-    number: "06",
-    title: "Shared memory",
-    eyebrow: "One workspace your tools can read",
-    description: "Ask a question and the answer comes from your own material — with the records it used shown alongside it.",
-    points: ["Relevant recall", "Source provenance", "Cross-project search", "Scoped context packs", "Approved writes only"],
+    id: "plan",
+    title: "A week you can actually finish",
+    body: "Tell Continuum when you're free. It drafts a week from your real deadlines; you edit it before anything is saved.",
+    shot: "plan-week",
+    alt: "A drafted study week laid out across seven days, with each block still editable before it is saved.",
   },
 ] as const;
 
-const comparisonRows = [
-  ["Multiple AI chats", "Unified assistant"],
-  ["Scattered PDFs", "Connected knowledge"],
-  ["Lost context", "Persistent memory"],
-  ["Manual research", "AI-assisted discovery"],
-  ["Random studying", "Personalized mastery"],
+const CONNECTIONS = [
+  { name: "Claude", body: "Ask Claude about your Continuum work through a secure connection you approve and can revoke.", status: "You approve each permission" },
+  { name: "Zotero", body: "Bring your library in and use it as evidence.", status: "Needs your API key" },
+  { name: "Obsidian", body: "Sync notes to a folder you choose. Continuum never touches the rest of your vault.", status: "Folder you pick" },
+  { name: "OpenAlex", body: "Search the open scholarly graph. Works with no setup.", status: "Working — no setup needed" },
 ] as const;
 
-const journey = ["Curiosity", "Research", "Understanding", "Practice", "Creation", "Mastery"] as const;
-
-const footerColumns = [
-  {
-    title: "Product",
-    links: [["Features", "#features"], ["Research", "#research"], ["Learn", "#learn"], ["Projects", "#projects"], ["Assistant", "#assistant"]],
-  },
-  {
-    title: "Company",
-    links: [["Privacy", "/privacy"], ["Terms", "/terms"], ["Contact", "https://github.com/smukilan9-ship-it/continuum/issues/new"]],
-  },
-  {
-    title: "Build",
-    links: [["Documentation", "https://github.com/smukilan9-ship-it/continuum#readme"], ["GitHub", "https://github.com/smukilan9-ship-it/continuum"], ["MCP", "/integrations"]],
-  },
+const CONTROL_POINTS = [
+  "Assistants read only what a question needs",
+  "Anything that changes your work is a proposal you approve",
+  "Run models locally with Ollama if you'd rather",
+  "Download or delete everything, whenever",
 ] as const;
 
-function FeatureMark({ index }: { index: number }) {
-  return (
-    <span className={`landing-feature-mark landing-feature-mark-${index + 1}`} aria-hidden="true">
-      <i /><i /><i /><i />
-    </span>
-  );
-}
+/**
+ * The real OAuth consent list, rendered statically (§10.3, section 6). The
+ * titles and descriptions are the exact strings `/oauth/authorize` shows when a
+ * client asks for these scopes — it is a render of the screen, not a redrawing
+ * of it, and nothing here is interactive.
+ */
+const CONSENT_ROWS = [
+  { title: "Use relevant academic memory", body: "Read compact context that helps Claude continue your work.", write: false },
+  { title: "See your saved study schedule", body: "Read upcoming study blocks and fixed commitments.", write: false },
+  { title: "Draft schedule changes", body: "Create schedule suggestions for you to review.", write: true },
+  { title: "Save approved schedule changes", body: "Save schedule changes only after confirmation.", write: true },
+] as const;
+
+const FOOTER_BUILD = [
+  ["Documentation", "https://github.com/smukilan9-ship-it/continuum#readme"],
+  ["GitHub", "https://github.com/smukilan9-ship-it/continuum"],
+] as const;
 
 export function LandingPage() {
-  return (
-    <div className="landing-shell">
-      <a className="landing-skip-link" href="#main-content">Skip to content</a>
+  const demoAvailable = demoLoginEnabled();
 
-      <header className="landing-header">
-        <div className="landing-header-inner">
-          <Link className="landing-logo" href="/" aria-label="Continuum home">
+  return (
+    <div className="mk-page">
+      <ScrollReveal />
+      <a className="mk-skip" href="#main-content">Skip to content</a>
+
+      <header className="mk-header">
+        <div className="mk-header-inner">
+          <Link className="mk-brand" href="/" aria-label="Continuum home">
             <BrandMark title="Continuum" />
             <span>continuum</span>
           </Link>
 
-          <nav className="landing-desktop-nav" aria-label="Main navigation">
-            <a href="#features">Features</a>
-            <a href="#workflow">How it works</a>
-            <a href="#security">Security</a>
-            <a href="https://github.com/smukilan9-ship-it/continuum#readme">Docs</a>
+          <nav className="mk-header-nav" aria-label="Sections">
+            {NAV_LINKS.map(([label, href]) => <a key={href} href={href}>{label}</a>)}
           </nav>
 
-          <div className="landing-header-actions">
+          <div className="mk-header-actions">
             <ThemeToggle />
-            <Link className="landing-sign-in" href="/login?returnTo=%2Ftoday">Sign in</Link>
-            <Link className="landing-button landing-button-small landing-button-primary" href="/login?mode=register&returnTo=%2Ftoday">
-              Start free <ArrowRight size={15} />
-            </Link>
+            <Link className="mk-signin" href="/login">Sign in</Link>
+            {demoAvailable
+              ? <DemoButton className="mk-btn mk-btn-primary mk-btn-sm" label="Try the demo" />
+              : <Link className="mk-btn mk-btn-primary mk-btn-sm" href="/login?mode=register">Create your workspace</Link>}
           </div>
 
-          <details className="landing-mobile-menu">
-            <summary aria-label="Open navigation"><span /><span /></summary>
-            <nav aria-label="Mobile navigation">
-              <a href="#features">Features</a>
-              <a href="#workflow">How it works</a>
-              <a href="#security">Security</a>
-              <Link href="/login?returnTo=%2Ftoday">Sign in</Link>
-              <Link className="landing-button landing-button-primary" href="/login?mode=register&returnTo=%2Ftoday">Start free</Link>
-            </nav>
-          </details>
+          <MobileNav links={NAV_LINKS} demoAvailable={demoAvailable} />
         </div>
       </header>
 
       <main id="main-content">
-        <section className="landing-hero" aria-labelledby="hero-title">
-          <div className="landing-hero-copy">
-            <p className="landing-kicker"><i /> One Workspace. Infinite Learning.</p>
-            <h1 id="hero-title">Learning shouldn&apos;t be fragmented. <span>Continuum connects everything.</span></h1>
-            <p className="landing-hero-lead">
-              Instead of juggling AI chats, notes, research papers, code, and projects across dozens of apps, Continuum brings them together into one intelligent workspace that remembers everything and helps you move from curiosity to mastery.
+        {/* 1 — Hook */}
+        <section className="mk-hero" aria-labelledby="hero-title">
+          <div className="mk-hero-copy" data-reveal>
+            <p className="mk-eyebrow">For students and researchers</p>
+            <h1 id="hero-title">Your work, and an AI that actually knows it.</h1>
+            <p className="mk-lead">
+              Continuum keeps your goals, sources, study, and code in one workspace — so when you ask a question, the
+              answer comes from your own material, with the receipts.
             </p>
-            <div className="landing-hero-actions">
-              <Link className="landing-button landing-button-primary" href="/login?demo=1&returnTo=%2Ftoday">Try the demo workspace <ArrowRight size={17} /></Link>
-              <Link className="landing-button landing-button-secondary" href="/login?mode=register&returnTo=%2Ftoday"><Play size={15} fill="currentColor" /> Create your workspace</Link>
+            <div className="mk-cta-row">
+              {demoAvailable ? <DemoButton className="mk-btn mk-btn-primary" /> : null}
+              <Link className={demoAvailable ? "mk-btn mk-btn-secondary" : "mk-btn mk-btn-primary"} href="/login?mode=register">
+                Create your workspace
+              </Link>
             </div>
-            <div className="landing-hero-proof">
-              <span><Check size={14} /> No credit card required</span>
-              <span>Works with Claude, Zotero, Obsidian, and OpenAlex.</span>
-            </div>
+            <p className="mk-proof">
+              <Check size={14} aria-hidden="true" />
+              {PROOF_POINTS.map((point, index) => (
+                <span key={point}>
+                  {point}
+                  {index < PROOF_POINTS.length - 1 ? <i aria-hidden="true">·</i> : null}
+                </span>
+              ))}
+            </p>
           </div>
-          <HeroProductMockup />
+
+          <figure className="mk-hero-frame" data-reveal data-reveal-delay="1">
+            <ProductShot
+              name="ask-cited"
+              crop="top"
+              eager
+              sizes="(max-width: 1000px) 100vw, 55vw"
+              alt="Continuum's Ask surface: a question about a research project, a short answer, and three citation chips naming the source, decision, and concept the answer used."
+            />
+          </figure>
         </section>
 
-        <section className="landing-trust" aria-label="Supported tools">
-          <p>Works with the tools you already use.</p>
-          <div className="landing-logo-cloud">
-            {["OpenAlex", "Crossref", "Zotero", "Obsidian", "Claude", "Ollama"].map((tool) => (
-              <span key={tool}>{tool}</span>
+        {/* 2 — Problem */}
+        <section className="mk-section mk-problem" aria-labelledby="problem-title">
+          <div className="mk-narrow" data-reveal>
+            <h2 id="problem-title">Every tool holds a piece. None of them holds the thread.</h2>
+            <p className="mk-lead">
+              Your reading is in one app, your notes in another, your plan in a third, and your AI chat starts from zero
+              every time. You spend your best attention rebuilding context you already had.
+            </p>
+            <ul className="mk-problem-items">
+              {PROBLEM_ITEMS.map(({ icon: Icon, label }) => (
+                <li key={label}><Icon size={16} aria-hidden="true" />{label}</li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        {/* 3 — The core proof */}
+        <section className="mk-section mk-proof-section" id="proof" aria-labelledby="proof-title">
+          <div className="mk-section-head" data-reveal>
+            <p className="mk-eyebrow">How it works</p>
+            <h2 id="proof-title">Ask. Read the answer. Open what it used.</h2>
+          </div>
+
+          {/* The connector sits outside the list: an <ol> may only contain <li>. */}
+          <div className="mk-steps-board" data-reveal>
+            <span className="mk-steps-line" aria-hidden="true" />
+            <ol className="mk-steps" role="list">
+              {STEPS.map((step, index) => (
+                <li key={step.caption} className="mk-step" style={{ ["--mk-stagger" as string]: index }}>
+                  <p className="mk-step-caption"><b aria-hidden="true">{index + 1}</b>{step.caption}</p>
+                  <figure className="mk-step-frame">
+                    <ProductShot name={step.shot} crop={step.crop} sizes="(max-width: 1000px) 100vw, 33vw" alt={step.alt} />
+                  </figure>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <p className="mk-steps-caption" data-reveal>
+            Continuum retrieves only what your question needs, tells you what it used, and lets you open it. Nothing
+            else from your workspace is sent.
+          </p>
+        </section>
+
+        {/* 4 — What's inside */}
+        <section className="mk-section mk-inside" id="inside" aria-labelledby="inside-title">
+          <div className="mk-section-head" data-reveal>
+            <p className="mk-eyebrow">What&apos;s inside</p>
+            <h2 id="inside-title">Four surfaces, one memory.</h2>
+          </div>
+
+          <div className="mk-rows">
+            {INSIDE_ROWS.map((row) => (
+              <article className="mk-row" key={row.id} data-reveal aria-labelledby={`inside-${row.id}`}>
+                <div className="mk-row-copy">
+                  <h3 id={`inside-${row.id}`}>{row.title}</h3>
+                  <p>{row.body}</p>
+                </div>
+                <figure className="mk-row-frame">
+                  <ProductShot name={row.shot} crop="top" sizes="(max-width: 1000px) 100vw, 55vw" alt={row.alt} />
+                </figure>
+              </article>
             ))}
           </div>
         </section>
 
-        <section className="landing-section landing-fragmentation" aria-labelledby="fragmentation-title">
-          <Reveal className="landing-section-heading landing-section-heading-split">
-            <div>
-              <p className="landing-overline">THE PROBLEM</p>
-              <h2 id="fragmentation-title">Information is abundant.<br />Learning is fragmented.</h2>
-            </div>
-            <div>
-              <p>Each tool sees a sliver of your work. You spend your best attention copying context, finding old sources, and reconstructing decisions.</p>
-              <strong>One place where everything connects.</strong>
-            </div>
-          </Reveal>
-          <FragmentationMerge />
-        </section>
-
-        <section className="landing-section landing-features" id="features" aria-labelledby="features-title">
-          <Reveal className="landing-section-heading">
-            <p className="landing-overline">ONE SYSTEM, SIX SURFACES</p>
-            <h2 id="features-title">Every part of the work.<br />Moving as one.</h2>
-            <p>Continuum does not replace the tools that already work. It gives them shared memory, shared evidence, and a shared direction.</p>
-          </Reveal>
-
-          <div className="landing-feature-grid">
-            {features.map((feature, index) => (
-              <Reveal key={feature.id} delay={(index % 2) * 0.08}>
-                <article className="landing-feature-card" id={feature.id}>
-                  <div className="landing-feature-top">
-                    <FeatureMark index={index} />
-                    <span>{feature.number}</span>
-                  </div>
-                  <p>{feature.eyebrow}</p>
-                  <h3>{feature.title}</h3>
-                  <p>{feature.description}</p>
-                  <ul>
-                    {feature.points.map((point) => <li key={point}><i />{point}</li>)}
-                  </ul>
-                </article>
-              </Reveal>
-            ))}
+        {/* 5 — Connections */}
+        <section className="mk-section mk-connections" id="connections" aria-labelledby="connections-title">
+          <div className="mk-section-head" data-reveal>
+            <p className="mk-eyebrow">Connections</p>
+            <h2 id="connections-title">It works with what you already use.</h2>
           </div>
-        </section>
 
-        <section className="landing-section landing-journey" aria-labelledby="journey-title">
-          <Reveal className="landing-section-heading landing-section-heading-centered">
-            <p className="landing-overline">THE CONTINUOUS JOURNEY</p>
-            <h2 id="journey-title">From the first question<br />to real mastery.</h2>
-            <p>Continuum guides the next meaningful step, keeps the evidence, and makes progress visible without turning learning into a streak.</p>
-          </Reveal>
-          <ol className="landing-timeline">
-            {journey.map((step, index) => (
-              <li key={step}>
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <strong>{step}</strong>
-                {index < journey.length - 1 ? <i aria-hidden="true">→</i> : null}
+          <ul className="mk-conn-list" data-reveal>
+            {CONNECTIONS.map((connection) => (
+              <li className="mk-conn" key={connection.name}>
+                <b>{connection.name}</b>
+                <p>{connection.body}</p>
+                <span>{connection.status}</span>
               </li>
             ))}
-          </ol>
+          </ul>
+          <p className="mk-conn-note" data-reveal>More coming — we&apos;ll say so when they&apos;re real.</p>
         </section>
 
-        <section className="landing-section landing-workflow" id="workflow" aria-labelledby="workflow-title">
-          <Reveal className="landing-section-heading landing-section-heading-split">
-            <div>
-              <p className="landing-overline">SEE THE WORKFLOW</p>
-              <h2 id="workflow-title">One question.<br />A complete learning system.</h2>
-            </div>
-            <div>
-              <p>Ask Continuum to teach you quantum annealing. It does more than answer: it discovers evidence, builds the path, tests understanding, and remembers the result.</p>
-            </div>
-          </Reveal>
-          <WorkflowShowcase />
-        </section>
-
-        <section className="landing-section landing-comparison" aria-labelledby="comparison-title">
-          <Reveal className="landing-section-heading">
-            <p className="landing-overline">WHY CONTINUUM</p>
-            <h2 id="comparison-title">Less context switching.<br />More compounding knowledge.</h2>
-          </Reveal>
-          <div className="landing-comparison-table" role="table" aria-label="Traditional workflow compared with Continuum">
-            <div className="landing-comparison-head" role="row">
-              <span role="columnheader">Traditional workflow</span>
-              <span role="columnheader">Continuum</span>
-            </div>
-            {comparisonRows.map(([traditional, continuum], index) => (
-              <div className="landing-comparison-row" role="row" key={traditional}>
-                <span role="cell"><b>{String(index + 1).padStart(2, "0")}</b>{traditional}</span>
-                <span role="cell"><Check size={16} />{continuum}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="landing-quote" aria-label="Continuum commitment">
-          <Reveal>
-            <BrandMark title="Continuum" />
-            <blockquote>“Continuum fights for student outcomes, not screen time.”</blockquote>
-            <p>Built to move understanding forward—not keep you scrolling.</p>
-          </Reveal>
-        </section>
-
-        <section className="landing-section landing-security" id="security" aria-labelledby="security-title">
-          <Reveal className="landing-security-copy">
-            <p className="landing-overline">PRIVATE BY DESIGN</p>
-            <h2 id="security-title">Your data stays yours.</h2>
-            <p>Academic memory is personal infrastructure. Continuum keeps permissions explicit, credentials out of the browser, and every connected tool under your control.</p>
-            <ul>
-              <li><ShieldCheck size={18} /><span><strong>Encrypted storage</strong> for durable workspace records and credentials.</span></li>
-              <li><ShieldCheck size={18} /><span><strong>Private projects</strong> with scoped, revocable access.</span></li>
-              <li><ShieldCheck size={18} /><span><strong>Local model support</strong> through Ollama when work should stay on-device.</span></li>
-              <li><ShieldCheck size={18} /><span><strong>Flexible model access</strong> with optional personal keys and server-managed providers.</span></li>
-              <li><ShieldCheck size={18} /><span><strong>Transparent permissions</strong> for every integration and assistant.</span></li>
+        {/* 6 — Control */}
+        <section className="mk-section mk-control" id="control" aria-labelledby="control-title">
+          <div className="mk-control-copy" data-reveal>
+            <p className="mk-eyebrow">Control</p>
+            <h2 id="control-title">You decide what it can touch.</h2>
+            <ul className="mk-control-points">
+              {CONTROL_POINTS.map((point) => (
+                <li key={point}><ShieldCheck size={17} aria-hidden="true" />{point}</li>
+              ))}
             </ul>
-          </Reveal>
+          </div>
 
-          <Reveal className="landing-security-panel" delay={0.08}>
-            <div className="landing-security-panel-head">
-              <div><span>Workspace security</span><strong>Protected</strong></div>
-              <i><ShieldCheck size={21} /></i>
-            </div>
-            <div className="landing-security-status">
-              <span><i />Storage encryption<b>Active</b></span>
-              <span><i />Private workspace<b>Only you</b></span>
-              <span><i />Ollama local route<b>Available</b></span>
-              <span><i />Provider keys<b>Server-side</b></span>
-            </div>
-            <div className="landing-security-scope">
-              <span>Claude · MCP permissions</span>
-              <div><b>Read memory</b><b>Search sources</b><b>Propose changes</b></div>
-              <p><Check size={13} /> Writes require explicit approval</p>
-            </div>
-          </Reveal>
+          <figure className="mk-consent" data-reveal data-reveal-delay="1">
+            <figcaption>
+              <span>Continuum</span>
+              <strong>Allow Claude to connect</strong>
+            </figcaption>
+            <ul>
+              {CONSENT_ROWS.map((row) => (
+                <li key={row.title}>
+                  <div>
+                    <b>{row.title}</b>
+                    <p>{row.body}</p>
+                  </div>
+                  <span data-write={row.write ? "true" : undefined}>{row.write ? "Needs approval" : "Read only"}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mk-consent-foot"><Check size={13} aria-hidden="true" /> Writes require explicit approval</p>
+          </figure>
         </section>
 
-        <section className="landing-final-cta" id="final-cta" aria-labelledby="final-title">
-          <Reveal>
-            <p className="landing-overline">START YOUR CONTINUUM</p>
-            <h2 id="final-title">Build knowledge<br />that compounds.</h2>
-            <p>Join the next generation of researchers, students, and lifelong learners.</p>
-            <div>
-              <Link className="landing-button landing-button-light" href="/login?mode=register&returnTo=%2Ftoday">Start Building <ArrowRight size={17} /></Link>
-              <a className="landing-button landing-button-outline-light" href="https://github.com/smukilan9-ship-it/continuum#readme">View Documentation</a>
+        {/* 7 — Start */}
+        <section className="mk-section mk-start" id="start" aria-labelledby="start-title">
+          <div className="mk-narrow mk-start-inner" data-reveal>
+            <h2 id="start-title">See it with a real workspace.</h2>
+            <p className="mk-lead">
+              The demo is a complete student workspace — real sources, a real plan, real conversations. Nothing to set up.
+            </p>
+            <div className="mk-cta-row mk-cta-center">
+              {demoAvailable ? <DemoButton className="mk-btn mk-btn-primary" label="Open the demo" /> : null}
+              <Link className={demoAvailable ? "mk-btn mk-btn-secondary" : "mk-btn mk-btn-primary"} href="/login?mode=register">
+                Create your workspace
+              </Link>
             </div>
-          </Reveal>
+          </div>
         </section>
       </main>
 
-      <footer className="landing-footer">
-        <div className="landing-footer-main">
-          <div className="landing-footer-brand">
-            <Link className="landing-logo" href="/"><BrandMark title="Continuum" /><span>continuum</span></Link>
-            <p>The operating system for modern learning and research.</p>
-            <a href="https://github.com/smukilan9-ship-it/continuum" aria-label="Continuum on GitHub"><Github size={18} />GitHub</a>
+      <footer className="mk-footer">
+        <div className="mk-footer-main">
+          <div className="mk-footer-brand">
+            <Link className="mk-brand" href="/"><BrandMark title="Continuum" /><span>continuum</span></Link>
+            <p>Your work, and an AI that actually knows it.</p>
           </div>
-          {footerColumns.map((column) => (
-            <nav key={column.title} aria-label={column.title}>
-              <strong>{column.title}</strong>
-              {column.links.map(([label, href]) => <a key={label} href={href}>{label}</a>)}
-            </nav>
-          ))}
+
+          <nav aria-label="Product">
+            <strong>Product</strong>
+            {demoAvailable ? <DemoButton className="mk-footer-demo" label="Demo" icon={false} /> : null}
+            <Link href="/login?mode=register">Create account</Link>
+            <Link href="/privacy">Privacy</Link>
+            <Link href="/terms">Terms</Link>
+          </nav>
+
+          <nav aria-label="Build">
+            <strong>Build</strong>
+            {FOOTER_BUILD.map(([label, href]) => <a key={label} href={href}>{label}</a>)}
+            <Link href="/integrations">Claude connection</Link>
+          </nav>
+
+          <nav aria-label="Contact">
+            <strong>Contact</strong>
+            <a href="https://github.com/smukilan9-ship-it/continuum/issues/new">
+              <Github size={15} aria-hidden="true" />GitHub issues
+            </a>
+          </nav>
         </div>
-        <div className="landing-footer-bottom">
+        <div className="mk-footer-bottom">
           <span>© 2026 Continuum</span>
-          <span>One Workspace. Infinite Learning.</span>
+          <span>Your work, and an AI that actually knows it.</span>
         </div>
       </footer>
     </div>
