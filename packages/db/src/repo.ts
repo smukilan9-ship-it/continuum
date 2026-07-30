@@ -1665,6 +1665,44 @@ export class NeonRepository {
     return { goal, tasks: taskRows, projects: projectRows };
   }
 
+  /**
+   * Lexical passage search, one term at a time.
+   *
+   * Separate from `searchResearch` because that method concatenates claims,
+   * decisions, notes and passages *in that order* and then slices to the limit
+   * — so passages are the first thing dropped. Using it as the assistant's
+   * lexical fallback meant asking for six results, receiving six decisions, and
+   * filtering out everything: a retrieval path that could never return the
+   * thing it was written to return.
+   */
+  async searchSourceChunksLexical(userId: string, term: string, limit = 6): Promise<StoredSourceChunk[]> {
+    await this.ensureDemoSeed();
+    const trimmed = term.trim().slice(0, 200);
+    if (!trimmed) return [];
+    const rows = await this.db.select({ chunk: sourceChunks, source: sources })
+      .from(sourceChunks)
+      .innerJoin(sources, eq(sourceChunks.sourceId, sources.id))
+      .where(and(
+        eq(sources.userId, userId),
+        eq(sources.deleted, false),
+        eq(sourceChunks.deleted, false),
+        ilike(sourceChunks.content, `%${trimmed}%`),
+      ))
+      .orderBy(desc(sourceChunks.updatedAt))
+      .limit(Math.max(1, Math.min(limit, 20)));
+    return rows.map(({ chunk, source }) => ({
+      id: chunk.id,
+      sourceId: source.id,
+      sourceTitle: source.title,
+      passage: chunk.passage,
+      text: chunk.content,
+      contentHash: chunk.contentHash,
+      sourceVersion: source.sourceVersion,
+      deleted: false,
+      reference: `${source.title} · passage ${chunk.passage}`,
+    }));
+  }
+
   async searchResearch(userId: string, query: string, limit = 10) {
     const bounded = Math.max(1, Math.min(limit, 20));
     const pattern = `%${query.trim().slice(0, 500)}%`;

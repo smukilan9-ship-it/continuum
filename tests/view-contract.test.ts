@@ -91,3 +91,38 @@ describe("a screen may only read fields its view returns", () => {
     }
   });
 });
+
+/**
+ * `searchResearch` concatenates claims, decisions, notes and passages **in that
+ * order** and then slices to the caller's limit. Passages are therefore the
+ * first thing dropped whenever anything else matches.
+ *
+ * That made it the wrong function for the assistant's lexical fallback: asking
+ * for six results on a term that also appears in a decision returned six
+ * decisions and zero passages, so the retrieval path written to reach the
+ * user's documents could never reach them. The dedicated passage query exists
+ * because of it, and this pins both facts so neither is quietly undone.
+ */
+describe("passage retrieval does not go through the mixed search", () => {
+  it("has a passage-only lexical query", () => {
+    expect(repo).toMatch(/async searchSourceChunksLexical/);
+  });
+
+  it("is what the assistant's lexical fallback calls", () => {
+    const store = read("apps/web/lib/store.ts");
+    // The DB-backed store is the later definition; the demo stub comes first.
+    const start = store.lastIndexOf("async searchSourcePassages");
+    const fallback = store.slice(start, store.indexOf("async ", store.indexOf("return hits", start)));
+    expect(fallback).toMatch(/searchSourceChunksLexical/);
+    // The call, not the prose — the comment above it names searchResearch to
+    // explain why it is the wrong function here.
+    expect(fallback, "searchResearch drops passages when anything else matches").not.toMatch(/repo\.searchResearch\(/);
+  });
+
+  it("still returns passages last in searchResearch, which is why the above matters", () => {
+    const body = repo.slice(repo.indexOf("async searchResearch"), repo.indexOf("async searchResearch") + 4_000);
+    const returned = body.slice(body.indexOf("return ["));
+    expect(returned.indexOf("passageRows")).toBeGreaterThan(returned.indexOf("claimRows"));
+    expect(returned).toMatch(/\.slice\(0, bounded\)/);
+  });
+});

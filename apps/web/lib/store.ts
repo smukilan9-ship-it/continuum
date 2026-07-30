@@ -1059,14 +1059,14 @@ class NeonStore implements Store {
       .sort((left, right) => right.length - left.length)
       .slice(0, 4);
     if (!words.length) return [];
-    const perTerm = await Promise.all(words.map((word) => this.repo.searchResearch(this.userId, word, limit).catch(() => [])));
+    const perTerm = await Promise.all(words.map((word) => this.repo.searchSourceChunksLexical(this.userId, word, limit).catch(() => [])));
     const seen = new Set<string>();
     const hits: unknown[] = [];
     // Round-robin, so one common term cannot fill the result set alone.
     for (let rank = 0; rank < limit; rank += 1) {
       for (const rows of perTerm) {
-        const row = rows[rank] as { kind?: string; id?: string } | undefined;
-        if (!row || row.kind !== "source_passage" || !row.id || seen.has(row.id)) continue;
+        const row = rows[rank];
+        if (!row || seen.has(row.id)) continue;
         seen.add(row.id);
         hits.push(row);
         if (hits.length >= limit) return hits as StoredSourceChunk[];
