@@ -41,9 +41,15 @@ const BANNED_HEADING_LINE =
 /**
  * Opaque record identifiers. These are generated as `prefix_hex` throughout the
  * store (`opaqueId()`), and the seed uses the same shape (`goal_demo_sat`).
+ *
+ * The list is every prefix the store mints, not the ones anyone remembered.
+ * `learning_` was missing, and a live answer printed
+ * "`learning_demo_sql_param` is in_progress (0.6 exposure, 0.55 understanding)"
+ * straight at the user — a prefix-by-prefix allowlist fails silently for every
+ * prefix nobody thought of, which is the whole failure mode this guards.
  */
 const INTERNAL_ID =
-  /\b(?:goal|task|project|activity|receipt|block|concept|event|record|mchunk|memory|source|chunk|proposal|session|claim|decision|note|paper|milestone|attempt|asession|amsg|user|rec)_[a-z0-9][a-z0-9_]{2,}\b/gi;
+  /\b(?:goal|task|project|activity|receipt|block|concept|event|record|mchunk|memory|source|chunk|proposal|session|claim|decision|note|paper|milestone|attempt|asession|amsg|user|rec|learning|curriculum|cnode|assessment|misc|resource|route|cal|oauth)_[a-z0-9][a-z0-9_]{2,}\b/gi;
 
 const OPEN_TAG = /^\s*<(think|thinking|reasoning|scratchpad)>/i;
 const CLOSE_TAG = /<\/(think|thinking|reasoning|scratchpad)>/i;
@@ -93,12 +99,23 @@ export function redactIdentifiers(text: string, labels?: Map<string, string>): s
  * shape. Keys are left alone — they are field names the model needs — and only
  * string values are rewritten, so the structure stays valid.
  */
+/**
+ * Keys whose *values* are internal field names rather than anything a person
+ * wrote. `uncertainFields` holds the columns the plan generator was unsure
+ * about — "mockScoreVariance", "hdabCalibration", "candidateClassRecall" — and
+ * a live answer relayed them to a Class 12 student as "Uncertain:
+ * mockScoreVariance". §14.4 bans that vocabulary on every surface, and the
+ * cheapest place to enforce it is before the model can read it.
+ */
+const INTERNAL_ONLY_KEYS = new Set(["uncertainFields", "uncertain_fields", "promptVersion", "prompt_version", "contentHash", "content_hash", "embeddingModel", "embedding_model"]);
+
 export function redactContextValue<T>(value: T, labels?: Map<string, string>): T {
   if (typeof value === "string") return swapIdentifiers(value, labels) as unknown as T;
   if (Array.isArray(value)) return value.map((item) => redactContextValue(item, labels)) as unknown as T;
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      if (INTERNAL_ONLY_KEYS.has(key)) continue;
       out[key] = redactContextValue(item, labels);
     }
     return out as unknown as T;

@@ -227,10 +227,15 @@ describe("context redaction preserves structure", () => {
    * context goes through redactContextValue, which never touches shape.
    */
   it("keeps empty arrays intact", () => {
+    // `uncertainFields` is now dropped on purpose — it carries column names, not
+    // content — so the shape assertion moved to a key that survives. What this
+    // protects is unchanged: an empty array must come out as an empty array and
+    // the result must still parse.
     const context = { goals: [{ id: "goal_demo_sat", uncertainFields: [], tags: [] }] };
     const out = redactContextValue(context);
-    expect(out.goals[0]!.uncertainFields).toEqual([]);
-    expect(JSON.stringify(out)).toContain('"uncertainFields":[]');
+    expect(out.goals[0]!.tags).toEqual([]);
+    expect(JSON.stringify(out)).toContain('"tags":[]');
+    expect(() => JSON.parse(JSON.stringify(out))).not.toThrow();
   });
 
   it("survives a JSON round trip", () => {
@@ -283,5 +288,40 @@ describe("conversational filler", () => {
   it("does not treat a real question as filler", () => {
     expect(isConversationalFiller("what should I study next?")).toBe(false);
     expect(isConversationalFiller("hi, can you explain electric potential")).toBe(false);
+  });
+});
+
+/**
+ * Found by reading a live answer, not by the suite.
+ *
+ * The prefix list was an allowlist of the prefixes someone remembered, so it
+ * failed silently for every one they did not: a production reply printed
+ * "`learning_demo_sql_param` is in_progress (0.6 exposure, 0.55 understanding)"
+ * at a Class 12 student. And `uncertainFields` carried raw column names into
+ * the prompt, which came back as "Uncertain: mockScoreVariance".
+ */
+describe("identifiers and internal field names found in production", () => {
+  for (const prefix of ["learning", "resource", "curriculum", "cnode", "assessment", "misc", "route", "cal", "oauth"]) {
+    it(`redacts a ${prefix}_ identifier`, () => {
+      expect(redactIdentifiers(`Evidence: ${prefix}_demo_sql_param is in_progress`)).not.toContain(`${prefix}_demo`);
+    });
+  }
+
+  it("keeps every prefix the store actually mints under guard", () => {
+    // If the store grows a prefix, this is the line that should fail.
+    const minted = ["goal", "task", "project", "source", "paper", "concept", "memory", "record", "mchunk",
+      "learning", "resource", "curriculum", "cnode", "assessment", "misc", "route", "cal", "oauth",
+      "claim", "decision", "note", "milestone", "attempt", "asession", "amsg", "proposal", "receipt", "block", "event", "activity"];
+    for (const prefix of minted) {
+      expect(redactIdentifiers(`ref ${prefix}_abc123 here`), prefix).not.toContain(`${prefix}_abc123`);
+    }
+  });
+
+  it("never sends an internal field name to the model", () => {
+    const context = { goals: [{ title: "Raise SAT score", uncertainFields: ["mockScoreVariance"], promptVersion: "demo-v1" }] };
+    const safe = JSON.stringify(redactContextValue(context));
+    expect(safe).not.toContain("mockScoreVariance");
+    expect(safe).not.toContain("promptVersion");
+    expect(safe).toContain("Raise SAT score");
   });
 });
