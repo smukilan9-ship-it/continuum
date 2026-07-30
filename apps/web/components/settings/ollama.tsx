@@ -280,11 +280,11 @@ export function OllamaCard({ ollama, onOpen }: { ollama: OllamaController; onOpe
     <ConnectionCard
       icon={<Laptop size={19} />}
       title="Ollama"
-      outcome="Use a model running on your own computer for coding help."
+      outcome="Run embeddings on your own computer, so your material is indexed locally."
       status={ollama.status}
       detail={ollama.state?.testPassed
         ? `Verified with ${ollama.state.testedModel}. The address and model stay in this browser.`
-        : "Nothing leaves your computer. Continuum only calls it when you ask for AI help in Code."}
+        : "Nothing leaves your computer. Set the same address as OLLAMA_BASE_URL on the server to index your sources locally."}
     >
       <div className="connection-actions">
         <Button variant="primary" onClick={onOpen}><Laptop size={15} aria-hidden="true" />{ollama.state?.testPassed ? "Change local AI" : "Set up local AI"}</Button>

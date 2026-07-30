@@ -17,7 +17,7 @@ export const ProblemLines: React.FC = () => {
   return (
     <AbsoluteFill
       style={{
-        backgroundColor: palette.paper,
+        backgroundColor: palette.canvas,
         alignItems: "center",
         justifyContent: "center",
         fontFamily: typography.sans,

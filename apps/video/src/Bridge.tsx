@@ -5,7 +5,7 @@ import {
   useCurrentFrame,
 } from "remotion";
 
-import { palette } from "./brand";
+import { mark, palette } from "./brand";
 
 /**
  * S1 · Bridge — 45 frames, rendered WITH ALPHA (PLAN §3.2, T3).
@@ -67,7 +67,7 @@ export const Bridge: React.FC = () => {
         <rect
           width={WIDTH}
           height={HEIGHT}
-          fill={palette.paper}
+          fill={palette.canvas}
           mask="url(#bridge-iris)"
         />
 
@@ -78,7 +78,7 @@ export const Bridge: React.FC = () => {
           height={size}
           rx={radius}
           fill="none"
-          stroke={palette.accent}
+          stroke={mark.trace}
           strokeWidth={5}
           opacity={glow}
         />
@@ -88,7 +88,7 @@ export const Bridge: React.FC = () => {
             cx={WIDTH / 2}
             cy={HEIGHT / 2}
             r={DOT_SIZE / 2}
-            fill={palette.accent}
+            fill={mark.trace}
             opacity={dot}
           />
         ) : null}

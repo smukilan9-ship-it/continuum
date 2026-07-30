@@ -11,18 +11,24 @@ import {
   BAR_RADIUS,
   BAR_WIDTH,
   BrandMark,
+  MarkGradient,
   bars,
   barProgress,
 } from "./BrandMark";
-import { copy, palette, typography } from "./brand";
+import { copy, mark, palette, typography } from "./brand";
 import { Bloom, LightSweep, Vignette } from "./vfx";
 
 /**
  * S4 · Close — 330 frames (PLAN §3.2).
  *
- * The rhyme that pays off the Hook: the lime dot every window collapsed into at
- * f414 comes back, splits into the mark's four bars, and builds into the
+ * The rhyme that pays off the Hook: the amber dot every window collapsed into
+ * at f414 comes back, splits into the mark's four bars, and builds into the
  * lockup. Chaos, compressed, becomes the brand.
+ *
+ * The dot is amber because it *is* the mark's node — the terminus of the traced
+ * line, and the one warm pixel in the finished mark. So the object the hook
+ * crushes the desktop into and the object the film ends on are literally the
+ * same shape in the same colour.
  *
  * The pre-phase (dot → seeds → rising bars) is drawn here rather than inside
  * `BrandMark`, then opacity-swapped into the real component over two frames.
@@ -59,10 +65,11 @@ const SWAP_END = 59;
 const LOCKUP_SHIFT_X = 448.5;
 const LOCKUP_SHIFT_Y = 111.5;
 
-/** Bar centres and baselines, in viewBox units. */
+/** Bar centres, baselines and opacities, in viewBox units. */
 const seats = bars.map((bar) => ({
   cx: bar.x + BAR_WIDTH / 2,
   baseline: bar.y + bar.height,
+  opacity: bar.opacity,
 }));
 
 export const Close: React.FC = () => {
@@ -132,7 +139,7 @@ export const Close: React.FC = () => {
   return (
     <AbsoluteFill
       style={{
-        backgroundColor: palette.paper,
+        backgroundColor: palette.canvas,
         alignItems: "center",
         justifyContent: "center",
         fontFamily: typography.sans,
@@ -175,8 +182,17 @@ export const Close: React.FC = () => {
               height={MARK_SIZE}
               style={{ position: "absolute", inset: 0, opacity: preOpacity }}
             >
+              <defs>
+                <MarkGradient id="close-mark-field" />
+              </defs>
+
               <g style={{ transform: `scale(${tile})`, transformOrigin: "32px 32px" }}>
-                <rect width={VIEW_BOX} height={VIEW_BOX} rx={16} fill={palette.accent} />
+                <rect
+                  width={VIEW_BOX}
+                  height={VIEW_BOX}
+                  rx={16}
+                  fill="url(#close-mark-field)"
+                />
               </g>
 
               {bars.map((bar, index) => {
@@ -191,7 +207,8 @@ export const Close: React.FC = () => {
                     width={BAR_WIDTH}
                     height={height}
                     rx={BAR_RADIUS}
-                    fill={palette.markInk}
+                    fill={mark.bar}
+                    opacity={bar.opacity}
                   />
                 );
               })}
@@ -219,8 +236,10 @@ export const Close: React.FC = () => {
                     cx={cx}
                     cy={cy}
                     r={DOT_UNITS / 2}
-                    fill={travel > 0.6 ? palette.markInk : palette.accent}
-                    opacity={seedAlive}
+                    // Amber leaving the dot, white on arrival: the seed adopts
+                    // its bar's colour and opacity before the bar takes over.
+                    fill={travel > 0.6 ? mark.bar : mark.trace}
+                    opacity={seedAlive * (travel > 0.6 ? seat.opacity : 1)}
                   />
                 );
               })}
@@ -230,7 +249,7 @@ export const Close: React.FC = () => {
                   cx={32}
                   cy={32 + dotY * UNIT}
                   r={(DOT_UNITS / 2) * dotBreath}
-                  fill={palette.accent}
+                  fill={mark.trace}
                   opacity={dotAlive}
                 />
               ) : null}
@@ -261,13 +280,13 @@ export const Close: React.FC = () => {
           style={{
             opacity: kicker,
             margin: "56px 0 0",
-            color: palette.muted,
+            color: palette.ink2,
             fontSize: 40,
             fontWeight: 400,
             letterSpacing: -0.4,
           }}
         >
-          {copy.kicker}
+          {copy.hero}
         </p>
 
         <p
@@ -280,14 +299,14 @@ export const Close: React.FC = () => {
             letterSpacing: -0.3,
           }}
         >
-          {copy.promise}
+          {copy.proof}
         </p>
 
         <p
           style={{
             opacity: repo,
             margin: "18px 0 0",
-            color: palette.subtle,
+            color: palette.ink3,
             fontSize: 22,
             fontFamily: 'ui-monospace, Menlo, Monaco, "SF Mono", monospace',
           }}

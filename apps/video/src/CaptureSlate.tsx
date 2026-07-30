@@ -59,14 +59,14 @@ export const CaptureSlate: React.FC = () => {
   return (
     <AbsoluteFill
       style={{
-        backgroundColor: palette.paper,
+        backgroundColor: palette.canvas,
         fontFamily: typography.sans,
         alignItems: "center",
         justifyContent: "center",
       }}
     >
       <div style={{ display: "grid", justifyItems: "center", gap: 18, opacity: entrance }}>
-        <span style={{ fontSize: 15, letterSpacing: 3, color: palette.subtle }}>
+        <span style={{ fontSize: 15, letterSpacing: 3, color: palette.ink3 }}>
           CAPTURE PENDING · {timecode(current.at)}
         </span>
         <span
@@ -82,10 +82,10 @@ export const CaptureSlate: React.FC = () => {
         >
           {current.name}
           {current.name2 ? (
-            <span style={{ fontSize: 34, color: palette.accent }}>{current.name2}</span>
+            <span style={{ fontSize: 34, color: palette.brand }}>{current.name2}</span>
           ) : null}
         </span>
-        <span style={{ fontSize: 24, color: palette.muted }}>{current.note}</span>
+        <span style={{ fontSize: 24, color: palette.ink2 }}>{current.note}</span>
       </div>
 
       {/* Progress through the current segment — makes the pacing legible. */}
@@ -96,14 +96,14 @@ export const CaptureSlate: React.FC = () => {
           right: "22%",
           bottom: "26%",
           height: 2,
-          backgroundColor: palette.border,
+          backgroundColor: palette.line,
         }}
       >
         <div
           style={{
             width: `${Math.min(progress, 1) * 100}%`,
             height: "100%",
-            backgroundColor: palette.emerald,
+            backgroundColor: palette.brand,
           }}
         />
       </div>

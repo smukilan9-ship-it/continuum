@@ -125,7 +125,7 @@ export const ClaudeUI: React.FC<{ local: number; seed: string; pulse?: boolean }
                 position: "absolute",
                 inset: 0,
                 borderRadius: 12,
-                background: "#d9ff2f",
+                background: "#f5a623",
                 opacity: Math.max(0.32 * (1 - sweep), pulseAmount),
                 clipPath: `inset(0 ${(1 - Math.min(sweep * 1.4, 1)) * 100}% 0 0)`,
               }}

@@ -48,7 +48,7 @@ export function styleParams(style: HookStyle) {
         : style === "glass"
           ? "1px solid rgba(255,255,255,0.85)"
           : undefined,
-    glow: style === "glass" ? "0 0 0 1px rgba(255,255,255,0.5), 0 24px 60px rgba(16,21,17,0.18)" : undefined,
+    glow: style === "glass" ? "0 0 0 1px rgba(255,255,255,0.5), 0 24px 60px rgba(11,31,26,0.18)" : undefined,
   };
 }
 
@@ -63,7 +63,7 @@ export const GridOverlay: React.FC<{ opacity: number }> = ({ opacity }) => (
           y1={0}
           x2={64 + i * 149}
           y2={1080}
-          stroke={palette.border}
+          stroke={palette.line}
           strokeWidth="1"
         />
       ))}
@@ -74,12 +74,12 @@ export const GridOverlay: React.FC<{ opacity: number }> = ({ opacity }) => (
           y1={60 + i * 140}
           x2={1920}
           y2={60 + i * 140}
-          stroke={palette.border}
+          stroke={palette.line}
           strokeWidth="1"
         />
       ))}
       {windows.map((w) => (
-        <g key={w.id} stroke={palette.emerald} strokeWidth="1.2" opacity="0.75">
+        <g key={w.id} stroke={palette.brand} strokeWidth="1.2" opacity="0.75">
           <path d={`M${w.x - 12} ${w.y} H${w.x + 12} M${w.x} ${w.y - 12} V${w.y + 12}`} />
           <path
             d={`M${w.x + w.width - 12} ${w.y + w.height} H${w.x + w.width + 12} M${w.x + w.width} ${w.y + w.height - 12} V${w.y + w.height + 12}`}
@@ -122,18 +122,18 @@ export const SignalLines: React.FC<{ frame: number; opacity: number }> = ({ fram
               <path
                 d={path}
                 fill="none"
-                stroke={palette.accent}
+                stroke={palette.brand}
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeDasharray={length}
                 strokeDashoffset={length * (1 - draw)}
                 opacity={0.9}
               />
-              <circle cx={to.x} cy={to.y} r={7 * draw} fill={palette.accent} />
+              <circle cx={to.x} cy={to.y} r={7 * draw} fill={palette.brand} />
             </g>
           );
         })}
-        <circle cx={from.x} cy={from.y} r={7} fill={palette.accent} opacity={0.9} />
+        <circle cx={from.x} cy={from.y} r={7} fill={palette.brand} opacity={0.9} />
       </svg>
     </AbsoluteFill>
   );

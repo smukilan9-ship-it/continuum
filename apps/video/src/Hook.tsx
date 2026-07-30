@@ -8,7 +8,7 @@ import {
   useVideoConfig,
 } from "remotion";
 
-import { palette, typography } from "./brand";
+import { mark, palette, typography } from "./brand";
 import { ProblemTypography } from "./hook/Typography";
 import { HookWindow } from "./hook/Window";
 import { DUPLICATE_COUNT, windows, type WindowSpec } from "./hook/windows-data";
@@ -223,7 +223,7 @@ export const Hook: React.FC<{ style?: HookStyle }> = ({ style = "depth" }) => {
 
   // The desktop goes cold as it floods, then warms back to brand paper as the
   // pile implodes — the hook must hand off to `Bridge` on exactly
-  // `palette.paper`, or the cut at film frame 420 shows a colour pop.
+  // `palette.canvas`, or the cut at film frame 420 shows a colour pop.
   const cool = interpolate(
     frame,
     [ACCEL_START, FREEZE_START, COLLAPSE_START, DOT_LANDED],
@@ -260,7 +260,7 @@ export const Hook: React.FC<{ style?: HookStyle }> = ({ style = "depth" }) => {
   });
 
   return (
-    <AbsoluteFill style={{ backgroundColor: lerpHex(palette.paper, palette.paperCold, cool) }}>
+    <AbsoluteFill style={{ backgroundColor: lerpHex(palette.canvas, palette.canvasCold, cool) }}>
       <AbsoluteFill
         style={{
           transform: `translate(${shakeX}px, ${shakeY}px) scale(${push})`,
@@ -347,9 +347,9 @@ export const Hook: React.FC<{ style?: HookStyle }> = ({ style = "depth" }) => {
                 width: 12,
                 height: 12,
                 borderRadius: 6,
-                backgroundColor: palette.accent,
+                backgroundColor: mark.trace,
                 transform: `scale(${dotScale * breathe})`,
-                boxShadow: `0 0 ${18 * dotScale}px ${6 * dotScale}px rgba(217,255,47,0.55)`,
+                boxShadow: `0 0 ${18 * dotScale}px ${6 * dotScale}px rgba(255,176,32,0.55)`,
               }}
             />
           </AbsoluteFill>

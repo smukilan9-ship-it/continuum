@@ -14,8 +14,8 @@
  * four workflow steps collapsed into the states of a single card.
  */
 import type { ResourceActivity, ResourceRecommendation } from "@continuum/schemas";
-import { ArrowRight, Check, Clock3, ExternalLink, RotateCcw, Search, ShieldCheck } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ArrowRight, Check, Clock3, ExternalLink, PlayCircle, RotateCcw, Search, ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Button,
   DataRegion,
@@ -95,7 +95,40 @@ export function ResourcePanel({
   const [status, setStatus] = useState<RegionStatus>("idle");
   const [error, setError] = useState("");
   const [recommendation, setRecommendation] = useState<ResourceRecommendation>();
+  /**
+   * Video results, from `/api/learning/videos`.
+   *
+   * That endpoint was complete — rate limited, BYOK key handling, a
+   * trusted-channel allowlist, and an explicit note that provider results are
+   * not curriculum claims — and nothing in the product called it. A capability
+   * with no surface is the same defect as a control with no capability, just
+   * harder to notice.
+   */
+  const [videos, setVideos] = useState<Array<Record<string, unknown>>>([]);
+  const [videoState, setVideoState] = useState<"idle" | "loading" | "error" | "ready">("idle");
+  const [videoNote, setVideoNote] = useState("");
   const [activity, setActivity] = useState<ResourceActivity>();
+
+  /**
+   * Runs beside the ranked list rather than instead of it. A video is a
+   * different kind of answer from a reviewed explanation, and the learner is
+   * better placed than a ranker to know which one they want right now.
+   */
+  const findVideos = useCallback(async (topic: string) => {
+    if (!topic.trim()) return;
+    setVideoState("loading");
+    try {
+      const response = await fetch(`/api/learning/videos?q=${encodeURIComponent(topic.slice(0, 300))}`, { cache: "no-store" });
+      const payload = await response.json() as { videos?: Array<Record<string, unknown>>; note?: string; handoffUrl?: string; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Video search is unavailable.");
+      setVideos(payload.videos ?? []);
+      setVideoNote(payload.note ?? "");
+      setVideoState("ready");
+    } catch (cause) {
+      setVideoState("error");
+      setVideoNote(cause instanceof Error ? cause.message : "Video search is unavailable.");
+    }
+  }, []);
   const [startedId, setStartedId] = useState("");
   const [evidence, setEvidence] = useState("");
   const [answer, setAnswer] = useState("");
@@ -338,6 +371,56 @@ export function ResourcePanel({
               ) : null}
             </ol>
           )}
+
+          {/* Video, offered separately and labelled honestly. The endpoint's own
+              note is shown rather than paraphrased: these are provider search
+              results, not vetted curriculum, and the learner should know that
+              before they spend twenty minutes on one. */}
+          {recommendation ? (
+            <section className="study-videos" aria-labelledby="study-videos-heading">
+              <header>
+                <h3 id="study-videos-heading"><PlayCircle size={15} aria-hidden="true" />Video</h3>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={videoState === "loading"}
+                  onClick={() => void findVideos(conceptTitle ?? text(goal, "title"))}
+                >
+                  {videoState === "loading" ? "Searching…" : videos.length ? "Search again" : "Find a video"}
+                </Button>
+              </header>
+
+              {videoState === "error" ? <p className="form-error">{videoNote}</p> : null}
+
+              {videoState === "ready" && !videos.length ? (
+                <p className="study-videos-note">No video matched that closely enough to suggest.</p>
+              ) : null}
+
+              {videos.length ? (
+                <>
+                  <ul className="study-video-list">
+                    {videos.slice(0, 4).map((video) => {
+                      const id = String(video.id ?? video.videoId ?? "");
+                      const url = String(video.url ?? `https://www.youtube.com/watch?v=${id}`);
+                      return (
+                        <li key={id || url}>
+                          <a href={url} target="_blank" rel="noreferrer">
+                            <strong>{String(video.title ?? "Untitled")}</strong>
+                            <small>
+                              {String(video.channelTitle ?? video.channel ?? "Unknown channel")}
+                              {video.trusted ? <span className="study-video-trusted"><ShieldCheck size={11} aria-hidden="true" />Allowlisted</span> : null}
+                            </small>
+                          </a>
+                          <ExternalLink size={14} aria-hidden="true" />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {videoNote ? <p className="study-videos-note">{videoNote}</p> : null}
+                </>
+              ) : null}
+            </section>
+          ) : null}
         </DataRegion>
       </div>
     </SidePanel>

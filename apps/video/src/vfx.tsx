@@ -17,7 +17,7 @@ export const Vignette: React.FC<{ strength?: number }> = ({ strength = 1 }) => (
     style={{
       pointerEvents: "none",
       background:
-        "radial-gradient(ellipse 78% 74% at 50% 46%, rgba(0,0,0,0) 52%, rgba(16,21,17,0.16) 100%)",
+        "radial-gradient(ellipse 78% 74% at 50% 46%, rgba(0,0,0,0) 52%, rgba(11,31,26,0.16) 100%)",
       opacity: strength,
     }}
   />
@@ -55,14 +55,29 @@ export const LightSweep: React.FC<{ progress: number; intensity?: number }> = ({
   );
 };
 
-/** Radial glow behind a point — the lime dot, the mark as it lands. */
+/** Same colour, zero alpha — see the note at the gradient below. */
+function zeroAlpha(color: string) {
+  const hex = color.replace("#", "");
+  const full =
+    hex.length === 3
+      ? hex
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : hex;
+  const value = parseInt(full, 16);
+  // eslint-disable-next-line no-bitwise
+  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, 0)`;
+}
+
+/** Radial glow behind a point — the amber dot, the mark as it lands. */
 export const Bloom: React.FC<{
   size: number;
   strength: number;
   color?: string;
   x?: number;
   y?: number;
-}> = ({ size, strength, color = palette.accent, x = 50, y = 50 }) => {
+}> = ({ size, strength, color = palette.brand, x = 50, y = 50 }) => {
   if (strength <= 0) return null;
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
@@ -76,7 +91,10 @@ export const Bloom: React.FC<{
           marginLeft: -size / 2,
           marginTop: -size / 2,
           borderRadius: "50%",
-          background: `radial-gradient(circle, ${color} 0%, rgba(217,255,47,0) 68%)`,
+          // The outer stop must be THIS colour at zero alpha, not `transparent`.
+          // `transparent` is rgba(0,0,0,0), and a gradient interpolating toward
+          // it passes through grey — the bloom picks up a dirty halo.
+          background: `radial-gradient(circle, ${color} 0%, ${zeroAlpha(color)} 68%)`,
           opacity: 0.5 * strength,
           filter: `blur(${size * 0.16}px)`,
         }}

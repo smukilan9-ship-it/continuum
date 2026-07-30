@@ -39,7 +39,7 @@ export const LogoReveal: React.FC = () => {
   return (
     <AbsoluteFill
       style={{
-        backgroundColor: palette.paper,
+        backgroundColor: palette.canvas,
         alignItems: "center",
         justifyContent: "center",
         fontFamily: typography.sans,
@@ -67,13 +67,13 @@ export const LogoReveal: React.FC = () => {
         style={{
           opacity: tagline,
           marginTop: 56,
-          color: palette.muted,
+          color: palette.ink2,
           fontSize: 40,
           fontWeight: 400,
           letterSpacing: -0.4,
         }}
       >
-        {copy.kicker}
+        {copy.hero}
       </p>
     </AbsoluteFill>
   );

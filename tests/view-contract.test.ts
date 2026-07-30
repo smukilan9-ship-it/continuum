@@ -167,3 +167,39 @@ describe("a read endpoint does not import the write path's dependencies", () => 
     expect(module).toMatch(/import\("sharp"\)/);
   });
 });
+
+/**
+ * A capability with no surface is the same defect as a control with no
+ * capability — just harder to notice, because nothing on screen is broken.
+ *
+ * `/api/learning/videos` was complete: rate limited, BYOK key handling, a
+ * trusted-channel allowlist, and an explicit note that provider results are not
+ * curriculum claims. Nothing in the product called it. Meanwhile the Ollama
+ * card in Settings ran a connection test, reported success, and wrote an
+ * address and model to localStorage that only one uncalled function ever read —
+ * while telling the user "Continuum only calls it when you ask for AI help in
+ * Code", which it never did and, on a server-side assistant, could not.
+ */
+describe("every endpoint has a caller, every control has an endpoint", () => {
+  it("the video search endpoint is reachable from the UI", () => {
+    const panel = read("apps/web/components/study/resource-panel.tsx");
+    expect(panel).toMatch(/\/api\/learning\/videos/);
+    expect(panel, "the provider's own disclaimer must be shown, not paraphrased").toMatch(/videoNote/);
+  });
+
+  it("no component imports the deleted ollama client", () => {
+    // Removed rather than left as a lie: a browser-stored localhost address
+    // cannot be reached by a server-side assistant, so the claim was not
+    // implementable on this architecture.
+    let present = true;
+    try { read("apps/web/lib/ollama-client.ts"); } catch { present = false; }
+    expect(present, "ollama-client.ts is dead code and should stay deleted").toBe(false);
+  });
+
+  it("the Ollama card describes what local Ollama actually does", () => {
+    const card = read("apps/web/components/settings/ollama.tsx");
+    expect(card, "the card must not promise code assistance it does not provide")
+      .not.toMatch(/AI help in Code/);
+    expect(card).toMatch(/embeddings|OLLAMA_BASE_URL/);
+  });
+});

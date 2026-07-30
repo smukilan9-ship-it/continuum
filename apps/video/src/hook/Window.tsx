@@ -27,6 +27,20 @@ import { TERMINAL_LINES, type WindowKind } from "./windows-data";
 
 const TITLE_BAR_HEIGHT = 30;
 
+/**
+ * macOS Terminal chrome, deliberately NOT a brand token.
+ *
+ * Everything in the hook is a foreign app, so its colours have to come from
+ * those apps rather than from Continuum — a jade-black console here would read
+ * as the product and cost the segment its whole argument (windows-data.ts, the
+ * note about not resembling Continuum's UI). Neutral, faintly cool, macOS-like.
+ */
+const TERMINAL = {
+  body: "#1c1c1e",
+  bar: "#232326",
+  edge: "#303034",
+} as const;
+
 type BodyProps = { local: number; seed: string; pulse?: boolean };
 
 const TerminalBody: React.FC<BodyProps> = ({ local }) => (
@@ -153,7 +167,7 @@ const CalendarBody: React.FC<BodyProps> = ({ local }) => {
         ))}
       </div>
 
-      <span style={{ fontSize: 9.5, color: palette.muted }}>EE-201 EXAM — Fri 16 Oct, 9:00 AM</span>
+      <span style={{ fontSize: 9.5, color: palette.ink2 }}>EE-201 EXAM — Fri 16 Oct, 9:00 AM</span>
     </div>
   );
 };
@@ -198,8 +212,8 @@ export const HookWindow: React.FC<{
         height,
         borderRadius: 11,
         overflow: "hidden",
-        backgroundColor: dark ? palette.markInk : palette.surface,
-        border: `1px solid ${dark ? "#2a2c26" : "#dcdcd8"}`,
+        backgroundColor: dark ? TERMINAL.body : palette.surface,
+        border: `1px solid ${dark ? TERMINAL.edge : "#dcdcd8"}`,
         boxShadow: intensity > 0.5 ? shadow.cardDeep : shadow.card,
         fontFamily: typography.sans,
         display: "flex",
@@ -214,8 +228,8 @@ export const HookWindow: React.FC<{
           alignItems: "center",
           gap: 9,
           padding: "0 11px",
-          backgroundColor: dark ? "#1f211b" : "#ececeb",
-          borderBottom: `1px solid ${dark ? "#2a2c26" : "#e0e0dd"}`,
+          backgroundColor: dark ? TERMINAL.bar : "#ececeb",
+          borderBottom: `1px solid ${dark ? TERMINAL.edge : "#e0e0dd"}`,
         }}
       >
         <div style={{ display: "flex", gap: 5.5, flexShrink: 0 }}>

@@ -69,7 +69,7 @@ export const Label: React.FC<LabelProps> = ({ labelId }) => {
           style={{
             width: 3,
             borderRadius: 2,
-            backgroundColor: palette.accent,
+            backgroundColor: palette.brand,
             transform: `scaleY(${rule})`,
             transformOrigin: "top center",
           }}
@@ -97,7 +97,7 @@ export const Label: React.FC<LabelProps> = ({ labelId }) => {
             style={{
               fontSize: 20,
               fontWeight: 400,
-              color: palette.muted,
+              color: palette.ink2,
               letterSpacing: -0.2,
               lineHeight: 1.2,
             }}
