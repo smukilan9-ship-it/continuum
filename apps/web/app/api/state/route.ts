@@ -14,7 +14,16 @@ export async function GET(request: Request) {
   const allowedViews = new Set(["today", "assistant", "goals", "learn", "research", "openalex", "zotero", "memory", "activity", "integrations", "account", "code", "library"]);
   if (!allowedViews.has(view)) return NextResponse.json({ error: "Unknown workspace view" }, { status: 400 });
   const store = getStore(user.id);
-  return NextResponse.json({ data: await store.workspace(view), freshness: new Date().toISOString() }, { headers: { "cache-control": "private, no-store" } });
+  return NextResponse.json({ data: await store.workspace(view), freshness: new Date().toISOString() }, {
+    headers: {
+      "cache-control": "private, no-store",
+      // §16.3: replaced by the per-route reads (`/api/home`, `/api/goals/[id]`,
+      // `/api/projects/[id]`, `/api/search`). Kept for one release so a client
+      // that has not reloaded keeps working, then deleted.
+      deprecation: "true",
+      link: '</api/home>; rel="successor-version"',
+    },
+  });
 }
 
 const appEventSchema = z.object({

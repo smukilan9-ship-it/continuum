@@ -72,6 +72,8 @@ export type AssistantController = {
 
 const AssistantContext = createContext<AssistantController | undefined>(undefined);
 
+const EMPTY_MESSAGES: AssistantMessage[] = [];
+
 export function useAssistant(): AssistantController {
   const controller = useContext(AssistantContext);
   if (!controller) throw new Error("useAssistant must be used inside <AssistantProvider>");
@@ -117,7 +119,9 @@ export function useAssistantController({ initialSessions, onWorkspaceChange }: {
   const abortRef = useRef<AbortController | undefined>(undefined);
   const lastSent = useRef<{ message: string; options?: SendOptions } | undefined>(undefined);
 
-  const messages = active?.messages ?? [];
+  // Stable identity: this feeds `useCallback`/`useMemo` deps, and a fresh []
+  // on every render would defeat both.
+  const messages = useMemo(() => active?.messages ?? EMPTY_MESSAGES, [active?.messages]);
 
   const refreshSessions = useCallback(async () => {
     const response = await fetch("/api/assistant", { cache: "no-store" });

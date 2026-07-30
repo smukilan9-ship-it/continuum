@@ -439,6 +439,239 @@ export class NeonRepository {
     };
   }
 
+  /**
+   * Everything the shell chrome needs, and nothing else (§8.1).
+   *
+   * The sidebar's goal list and the Review badge used to be read out of
+   * whichever screen's snapshot happened to be loaded, so they went blank on
+   * any view that does not select goals — Library, Connections, Settings — and
+   * the client kept a `Map<view, state>` cache partly to paper over it (C25).
+   * The chrome now has its own small read that every route can make.
+   */
+  async getShellData(userId: string) {
+    await this.ensureDemoSeed();
+    const [goalRows, projectRows, pending] = await Promise.all([
+      this.db.select({ id: goals.id, title: goals.title, progress: goals.progress, targetDate: goals.targetDate, status: goals.status })
+        .from(goals).where(and(eq(goals.userId, userId), eq(goals.deleted, false))).orderBy(asc(goals.targetDate)),
+      this.db.select({ id: projects.id, title: projects.title, goalId: projects.goalId })
+        .from(projects).where(and(eq(projects.userId, userId), eq(projects.deleted, false))).orderBy(desc(projects.updatedAt)).limit(30),
+      this.db.select({ id: memoryProposals.id }).from(memoryProposals)
+        .where(and(eq(memoryProposals.userId, userId), eq(memoryProposals.status, "pending"), gt(memoryProposals.expiresAt, new Date()))),
+    ]);
+    return {
+      goals: goalRows.map((goal) => ({ ...goal, targetDate: goal.targetDate.toISOString() })),
+      projects: projectRows,
+      pendingProposals: pending.length,
+    };
+  }
+
+  /**
+   * `GET /api/home` (§9.4). One decided next action, today's blocks, goal
+   * standing, what can be resumed, and the week in one line.
+   */
+  async getHomeData(userId: string) {
+    await this.ensureDemoSeed();
+    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 3_600_000);
+    const [goalRows, taskRows, milestoneRows, scheduleRows, receiptRows, activityRows] = await Promise.all([
+      this.db.select().from(goals).where(and(eq(goals.userId, userId), eq(goals.deleted, false))).orderBy(asc(goals.targetDate)),
+      this.db.select({ task: tasks }).from(tasks).innerJoin(goals, eq(tasks.goalId, goals.id))
+        .where(and(eq(goals.userId, userId), eq(goals.deleted, false), eq(tasks.deleted, false)))
+        .orderBy(desc(tasks.priority), asc(tasks.deadline)),
+      this.db.select({ milestone: milestones }).from(milestones).innerJoin(goals, eq(milestones.goalId, goals.id))
+        .where(and(eq(goals.userId, userId), eq(goals.deleted, false), eq(milestones.deleted, false))).orderBy(asc(milestones.order)),
+      this.listSchedule(userId, dayStart.toISOString(), new Date(dayStart.getTime() + 8 * 24 * 3_600_000).toISOString()),
+      this.db.select().from(sessionReceipts).where(eq(sessionReceipts.userId, userId)).orderBy(desc(sessionReceipts.createdAt)).limit(4),
+      this.db.select().from(resourceActivities).where(eq(resourceActivities.userId, userId)).orderBy(desc(resourceActivities.startedAt)).limit(8),
+    ]);
+    const open = taskRows.map(({ task }) => task).filter((task) => task.status !== "done");
+    const todayBlocks = (scheduleRows as Array<Record<string, unknown>>).filter((block) => {
+      const start = Date.parse(String(block.start ?? block.startsAt ?? ""));
+      return Number.isFinite(start) && start >= dayStart.getTime() && start < dayEnd.getTime();
+    });
+    return {
+      // The one decided next step (§9.4, fixes C11): the first block scheduled
+      // today, or the highest-priority open task when nothing is scheduled.
+      nextTask: open[0] ?? null,
+      todayBlocks,
+      weekBlocks: scheduleRows,
+      goals: goalRows,
+      milestones: milestoneRows.map(({ milestone }) => milestone),
+      tasks: taskRows.map(({ task }) => task),
+      resumeItems: activityRows.filter((activity) => activity.status !== "verified").slice(0, 3),
+      receipts: receiptRows,
+      weekSummary: {
+        scheduledBlocks: (scheduleRows as unknown[]).length,
+        openTasks: open.length,
+        goals: goalRows.filter((goal) => goal.status === "active").length,
+      },
+    };
+  }
+
+  /**
+   * The write behind the goal page's `⋯` menu (§9.6).
+   *
+   * Deleting is a soft delete of the goal and everything hanging off it — the
+   * schema's `deleted` flag is what every read already filters on, so a
+   * restore stays possible and nothing referencing a task id dangles. Archiving
+   * is a status change, which is why it is the same call.
+   */
+  async updateGoal(goalId: string, userId: string, changes: { title?: string; outcome?: string; targetDate?: string; status?: string; deleted?: boolean }) {
+    await this.ensureDemoSeed();
+    const goal = await this.ownedGoal(goalId, userId);
+    if (!goal) return undefined;
+    const now = new Date();
+    await this.db.update(goals).set({
+      ...(changes.title !== undefined ? { title: changes.title } : {}),
+      ...(changes.outcome !== undefined ? { outcome: changes.outcome } : {}),
+      ...(changes.targetDate !== undefined ? { targetDate: new Date(changes.targetDate) } : {}),
+      ...(changes.status !== undefined ? { status: changes.status } : {}),
+      ...(changes.deleted !== undefined ? { deleted: changes.deleted } : {}),
+      updatedAt: now,
+    }).where(eq(goals.id, goalId));
+    if (changes.deleted) {
+      await Promise.all([
+        this.db.update(tasks).set({ deleted: true, updatedAt: now }).where(eq(tasks.goalId, goalId)),
+        this.db.update(milestones).set({ deleted: true, updatedAt: now }).where(eq(milestones.goalId, goalId)),
+      ]);
+    }
+    const [updated] = await this.db.select().from(goals).where(eq(goals.id, goalId)).limit(1);
+    return updated ? { ...updated, targetDate: updated.targetDate.toISOString() } : undefined;
+  }
+
+  /** Ownership check shared by every per-goal read (§16.10). */
+  private async ownedGoal(goalId: string, userId: string) {
+    const [goal] = await this.db.select().from(goals)
+      .where(and(eq(goals.id, goalId), eq(goals.userId, userId), eq(goals.deleted, false))).limit(1);
+    return goal;
+  }
+
+  /**
+   * `GET /api/goals/[id]?view=` (§9.6). Each branch returns only the view's
+   * own data, so switching tabs does not refetch the header (AC-G3) and no
+   * object from another goal can appear (AC-G1).
+   */
+  async getGoalView(goalId: string, userId: string, view: "overview" | "plan" | "study" | "sources") {
+    await this.ensureDemoSeed();
+    const goal = await this.ownedGoal(goalId, userId);
+    if (!goal) return undefined;
+    const header = { ...goal, targetDate: goal.targetDate.toISOString() };
+
+    if (view === "plan") {
+      const [taskRows, dependencyRows, scheduleRows] = await Promise.all([
+        this.db.select().from(tasks).where(and(eq(tasks.goalId, goalId), eq(tasks.deleted, false))).orderBy(desc(tasks.priority), asc(tasks.deadline)),
+        this.listTaskDependencies(userId),
+        this.listSchedule(userId),
+      ]);
+      const goalTaskIds = new Set(taskRows.map((task) => task.id));
+      return {
+        goal: header,
+        tasks: taskRows,
+        taskDependencies: dependencyRows.filter((row) => goalTaskIds.has(row.taskId)),
+        // AC-G1: the mini week shows this goal's blocks, not the whole week's.
+        schedule: (scheduleRows as Array<Record<string, unknown>>).filter((block) => goalTaskIds.has(String(block.taskId))),
+      };
+    }
+
+    if (view === "study") {
+      const [conceptRows, bankRows, activityRows] = await Promise.all([
+        this.db.select({ concept: concepts, state: learningStates }).from(learningStates)
+          .innerJoin(concepts, eq(learningStates.conceptId, concepts.id))
+          .where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false), eq(concepts.deleted, false)))
+          .orderBy(desc(learningStates.updatedAt)),
+        this.db.select().from(questionBanks).where(and(eq(questionBanks.userId, userId), eq(questionBanks.deleted, false))).orderBy(desc(questionBanks.updatedAt)).limit(20),
+        this.db.select().from(resourceActivities).where(and(eq(resourceActivities.userId, userId), eq(resourceActivities.goalId, goalId))).orderBy(desc(resourceActivities.startedAt)).limit(10),
+      ]);
+      return {
+        goal: header,
+        concepts: conceptRows.map(({ concept, state }) => ({ ...concept, mastery: state })),
+        learningStates: conceptRows.map(({ state }) => state),
+        questionBanks: bankRows.map(publicQuestionBankSummary),
+        resourceActivities: activityRows,
+      };
+    }
+
+    if (view === "sources") {
+      const projectRows = await this.db.select({ id: projects.id, title: projects.title }).from(projects)
+        .where(and(eq(projects.userId, userId), eq(projects.goalId, goalId), eq(projects.deleted, false)));
+      const projectIds = projectRows.map((project) => project.id);
+      const [sourceRows, paperRows] = await Promise.all([
+        // A source belongs to this goal when it belongs to one of its projects.
+        projectIds.length
+          ? this.db.select().from(sources).where(and(eq(sources.userId, userId), eq(sources.deleted, false), eq(sources.retention, "library"), inArray(sources.projectId, projectIds))).orderBy(desc(sources.createdAt))
+          : [],
+        projectIds.length
+          ? this.db.select().from(papers).where(and(eq(papers.deleted, false), inArray(papers.projectId, projectIds))).orderBy(desc(papers.updatedAt))
+          : [],
+      ]);
+      return { goal: header, projects: projectRows, sources: sourceRows.map(publicSourceMetadata), papers: paperRows };
+    }
+
+    const [milestoneRows, taskRows, projectRows, eventRows, receiptRows, conceptRows, dependencyRows] = await Promise.all([
+      this.db.select().from(milestones).where(and(eq(milestones.goalId, goalId), eq(milestones.deleted, false))).orderBy(asc(milestones.order)),
+      this.db.select().from(tasks).where(and(eq(tasks.goalId, goalId), eq(tasks.deleted, false))).orderBy(desc(tasks.priority), asc(tasks.deadline)),
+      this.db.select().from(projects).where(and(eq(projects.userId, userId), eq(projects.goalId, goalId), eq(projects.deleted, false))),
+      this.db.select().from(memoryEvents).where(and(eq(memoryEvents.userId, userId), eq(memoryEvents.goalId, goalId))).orderBy(desc(memoryEvents.occurredAt)).limit(5),
+      this.db.select().from(sessionReceipts).where(and(eq(sessionReceipts.userId, userId), eq(sessionReceipts.goalId, goalId))).orderBy(desc(sessionReceipts.createdAt)).limit(10),
+      this.db.select({ concept: concepts, state: learningStates }).from(learningStates)
+        .innerJoin(concepts, eq(learningStates.conceptId, concepts.id))
+        .where(and(eq(learningStates.userId, userId), eq(learningStates.deleted, false), eq(concepts.deleted, false))),
+      // The concept map draws prerequisite edges from saved dependencies only,
+      // so it needs them to render anything but a flat list.
+      this.listTaskDependencies(userId),
+    ]);
+    const goalTaskIds = new Set(taskRows.map((task) => task.id));
+    return {
+      goal: header,
+      milestones: milestoneRows,
+      tasks: taskRows,
+      taskDependencies: dependencyRows.filter((row) => goalTaskIds.has(row.taskId)),
+      projects: projectRows,
+      concepts: conceptRows.map(({ concept, state }) => ({ ...concept, mastery: state })),
+      events: eventRows.map((event) => ({
+        id: event.id,
+        type: event.type,
+        entityIds: event.entityId ? [event.entityId] : [],
+        summary: typeof event.payload.summary === "string" ? event.payload.summary : event.type.replaceAll(".", " "),
+        occurredAt: event.occurredAt.toISOString(),
+      })),
+      // §9.6 "Open questions" — from this goal's receipts, not every receipt.
+      openQuestions: receiptRows.flatMap((receipt) => receipt.unresolvedQuestions).slice(0, 8),
+      receipts: receiptRows,
+    };
+  }
+
+  /** `GET /api/projects/[id]?view=` (§13.1). */
+  async getProjectView(projectId: string, userId: string, view: "overview" | "claims" | "sources" | "decisions") {
+    await this.ensureDemoSeed();
+    const [project] = await this.db.select().from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.userId, userId), eq(projects.deleted, false))).limit(1);
+    if (!project) return undefined;
+
+    if (view === "claims") {
+      const claimRows = await this.db.select().from(researchClaims).where(and(eq(researchClaims.projectId, projectId), eq(researchClaims.deleted, false))).orderBy(desc(researchClaims.createdAt));
+      return { project, claims: claimRows };
+    }
+    if (view === "decisions") {
+      const decisionRows = await this.db.select().from(projectDecisions).where(and(eq(projectDecisions.projectId, projectId), eq(projectDecisions.deleted, false))).orderBy(desc(projectDecisions.createdAt));
+      return { project, decisions: decisionRows };
+    }
+    if (view === "sources") {
+      const [sourceRows, paperRows] = await Promise.all([
+        this.db.select().from(sources).where(and(eq(sources.projectId, projectId), eq(sources.userId, userId), eq(sources.deleted, false), eq(sources.retention, "library"))).orderBy(desc(sources.createdAt)),
+        this.db.select().from(papers).where(and(eq(papers.projectId, projectId), eq(papers.deleted, false))).orderBy(desc(papers.updatedAt)),
+      ]);
+      return { project, sources: sourceRows.map(publicSourceMetadata), papers: paperRows };
+    }
+
+    const [decisionRows, claimRows, noteRows] = await Promise.all([
+      this.db.select().from(projectDecisions).where(and(eq(projectDecisions.projectId, projectId), eq(projectDecisions.deleted, false))).orderBy(desc(projectDecisions.createdAt)).limit(10),
+      this.db.select().from(researchClaims).where(and(eq(researchClaims.projectId, projectId), eq(researchClaims.deleted, false))).orderBy(desc(researchClaims.createdAt)).limit(10),
+      this.db.select().from(researchNotes).where(and(eq(researchNotes.projectId, projectId), eq(researchNotes.deleted, false))).orderBy(desc(researchNotes.createdAt)).limit(10),
+    ]);
+    return { project, decisions: decisionRows, claims: claimRows, notes: noteRows };
+  }
+
   async getWorkspaceSnapshot(userId: string, view: string) {
     await this.ensureDemoSeed();
     const empty = {

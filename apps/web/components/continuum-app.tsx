@@ -24,7 +24,8 @@ import {
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { Route } from "next";
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AssistantPanel } from "@/components/assistant/assistant-panel";
 import { AssistantProvider, useAssistantController } from "@/components/assistant/use-assistant";
 import type { AssistantSession, PageContext } from "@/components/assistant/types";
@@ -32,7 +33,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { CommandPalette, type PaletteAction } from "@/components/shell/command-palette";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { normalizeWorkspaceState, WorkspaceScreens, type WorkspaceState } from "@/components/workspace-screens";
-import { canonicalView, viewFromPath, workspaceMeta, workspacePath, type WorkspaceView } from "@/lib/workspace-routes";
+import { canonicalView, workspaceMeta, workspacePath, type WorkspaceView } from "@/lib/workspace-routes";
 
 export type View = WorkspaceView;
 
@@ -125,85 +126,64 @@ function pageContextFor(view: WorkspaceView, state: WorkspaceState | undefined, 
   return undefined;
 }
 
-export function ContinuumApp({ user, initialState, view, goalId, serverNow, needsOnboarding = false }: { user: AuthUser; initialState: Record<string, unknown>; view: WorkspaceView; goalId?: string; serverNow: string; needsOnboarding?: boolean }) {
-  const [activeGoalId, setActiveGoalId] = useState(goalId);
+/** What the shell chrome needs, read once per route by the server component. */
+export type ShellData = {
+  goals: Array<{ id: string; title: string; progress: number; targetDate: string; status: string }>;
+  projects: Array<{ id: string; title: string; goalId: string | null }>;
+  pendingProposals: number;
+};
+
+export function ContinuumApp({ user, initialState, shell, view, goalId, serverNow, needsOnboarding = false }: { user: AuthUser; initialState: Record<string, unknown>; shell: ShellData; view: WorkspaceView; goalId?: string; serverNow: string; needsOnboarding?: boolean }) {
+  const router = useRouter();
+  const activeGoalId = goalId;
   const [mobileNav, setMobileNav] = useState(false);
   const [compactNavigation, setCompactNavigation] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [tourStep, setTourStep] = useState<number>();
-  const [currentView, setCurrentView] = useState<WorkspaceView>(view);
+  const currentView = view;
   const sidebarRef = useRef<HTMLElement>(null);
   const closeNavigationRef = useRef<HTMLButtonElement>(null);
   const openNavigationRef = useRef<HTMLButtonElement>(null);
   const mainAreaRef = useRef<HTMLElement>(null);
   const mobileNavigationRef = useRef<HTMLElement>(null);
 
-  // Per-view cache seeded with the server-rendered snapshot. Navigation switches
-  // the visible view instantly from cache and refreshes it in the background, so a
-  // click never waits on a full-page server round-trip to the remote database.
-  const cacheRef = useRef<Map<WorkspaceView, WorkspaceState>>(new Map([[view, normalizeWorkspaceState(initialState)]]));
-  const inflight = useRef<Set<WorkspaceView>>(new Set());
-  const [, bumpCache] = useReducer((count: number) => count + 1, 0);
+  /**
+   * C25: the per-view `Map<view, state>` cache, its in-flight set, its manual
+   * `pushState` and its `popstate` listener are gone. They reimplemented the
+   * router — every route already server-renders its own view — and the cost was
+   * a client holding N views of stale workspace data and a Back button that
+   * only worked because a second listener put it back. Navigation is now real
+   * router navigation; the shell keeps only UI state.
+   */
   const meta = workspaceMeta[currentView];
-  const state = cacheRef.current.get(currentView);
-  const pendingProposals = state?.proposals.filter((proposal) => proposal.status === "pending").length ?? 0;
+  const state = useMemo(() => normalizeWorkspaceState(initialState), [initialState]);
+  const pendingProposals = shell.pendingProposals;
 
   /**
    * Nearest deadline first, completed last, capped so a long list never pushes
-   * the rest of the sidebar out of reach. Views whose snapshot carries no goals
-   * fall back to the last set we held rather than blanking the section.
+   * the rest of the sidebar out of reach. Read from shell data, so it is right
+   * on every route rather than only on the ones that select goals.
    */
-  const goalsRef = useRef<Array<Record<string, unknown>>>([]);
-  if (state?.goals.length) goalsRef.current = state.goals;
-  const sidebarGoals = useMemo(() => {
-    const rows = state?.goals.length ? state.goals : goalsRef.current;
-    return [...rows]
-      .sort((left, right) => {
-        const done = Number(left.status === "completed") - Number(right.status === "completed");
-        if (done !== 0) return done;
-        return String(left.targetDate ?? "").localeCompare(String(right.targetDate ?? ""));
-      })
-      .slice(0, 8);
-  }, [state?.goals]);
+  const sidebarGoals = useMemo(() => [...shell.goals]
+    .sort((left, right) => {
+      const done = Number(left.status === "completed") - Number(right.status === "completed");
+      if (done !== 0) return done;
+      return String(left.targetDate ?? "").localeCompare(String(right.targetDate ?? ""));
+    })
+    .slice(0, 8), [shell.goals]);
   const moreActive = !mobileItems.some((item) => canonicalView(currentView) === item.id);
-
-  const refreshView = useCallback(async (target: WorkspaceView) => {
-    if (target === "integrations" || inflight.current.has(target)) return;
-    inflight.current.add(target);
-    try {
-      const response = await fetch(`/api/state?view=${encodeURIComponent(target)}`, { cache: "no-store" });
-      const payload = await response.json() as { data?: Record<string, unknown> };
-      if (response.ok && payload.data) { cacheRef.current.set(target, normalizeWorkspaceState(payload.data)); bumpCache(); }
-    } catch { /* Keep the last good cached view rather than blanking the screen. */ } finally {
-      inflight.current.delete(target);
-    }
-  }, []);
 
   const navigate = useCallback((next: WorkspaceView) => {
     setMobileNav(false);
     setCommandOpen(false);
-    setCurrentView(next);
-    setActiveGoalId(undefined);
-    if (typeof window !== "undefined" && window.location.pathname !== (workspacePath[next] as string)) {
-      window.history.pushState({ view: next }, "", workspacePath[next]);
-    }
-    void refreshView(next);
-  }, [refreshView]);
+    router.push(workspacePath[next]);
+  }, [router]);
 
-  /**
-   * Opening a goal is a full navigation rather than a view switch: the goal view
-   * has its own snapshot, and the id lives in the path so the page is
-   * linkable and survives a refresh.
-   */
-  const openGoal = useCallback((id: string) => {
-    setMobileNav(false);
-    setCommandOpen(false);
-    window.location.assign(`/g/${encodeURIComponent(id)}`);
-  }, []);
-
-  const refreshCurrent = useCallback(() => refreshView(currentView), [refreshView, currentView]);
+  // `router.refresh()` re-runs the server component for this route, which is
+  // what a screen means when it says its data changed.
+  const refreshCurrent = useCallback(async () => { router.refresh(); }, [router]);
 
   // One conversation, mounted twice (§8.5, AC-A9): the `/assistant` screen and
   // the `⌘J` panel both read this controller, so switching between them never
@@ -216,17 +196,6 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
 
   const pageContext = useMemo(() => pageContextFor(currentView, state, activeGoalId), [currentView, state, activeGoalId]);
   useEffect(() => { setPageContext(pageContext); }, [pageContext, setPageContext]);
-
-  // Keep browser back/forward working with the client-side view switch.
-  useEffect(() => {
-    const onPopState = () => {
-      const next = viewFromPath(window.location.pathname);
-      setCurrentView(next);
-      if (!cacheRef.current.has(next)) void refreshView(next);
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, [refreshView]);
 
   useEffect(() => {
     if (!toast) return;
@@ -311,14 +280,6 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
     window.requestAnimationFrame(() => openNavigationRef.current?.focus());
   };
 
-  // Intercept in-app link clicks so navigation is instant, while preserving
-  // new-tab and modifier-click behavior against the real server routes.
-  const linkHandler = (next: WorkspaceView) => (event: React.MouseEvent) => {
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    navigate(next);
-  };
-
   async function signOut() {
     const response = await fetch("/api/auth/logout", { method: "POST" });
     if (response.ok) window.location.assign("/login");
@@ -350,7 +311,7 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
         aria-hidden={compactNavigation && !mobileNav ? true : undefined}
       >
         <div className="sidebar-head">
-          <Link className="brand" href={workspacePath.today} onClick={linkHandler("today")} aria-label="Continuum workspace home">
+          <Link className="brand" href={workspacePath.today} aria-label="Continuum workspace home">
             <BrandMark className="brand-symbol" />
             <span>continuum</span>
           </Link>
@@ -366,7 +327,7 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
                 const count = item.id === "activity" ? (state?.proposals.filter((proposal) => proposal.status === "pending").length ?? 0) : undefined;
                 const active = canonicalView(currentView) === item.id;
                 return (
-                  <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={active ? "nav-item active" : "nav-item"} aria-current={active ? "page" : undefined} onClick={linkHandler(item.id)} onMouseEnter={() => void refreshView(item.id)} onFocus={() => void refreshView(item.id)}>
+                  <Link key={item.id} href={workspacePath[item.id]} className={active ? "nav-item active" : "nav-item"} aria-current={active ? "page" : undefined}>
                     <Icon size={18} strokeWidth={1.8} />
                     <span>{item.label}</span>
                     {typeof count === "number" && count > 0 ? <small aria-label={`${count} pending`}>{count}</small> : null}
@@ -390,15 +351,10 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
                   <Link
                     key={id}
                     href={`/g/${encodeURIComponent(id)}` as Route}
-                    prefetch={false}
                     className={active ? "nav-goal active" : "nav-goal"}
                     aria-current={active ? "page" : undefined}
                     title={String(goal.title ?? "")}
-                    onClick={(event) => {
-                      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                      event.preventDefault();
-                      openGoal(id);
-                    }}
+                    onClick={() => setMobileNav(false)}
                   >
                     <span className="nav-goal-title">{String(goal.title ?? "Untitled goal")}</span>
                     <small aria-label={`${progress}% complete`}>{progress}%</small>
@@ -439,7 +395,7 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
           {currentView === "integrations"
             ? <IntegrationsScreen showToast={setToast} />
             : state
-              ? <WorkspaceScreens view={currentView} state={state} user={user} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} serverNow={serverNow} goalId={activeGoalId} onNavigate={navigate} onRefresh={refreshCurrent} showToast={setToast} />
+              ? <WorkspaceScreens view={currentView} state={state} shellGoals={shell.goals} user={user} userName={user.displayName.split(/\s+/)[0] ?? user.displayName} serverNow={serverNow} goalId={activeGoalId} onNavigate={navigate} onRefresh={refreshCurrent} showToast={setToast} />
               : <ScreenLoading />}
         </div>
       </main>
@@ -448,7 +404,7 @@ export function ContinuumApp({ user, initialState, view, goalId, serverNow, need
         {mobileItems.map((item) => {
           const Icon = item.icon;
           const active = canonicalView(currentView) === item.id;
-          return <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={active ? "active" : ""} aria-current={active ? "page" : undefined} onClick={linkHandler(item.id)}><Icon size={19} /><span>{item.label}</span></Link>;
+          return <Link key={item.id} href={workspacePath[item.id]} prefetch={false} className={active ? "active" : ""} aria-current={active ? "page" : undefined}><Icon size={19} /><span>{item.label}</span></Link>;
         })}
         <button className={moreActive ? "active" : ""} onClick={() => setMobileNav(true)} aria-label={pendingProposals ? `More sections, ${pendingProposals} pending in Review` : "More sections"}><Menu size={19} /><span>More</span>{pendingProposals ? <i className="nav-dot" aria-hidden="true" /> : null}</button>
       </nav>

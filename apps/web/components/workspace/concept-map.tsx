@@ -90,8 +90,14 @@ function nodesForPath(state: WorkspaceState, goalId: string): ConceptNode[] {
   });
 }
 
-export function ConceptMap({ state, onOpenLesson, onAskQuestion }: { state: WorkspaceState; onOpenLesson: (node: ConceptNode) => void; onAskQuestion: (node: ConceptNode) => void }) {
-  const [goalId, setGoalId] = useState(() => text(state.goals[0], "id"));
+/**
+ * `pinnedGoalId` is set on `/g/[goalId]`, where the map is *about* one goal and
+ * the goal switcher would be a second, contradictory way to change page.
+ */
+export function ConceptMap({ state, pinnedGoalId, onOpenLesson, onAskQuestion }: { state: WorkspaceState; pinnedGoalId?: string; onOpenLesson: (node: ConceptNode) => void; onAskQuestion: (node: ConceptNode) => void }) {
+  const [selectedGoalId, setSelectedGoalId] = useState(() => pinnedGoalId ?? text(state.goals[0], "id"));
+  const goalId = pinnedGoalId ?? selectedGoalId;
+  const setGoalId = setSelectedGoalId;
   const [view, setView] = useState<"map" | "outline">("map");
   const [selectedId, setSelectedId] = useState("");
   const [scale, setScale] = useState(.68);
@@ -139,7 +145,7 @@ export function ConceptMap({ state, onOpenLesson, onAskQuestion }: { state: Work
   }
 
   return <section className="concept-map-section">
-    <div className="section-heading"><div><p className="eyebrow">CONCEPT MAP</p><h2>See the branches—not a manufactured chain</h2><p className="section-description">Tasks are grouped by learning job. Only saved dependencies are shown as prerequisites; independent work remains on its own branch.</p></div><div className="concept-map-heading-actions"><label>Learning path<select value={goalId} onChange={(event) => { setGoalId(event.target.value); setSelectedId(""); resetView(); }}>{state.goals.map((item) => <option key={text(item, "id")} value={text(item, "id")}>{text(item, "title")}</option>)}</select></label><div><button className={view === "map" ? "active" : ""} onClick={() => setView("map")}><GitBranch size={14} />Mind map</button><button className={view === "outline" ? "active" : ""} onClick={() => setView("outline")}><List size={14} />Grouped outline</button></div></div></div>
+    <div className="section-heading"><div><p className="eyebrow">CONCEPT MAP</p><h2>See the branches—not a manufactured chain</h2><p className="section-description">Tasks are grouped by learning job. Only saved dependencies are shown as prerequisites; independent work remains on its own branch.</p></div><div className="concept-map-heading-actions">{pinnedGoalId ? null : <label>Learning path<select value={goalId} onChange={(event) => { setGoalId(event.target.value); setSelectedId(""); resetView(); }}>{state.goals.map((item) => <option key={text(item, "id")} value={text(item, "id")}>{text(item, "title")}</option>)}</select></label>}<div><button className={view === "map" ? "active" : ""} onClick={() => setView("map")}><GitBranch size={14} />Mind map</button><button className={view === "outline" ? "active" : ""} onClick={() => setView("outline")}><List size={14} />Grouped outline</button></div></div></div>
 
     {!nodes.length ? <Card className="concept-map-empty"><Route size={24} /><h3>This path needs learning steps</h3><p>Add tasks in Plan. Continuum will turn the saved sequence into a navigable learning outline.</p></Card> : <div className="concept-map-shell">
       {view === "map" ? <div className="concept-map-canvas">

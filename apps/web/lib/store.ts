@@ -52,7 +52,14 @@ export interface Store {
   readonly kind: "memory" | "neon";
   readonly userId: string;
   snapshot(): Promise<Record<string, unknown>>;
+  /** @deprecated §16.3 — screens fetch their own data; use the per-route reads. */
   workspace(view: string): Promise<Record<string, unknown>>;
+  /** Only what the shell chrome needs (§8.1), so it never depends on a screen. */
+  shellData(): Promise<{ goals: Array<Record<string, unknown>>; projects: Array<Record<string, unknown>>; pendingProposals: number }>;
+  homeData(): Promise<Record<string, unknown>>;
+  goalView(goalId: string, view: "overview" | "plan" | "study" | "sources"): Promise<Record<string, unknown> | undefined>;
+  projectView(projectId: string, view: "overview" | "claims" | "sources" | "decisions"): Promise<Record<string, unknown> | undefined>;
+  updateGoal(goalId: string, changes: { title?: string; outcome?: string; targetDate?: string; status?: string; deleted?: boolean }): Promise<Record<string, unknown> | undefined>;
   read(name: string, args: Record<string, unknown>, clientId?: string): Promise<unknown>;
   write(name: string, args: Record<string, unknown>, now: string, surface?: "mcp" | "standalone_app", clientId?: string): Promise<StoreWriteResult>;
   appendEvent(input: AppEventInput, now?: string): Promise<DemoEvent>;
@@ -225,6 +232,86 @@ class MemoryStore implements Store {
       key,
       key === "questionBanks" ? publicQuestionBanksForWorkspace(state[key]) : state[key],
     ]));
+  }
+
+  async shellData() {
+    const rows = demoStore.goals;
+    return {
+      goals: rows.map((goal) => ({ id: goal.id, title: goal.title, progress: goal.progress ?? 0, targetDate: goal.targetDate, status: goal.status ?? "active" })),
+      projects: demoStore.projects.map((project) => ({ id: project.id, title: project.title, goalId: project.goalId })),
+      pendingProposals: demoStore.proposals.filter((proposal) => proposal.status === "pending").length,
+    };
+  }
+
+  async homeData() {
+    const open = demoStore.tasks.filter((task) => task.status !== "done");
+    return {
+      nextTask: open[0] ?? null,
+      todayBlocks: demoStore.schedule.slice(0, 6),
+      weekBlocks: demoStore.schedule,
+      goals: demoStore.goals,
+      milestones: this.memoryMilestones,
+      tasks: demoStore.tasks,
+      resumeItems: demoStore.resourceActivities.filter((activity) => activity.status !== "verified").slice(0, 3),
+      receipts: demoStore.receipts.slice(0, 4),
+      weekSummary: { scheduledBlocks: demoStore.schedule.length, openTasks: open.length, goals: demoStore.goals.length },
+    };
+  }
+
+  async goalView(goalId: string, view: "overview" | "plan" | "study" | "sources") {
+    const goal = demoStore.goals.find((row) => row.id === goalId);
+    if (!goal) return undefined;
+    const goalTasks = demoStore.tasks.filter((task) => task.goalId === goalId);
+    const goalProjects = demoStore.projects.filter((project) => project.goalId === goalId);
+    const projectIds = new Set(goalProjects.map((project) => String(project.id)));
+    if (view === "plan") {
+      const taskIds = new Set(goalTasks.map((task) => String(task.id)));
+      return { goal, tasks: goalTasks, taskDependencies: demoStore.taskDependencies.filter((row) => taskIds.has(String(row.taskId))), schedule: demoStore.schedule.filter((block) => taskIds.has(String(block.taskId))) };
+    }
+    if (view === "study") {
+      return { goal, concepts: [], learningStates: [demoStore.learningState], questionBanks: publicQuestionBanksForWorkspace(demoStore.questionBanks), resourceActivities: demoStore.resourceActivities.filter((activity) => activity.goalId === goalId) };
+    }
+    if (view === "sources") {
+      return {
+        goal,
+        projects: goalProjects,
+        sources: demoStore.sources.filter((source) => (source.retention ?? "library") === "library" && source.projectId && projectIds.has(source.projectId)),
+        papers: demoStore.papers.filter((paper) => projectIds.has(String(paper.projectId))),
+      };
+    }
+    const taskIdSet = new Set(goalTasks.map((task) => String(task.id)));
+    return {
+      goal,
+      milestones: this.memoryMilestones.filter((milestone) => milestone.goalId === goalId),
+      tasks: goalTasks,
+      taskDependencies: demoStore.taskDependencies.filter((row) => taskIdSet.has(String(row.taskId))),
+      projects: goalProjects,
+      concepts: [],
+      events: demoStore.events.slice(0, 5),
+      openQuestions: [],
+      receipts: demoStore.receipts.filter((receipt) => receipt.goalId === goalId).slice(0, 10),
+    };
+  }
+
+  async projectView(projectId: string, view: "overview" | "claims" | "sources" | "decisions") {
+    const project = demoStore.projects.find((row) => row.id === projectId);
+    if (!project) return undefined;
+    const owned = <T extends Record<string, unknown>>(rows: T[]) => rows.filter((row) => row.projectId === projectId);
+    if (view === "claims") return { project, claims: owned(demoStore.claims) };
+    if (view === "decisions") return { project, decisions: owned(demoStore.decisions) };
+    if (view === "sources") return { project, sources: demoStore.sources.filter((source) => source.projectId === projectId && (source.retention ?? "library") === "library"), papers: owned(demoStore.papers) };
+    return { project, decisions: owned(demoStore.decisions).slice(0, 10), claims: owned(demoStore.claims).slice(0, 10), notes: owned(demoStore.notes).slice(0, 10) };
+  }
+
+  async updateGoal(goalId: string, changes: { title?: string; outcome?: string; targetDate?: string; status?: string; deleted?: boolean }) {
+    const goal = demoStore.goals.find((row) => row.id === goalId);
+    if (!goal) return undefined;
+    Object.assign(goal, Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined)), { updatedAt: new Date().toISOString() });
+    if (changes.deleted) {
+      demoStore.goals = demoStore.goals.filter((row) => row.id !== goalId);
+      demoStore.tasks = demoStore.tasks.filter((task) => task.goalId !== goalId);
+    }
+    return goal;
   }
 
   async read(name: string, args: Record<string, unknown>) {
@@ -567,6 +654,12 @@ class NeonStore implements Store {
   async snapshot() { return this.repo.getStateSnapshot(this.userId); }
 
   async workspace(view: string) { return this.repo.getWorkspaceSnapshot(this.userId, view); }
+
+  async shellData() { return this.repo.getShellData(this.userId); }
+  async homeData() { return this.repo.getHomeData(this.userId); }
+  async goalView(goalId: string, view: "overview" | "plan" | "study" | "sources") { return this.repo.getGoalView(goalId, this.userId, view) as Promise<Record<string, unknown> | undefined>; }
+  async projectView(projectId: string, view: "overview" | "claims" | "sources" | "decisions") { return this.repo.getProjectView(projectId, this.userId, view) as Promise<Record<string, unknown> | undefined>; }
+  async updateGoal(goalId: string, changes: { title?: string; outcome?: string; targetDate?: string; status?: string; deleted?: boolean }) { return this.repo.updateGoal(goalId, this.userId, changes) as Promise<Record<string, unknown> | undefined>; }
 
   async read(name: string, args: Record<string, unknown>, clientId?: string) {
     if (name === "list_context_packs") return buildContextPacks(await this.repo.getWorkspaceSnapshot(this.userId, "memory")).map((pack) => pack.metadata);
