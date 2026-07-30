@@ -140,11 +140,11 @@ Regression suites worth knowing about — each one guards a specific past failur
 
 ---
 
-## Bugs this session found by running the product, not the tests
+## Bugs found by running the product, not the tests
 
-All four were invisible to a green suite, and all four would have hit a real
-user. They are worth reading before adding to the suite, because they show
-what kind of test was missing.
+Every one was invisible to a green suite, and every one would have hit a real
+user. They are worth reading before adding to the suite, because they show what
+kind of test was missing.
 
 1. **`save_to_continuum` was dead for every MCP client.**
    `McpServer.registerTool` takes a Zod *shape*; reading `.shape` off a
@@ -167,20 +167,42 @@ what kind of test was missing.
 4. **An infinite render loop in the assistant controller**, from a callback
    defined inside a `useMemo` and consumed by an effect keyed on its identity.
 
+5. **Every primary button was white text on the lime indicator, at 1.49:1.**
+   `components/ui/kit.css` defines `.button-primary` on `--accent` near the top
+   and then re-defines it on `--accent-mark` four hundred lines later. The
+   product's most-used control, in the light theme, on every screen. A green
+   suite and a working product both hid it; axe found it in one run.
+
+6. **Review's diff had no left-hand side.** Its view returned no goals, tasks or
+   projects, so the target record never resolved and every "before" cell printed
+   an em dash. Invisible until the demo had a proposal to show, which it did not.
+
+7. **Lighthouse was measuring the wrong thing.** `preset: "desktop"` sat beside
+   `formFactor: "mobile"` in `lighthouserc.json`, and the preset wins — it
+   reported a mobile run while applying 40ms RTT, 10 Mbps and no CPU slowdown.
+   A green 100 against a condition §19.9 does not budget.
+
+The pattern in all seven: each one is invisible to a test that asserts what the
+code does, and obvious to anything that looks at what the user gets.
+
 ---
 
 ## What is still open
 
-- **§18.7 visual-regression baselines** and **§18.9 Lighthouse budgets** are
-  configured but have no committed baseline numbers.
-- **§12.6 step 5** (trace a decision to its evidence) needs a demo workspace
-  with a claim that has linked evidence. The tool chain is verified to exist
-  and answer; the end-to-end trace is not.
-- **Whether Claude *chooses* the right tool** from its description is not
-  script-checkable. It needs a person with Claude Desktop following §12.6.
-- **115 raw hex values** remain inside the migrated per-screen CSS. They are
-  pre-existing — they were in `globals.css` before, equally against §15.9's
-  rule 3 — and most are light-theme values with no token equivalent, so
-  replacing them is a colour decision rather than a mechanical one.
-- **The light theme** is verified by the §19 sweep (every route, no overflow,
-  correct tokens) but has not had a full design pass.
+Everything here needs a person or a machine this session did not have. None of
+it is code that was skipped.
+
+- **§18.7 visual baselines.** The suite is written and runs under
+  `PLAYWRIGHT_VISUAL=1`. Baselines are renderer-specific, so committing them
+  from a laptop would fail on the first CI machine. Record them there.
+- **§12.6 step 5** (trace a decision to its evidence) and **whether Claude picks
+  the right tool from its description**. The tool chain is verified to exist and
+  answer; the judgement is not script-checkable.
+- **The iOS keyboard never obscuring the composer.** `dvh` and
+  `env(safe-area-inset-bottom)` are used; nothing verifies them without a device.
+- **A real Zotero library and a real Obsidian vault.** Both are stubbed at the
+  network boundary in the journeys.
+- **§18.11's Safari and Firefox passes.** Playwright runs Chromium only.
+- **The light theme has not had a design pass.** It is verified — every route,
+  no overflow, correct tokens, zero axe violations, and now no literal colour —
+  but verified is not designed.
