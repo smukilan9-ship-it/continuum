@@ -98,7 +98,11 @@
   "tasks": {
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      // Turbo's strict env mode filters the parent environment, so `PORT` never
+      // reached `next dev` and the dev server ignored the port its supervisor
+      // had assigned it.
+      "passThroughEnv": ["PORT"]
     },
     "build": {
       "dependsOn": ["^build"],

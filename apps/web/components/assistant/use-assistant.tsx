@@ -253,7 +253,8 @@ export function useAssistantController({ initialSessions, onWorkspaceChange }: {
         const payload = await response.json().catch(() => ({})) as { error?: string };
         throw new Error(payload.error ?? "The Assistant could not respond");
       }
-      setStatus(response.headers.get("x-continuum-status") ?? "Thinking…");
+      const encodedStatus = response.headers.get("x-continuum-status");
+      setStatus(encodedStatus ? decodeURIComponent(encodedStatus) : "Thinking…");
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -359,6 +360,39 @@ export function useAssistantController({ initialSessions, onWorkspaceChange }: {
     setDraft(lastUser?.content ?? "");
   }, [active?.title, createSession, messages, updateSession]);
 
+  /**
+   * The chip mutators are stable by construction.
+   *
+   * They were defined inside the `useMemo` below, so their identity changed
+   * whenever any chip changed — and `setPageContext` is called from an effect
+   * keyed on its own identity, which made every page-chip update schedule
+   * another one. React caught it as "Maximum update depth exceeded". Both
+   * halves matter: a stable callback, and a reducer that returns the *same*
+   * array when nothing actually changed.
+   */
+  const setPageContext = useCallback((page: PageContext | undefined) => {
+    setChips((current) => {
+      const existing = current.find((chip) => chip.origin === "page");
+      if (!page) return existing ? current.filter((chip) => chip.origin !== "page") : current;
+      if (existing && existing.label === page.label && existing.pageContext?.id === page.id) return current;
+      const rest = current.filter((chip) => chip.origin !== "page");
+      return [{
+        id: `page:${page.kind}:${page.id ?? "current"}`,
+        kind: page.kind === "build" ? "file" : page.kind === "week" ? "week" : page.kind,
+        label: page.label,
+        origin: "page",
+        pageContext: page,
+      }, ...rest];
+    });
+  }, []);
+
+  const addChip = useCallback((chip: ComposerChip) => {
+    setChips((current) => current.some((entry) => entry.id === chip.id) ? current : [...current, chip]);
+  }, []);
+  const removeChip = useCallback((chipId: string) => setChips((current) => current.filter((chip) => chip.id !== chipId)), []);
+  const updateChip = useCallback((chipId: string, patch: Partial<ComposerChip>) => setChips((current) => current.map((chip) => chip.id === chipId ? { ...chip, ...patch } : chip)), []);
+  const excludeRecord = useCallback((recordId: string) => setExcluded((current) => current.includes(recordId) ? current : [...current, recordId]), []);
+
   const controller = useMemo<AssistantController>(() => ({
     sessions,
     active,
@@ -379,12 +413,7 @@ export function useAssistantController({ initialSessions, onWorkspaceChange }: {
     panelOpen,
     setPanelOpen,
     askFromPage: ({ prompt, page, send: sendNow }) => {
-      if (page) {
-        setChips((current) => [
-          { id: `page:${page.kind}:${page.id ?? "current"}`, kind: page.kind === "build" ? "file" : page.kind === "week" ? "week" : page.kind, label: page.label, origin: "page", pageContext: page },
-          ...current.filter((chip) => chip.origin !== "page"),
-        ]);
-      }
+      if (page) setPageContext(page);
       setPanelOpen(true);
       // Sending straight away would answer a question the user has not finished
       // asking; the prompt lands in the composer unless the caller says
@@ -394,10 +423,10 @@ export function useAssistantController({ initialSessions, onWorkspaceChange }: {
     setDraft,
     setMode: (next) => { setMode(next); },
     setActiveId,
-    addChip: (chip) => setChips((current) => current.some((entry) => entry.id === chip.id) ? current : [...current.filter((entry) => entry.origin !== "page" || chip.origin !== "page"), chip]),
-    removeChip: (chipId) => setChips((current) => current.filter((chip) => chip.id !== chipId)),
-    updateChip: (chipId, patch) => setChips((current) => current.map((chip) => chip.id === chipId ? { ...chip, ...patch } : chip)),
-    excludeRecord: (recordId) => setExcluded((current) => current.includes(recordId) ? current : [...current, recordId]),
+    addChip,
+    removeChip,
+    updateChip,
+    excludeRecord,
     send,
     resolveConfirmation,
     stop: () => abortRef.current?.abort(),
@@ -409,11 +438,8 @@ export function useAssistantController({ initialSessions, onWorkspaceChange }: {
     branchFrom,
     refreshSessions,
     loadSession,
-    setPageContext: (page) => setChips((current) => {
-      const rest = current.filter((chip) => chip.origin !== "page");
-      return page ? [{ id: `page:${page.kind}:${page.id ?? "current"}`, kind: page.kind === "build" ? "file" : page.kind === "week" ? "week" : page.kind, label: page.label, origin: "page", pageContext: page }, ...rest] : rest;
-    }),
-  }), [active, activeId, branchFrom, busy, chips, confirmation, createSession, deleteSession, draft, error, excludedRecordIds, live, loadSession, loadingSession, messages, mode, panelOpen, personalKeyProvider, refreshSessions, resolveConfirmation, send, sessions, status, updateSession]);
+    setPageContext,
+  }), [active, activeId, addChip, branchFrom, busy, chips, confirmation, createSession, deleteSession, draft, error, excludeRecord, excludedRecordIds, live, loadSession, loadingSession, messages, mode, panelOpen, personalKeyProvider, refreshSessions, removeChip, resolveConfirmation, send, sessions, setPageContext, status, updateChip, updateSession]);
 
   return controller;
 }

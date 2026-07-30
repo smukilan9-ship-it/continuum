@@ -36,13 +36,29 @@ export function Composer({ compact = false }: { compact?: boolean }) {
   const attachments = assistant.chips.filter((chip) => chip.origin === "attachment");
   const canSend = Boolean(assistant.draft.trim()) || attachments.some((chip) => chip.state === "ready");
 
-  // Auto-grow 1 → 8 rows, then scroll.
+  /**
+   * Auto-grow 1 → 8 rows, then scroll.
+   *
+   * `scrollHeight` reports the *box* when the element is stretched or has a
+   * min-height, so measuring naively latched the composer open at whatever the
+   * first layout happened to be — eight rows tall on a first paint where the
+   * co-located stylesheet had not applied yet. Both constraints are lifted for
+   * the duration of the measurement, and it runs after a frame so the styles
+   * that decide the real line height are in.
+   */
   useEffect(() => {
     const node = textareaRef.current;
     if (!node) return;
-    node.style.height = "auto";
-    const line = Number.parseFloat(getComputedStyle(node).lineHeight) || 20;
-    node.style.height = `${Math.min(node.scrollHeight, line * 8 + 16)}px`;
+    const measure = () => {
+      node.style.height = "auto";
+      node.style.minHeight = "0px";
+      const line = Number.parseFloat(getComputedStyle(node).lineHeight) || 20;
+      const content = node.scrollHeight;
+      node.style.minHeight = "";
+      node.style.height = `${Math.min(content, Math.round(line * 8))}px`;
+    };
+    const frame = requestAnimationFrame(measure);
+    return () => cancelAnimationFrame(frame);
   }, [assistant.draft]);
 
   const upload = useCallback(async (files: File[], retention: "library" | "session") => {

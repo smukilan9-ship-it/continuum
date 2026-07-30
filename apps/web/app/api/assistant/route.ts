@@ -385,8 +385,13 @@ export async function POST(request: Request) {
         : "Nothing in the user's workspace matched this question. Answer from general knowledge and do not imply you consulted their material.",
     ].join(" "),
   });
+  // Only the provider call is guarded. Wrapping the whole tail in this catch
+  // meant any bug after it — a bad header value, a serialisation error — was
+  // reported to the user as "the model is unavailable", which is both false and
+  // unactionable. Everything below is ours to get right, and should fail loudly.
+  let streamed;
   try {
-    const streamed = await runStreamingAi({
+    streamed = await runStreamingAi({
       request,
       userId: user.id,
       feature: "assistant.chat",
@@ -396,6 +401,11 @@ export async function POST(request: Request) {
       maxOutputTokens: 2_000,
       credentialMode,
     });
+  } catch (error) {
+    return aiErrorResponse(error);
+  }
+
+  {
     const encoder = new TextEncoder();
     let answer = "";
     const responseStream = new ReadableStream<Uint8Array>({
@@ -458,13 +468,17 @@ export async function POST(request: Request) {
           : ({ auto: "Continuum Auto", fast: "Fast", deep: "Deep Reasoning", coding: "Coding", document: "Document Analysis" } as const)[assistantMode],
         // §11.9: the composer names the step it is on rather than showing an
         // unexplained spinner, so it needs the plan before the stream lands.
-        "x-continuum-status": plan.statusLabel,
+        //
+        // Percent-encoded because header values are Latin-1: the status labels
+        // carry an ellipsis ("Looking through your OASIS project…"), and
+        // assigning one raw throws while the response is being constructed —
+        // inside the try, so it surfaced as a bogus "model unavailable" 503
+        // after a perfectly successful model call.
+        "x-continuum-status": encodeURIComponent(plan.statusLabel),
         "x-continuum-class": plan.classification.requestClass,
         "x-continuum-records": String(usedContext.length),
         ...(plan.degraded.length ? { "x-continuum-degraded": plan.degraded.join(",") } : {}),
       },
     });
-  } catch (error) {
-    return aiErrorResponse(error);
   }
 }
